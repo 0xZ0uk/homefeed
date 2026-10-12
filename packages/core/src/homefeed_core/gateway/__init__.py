@@ -23,16 +23,19 @@ from homefeed_core.gateway.events import (
     MemoryEventRecorder,
     SqlEventRecorder,
 )
-from homefeed_core.gateway.interface import DEFAULT_UPLOADS_LIMIT, Gateway
+from homefeed_core.gateway.interface import DEFAULT_RELATED_LIMIT, DEFAULT_UPLOADS_LIMIT, Gateway
 from homefeed_core.gateway.media import MAX_RANGE_BYTES, HttpMediaFetcher, MediaFetcher, MediaStream
 from homefeed_core.gateway.models import (
     ByteRange,
+    Captions,
+    CaptionSegment,
     Channel,
     ChannelUploads,
     Chapter,
     Format,
     FormatKind,
     LiveStatus,
+    RelatedVideo,
     ResolvedChannel,
     ResolvedPlaylist,
     ResolvedUrl,
@@ -45,9 +48,12 @@ from homefeed_core.gateway.rss import FeedFetcher, HttpFeedFetcher, channel_feed
 from homefeed_core.gateway.ytdlp import YtDlpGateway
 
 __all__ = [
+    "DEFAULT_RELATED_LIMIT",
     "DEFAULT_UPLOADS_LIMIT",
     "MAX_RANGE_BYTES",
     "ByteRange",
+    "CaptionSegment",
+    "Captions",
     "Channel",
     "ChannelUploads",
     "Chapter",
@@ -70,6 +76,7 @@ __all__ = [
     "RangeNotSatisfiableError",
     "RateLimitedError",
     "RateLimiter",
+    "RelatedVideo",
     "ResolvedChannel",
     "ResolvedPlaylist",
     "ResolvedUrl",

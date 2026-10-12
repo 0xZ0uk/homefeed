@@ -4,7 +4,8 @@
 
 Each fixture is `{"request": ..., "response": ...}` or `{"request": ..., "error": ...}`
 in `tests/fixtures/gateway/`. Bulky fields the Gateway ignores are dropped and the
-client IP embedded in stream URLs is replaced with a documentation address.
+client IP embedded in stream URLs is replaced with a documentation address. Caption
+tracks keep only the first `CAPTION_SECONDS` and the json3 fields the Gateway reads.
 """
 
 import json
@@ -38,7 +39,32 @@ REQUESTS: dict[str, ExtractRequest] = {
     "resolve_user": ExtractRequest(
         "https://www.youtube.com/user/1veritasium/videos", flat=True, limit=1
     ),
+    # Uploaded English captions.
+    "captions_me_at_the_zoo": ExtractRequest(
+        "https://www.youtube.com/watch?v=jNQXAC9IVRw", captions=True
+    ),
+    "captions_long": ExtractRequest("https://www.youtube.com/watch?v=NiCgcUTL9_Q", captions=True),
+    # Automatic captions only.
+    "captions_automatic": ExtractRequest(
+        "https://www.youtube.com/watch?v=j9p3Sn8ROL4", captions=True
+    ),
+    # No captions at all.
+    "captions_none": ExtractRequest("https://www.youtube.com/watch?v=hY7m5jjJ9mM", captions=True),
+    "captions_unavailable": ExtractRequest(
+        "https://www.youtube.com/watch?v=xxxxxxxxxxx", captions=True
+    ),
+    # The watch page's related list (InnerTube `next`).
+    "related_long": ExtractRequest("https://www.youtube.com/watch?v=NiCgcUTL9_Q", related=True),
+    "related_me_at_the_zoo": ExtractRequest(
+        "https://www.youtube.com/watch?v=jNQXAC9IVRw", related=True
+    ),
+    "related_unavailable": ExtractRequest(
+        "https://www.youtube.com/watch?v=xxxxxxxxxxx", related=True
+    ),
 }
+
+CAPTION_SECONDS = 600
+CAPTION_EVENT_KEYS = {"tStartMs", "dDurationMs", "segs"}
 
 DROP_KEYS = {
     "automatic_captions",
@@ -66,6 +92,21 @@ def scrub(value: Any) -> Any:
     return value
 
 
+def trim_captions(response: dict[str, Any]) -> dict[str, Any]:
+    captions = response.get("captions")
+    if not captions:
+        return response
+    events: list[dict[str, Any]] = []
+    for event in captions["events"]:
+        if event.get("tStartMs", 0) >= CAPTION_SECONDS * 1000:
+            continue
+        trimmed = {k: v for k, v in event.items() if k in CAPTION_EVENT_KEYS}
+        if "segs" in trimmed:
+            trimmed["segs"] = [{"utf8": seg.get("utf8", "")} for seg in trimmed["segs"]]
+        events.append(trimmed)
+    return {**response, "captions": {**captions, "events": events}}
+
+
 def main(names: list[str]) -> None:
     FIXTURES.mkdir(parents=True, exist_ok=True)
     for name, request in REQUESTS.items():
@@ -73,7 +114,7 @@ def main(names: list[str]) -> None:
             continue
         record: dict[str, Any] = {"request": asdict(request)}
         try:
-            record["response"] = scrub(extract_info(request))
+            record["response"] = trim_captions(scrub(extract_info(request)))
         except GatewayError as error:
             record["error"] = str(error)
         path = FIXTURES / f"{name}.json"

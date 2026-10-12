@@ -89,6 +89,31 @@ class Format:
 
 
 @dataclass(frozen=True)
+class CaptionSegment:
+    start_seconds: float
+    end_seconds: float
+    text: str
+
+
+@dataclass(frozen=True)
+class Captions:
+    """One caption track of a video, as timed text segments in order."""
+
+    video_id: str
+    language: str  # e.g. "en", or "en-orig" for automatic captions in the original language
+    is_automatic: bool  # YouTube's speech recognition (or its translation), not uploaded
+    segments: tuple[CaptionSegment, ...]
+
+    def text(self, *, until_seconds: float | None = None) -> str:
+        """The segments' text joined by spaces, up to segments starting before `until_seconds`."""
+        return " ".join(
+            segment.text
+            for segment in self.segments
+            if until_seconds is None or segment.start_seconds < until_seconds
+        )
+
+
+@dataclass(frozen=True)
 class UploadSummary:
     """A video as listed on a channel page; fetch `get_video` for full metadata."""
 
@@ -98,6 +123,21 @@ class UploadSummary:
     view_count: int | None = None
     thumbnail_url: str | None = None
     published_at: datetime | None = None  # channel listings usually omit it
+    live_status: LiveStatus | None = None
+
+
+@dataclass(frozen=True)
+class RelatedVideo:
+    """A video YouTube suggests next to another; fetch `get_video` for full metadata."""
+
+    id: str
+    title: str
+    channel_id: str
+    channel_title: str
+    channel_handle: str | None = None
+    duration_seconds: int | None = None
+    view_count: int | None = None
+    thumbnail_url: str | None = None
     live_status: LiveStatus | None = None
 
 

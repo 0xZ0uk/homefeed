@@ -3,23 +3,43 @@
 `rank` drops candidates that fail a hard filter, scores the rest and returns them best
 first. Each score comes with a breakdown whose parts sum to it:
 
-    final = alpha * model + channel + sum(topics)
+    final = alpha * model + channel + similarity + sum(topics)
 
-Milestone 1 is rules-only: there is no model (so `alpha` and `model` are 0) and no
-topics, which leaves the channel score, a Bayesian average of the channel's rating
-values shrunk toward its curation prior with weight `k = 5`.
+Without a model (until Milestone 3) `alpha` and `model` are 0. The channel score is a
+Bayesian average of the channel's rating values shrunk toward its curation prior with
+weight `k = 5`.
+
+Similarity features compare a candidate's embedding with those of the videos rated top
+tier (A-- and up) and bottom tier (D++ and down): the max and mean cosine similarity to
+each set (`SimilarityFeatures`). They are passed to the model and, until the model can
+weigh them itself, also make the rules-based `similarity` term: how much closer the
+candidate's nearest top-tier video is than its nearest bottom-tier one, each counted
+like a topic boost (only the part above `SIMILARITY_FLOOR`, since unrelated texts still
+have some similarity). Candidates without an embedding get no similarity features and a
+`similarity` term of 0.
+
+Topic boosts: each topic adds `weight * max(0, cos_sim(video, topic) - 0.3) / 0.7` (see
+`topic_boost`), with the topic's effective (decayed) weight. `breakdown.topics` maps a
+topic's name to its boost, holding only the topics with a nonzero boost; videos without
+an embedding (not enriched yet) get no topic boosts.
 
 Unknown metadata passes the hard filters. Subscription candidates come from RSS, which
 has no duration or live status, so most candidates have neither until they are enriched;
 filtering them out would empty the feed. Shorts are still caught through `is_short`
 (RSS marks them by their /shorts/ link) and, once known, a duration under 60 seconds.
+
+Keyword mutes are matched against the title and description (see `KeywordMutes`).
 """
 
+import math
+import re
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any
 
-from homefeed_core.curation import DEFAULT_PRIOR, PRIOR_VALUES, Prior
+from homefeed_core.curation import DEFAULT_PRIOR, PRIOR_VALUES, Prior, TopicVector
+from homefeed_core.embeddings import Embedding, cosine_similarity, normalize
 
 # Weight of the prior in the channel score, in "ratings' worth" (PLAN.md section 7).
 CHANNEL_PRIOR_WEIGHT = 5
@@ -27,8 +47,15 @@ CHANNEL_PRIOR_WEIGHT = 5
 SHORT_MAX_SECONDS = 60
 # Number of explicit ratings at which a model's score gets half the weight.
 ALPHA_HALF_RATINGS = 50
+# Topic similarity below this gives no boost; the boost grows linearly from here to 1.
+TOPIC_SIMILARITY_FLOOR = 0.3
 # live_status values that are not (yet) a regular video.
 LIVE_STATUSES = frozenset({"is_live", "is_upcoming"})
+# Cosine similarity below which a rated video counts as unrelated (as for topic boosts).
+SIMILARITY_FLOOR = 0.3
+# Weight of the similarity term: a candidate as close to a top-tier video as possible,
+# and unrelated to the bottom tier, gets this much (the channel score's range is [-1, 1]).
+SIMILARITY_WEIGHT = 0.5
 
 
 class FilterReason(StrEnum):
@@ -37,6 +64,7 @@ class FilterReason(StrEnum):
     TOO_SHORT = "too_short"
     TOO_LONG = "too_long"
     MUTED_CHANNEL = "muted_channel"
+    MUTED_KEYWORD = "muted_keyword"
     WATCHED = "watched"
     DISMISSED = "dismissed"
 
@@ -50,6 +78,7 @@ class RankCandidate:
     source: str
     source_detail: str | None = None
     title: str = ""
+    description: str | None = None
     duration_seconds: int | None = None
     live_status: str | None = None
     is_short: bool = False
@@ -79,6 +108,33 @@ class DurationBounds:
 NO_BOUNDS = DurationBounds()
 
 
+class KeywordMutes:
+    """Muted keywords, matched in a video's title and description ignoring case.
+
+    A keyword matches as a whole word or phrase: "art" mutes "Pixel art" but not "Start
+    here", and spaces in a phrase match any whitespace (titles wrap, descriptions break
+    lines). Built once per ranking, since it compiles the keywords into one pattern.
+    """
+
+    def __init__(self, keywords: Iterable[str] = ()) -> None:
+        alternatives = sorted(
+            {r"\s+".join(map(re.escape, words)) for k in keywords if (words := k.split())}
+        )
+        self._pattern = (
+            re.compile(rf"(?<!\w)(?:{'|'.join(alternatives)})(?!\w)", re.IGNORECASE)
+            if alternatives
+            else None
+        )
+
+    def matches(self, *texts: str | None) -> bool:
+        if self._pattern is None:
+            return False
+        return any(text and self._pattern.search(text) for text in texts)
+
+
+NO_KEYWORD_MUTES = KeywordMutes()
+
+
 @dataclass(frozen=True)
 class History:
     """What the user has already done with videos, for the watched/dismissed filters."""
@@ -92,24 +148,104 @@ class History:
 
 
 @dataclass(frozen=True)
+class RatedTiers:
+    """Embeddings of the rated top-tier (A-- and up) and bottom-tier (D++ and down)
+    videos, by video id. Rated videos without an embedding are left out."""
+
+    top: Mapping[str, Embedding] = field(default_factory=dict)
+    bottom: Mapping[str, Embedding] = field(default_factory=dict)
+
+
+NO_RATED_TIERS = RatedTiers()
+
+
+@dataclass(frozen=True)
+class TierSimilarity:
+    """Cosine similarity of a candidate to the videos of one tier set."""
+
+    max: float
+    mean: float
+    nearest_video_id: str  # the rated video `max` is the similarity to
+
+    def to_dict(self) -> dict[str, object]:
+        return {"max": self.max, "mean": self.mean, "nearest_video_id": self.nearest_video_id}
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None) -> "TierSimilarity | None":
+        if data is None:
+            return None
+        return cls(max=data["max"], mean=data["mean"], nearest_video_id=data["nearest_video_id"])
+
+
+@dataclass(frozen=True)
+class SimilarityFeatures:
+    """A candidate's similarity to the top-tier and bottom-tier sets; a side is None
+    when that set is empty."""
+
+    top_tier: TierSimilarity | None = None
+    bottom_tier: TierSimilarity | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "top_tier": self.top_tier.to_dict() if self.top_tier else None,
+            "bottom_tier": self.bottom_tier.to_dict() if self.bottom_tier else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None) -> "SimilarityFeatures | None":
+        if data is None:
+            return None
+        return cls(
+            top_tier=TierSimilarity.from_dict(data.get("top_tier")),
+            bottom_tier=TierSimilarity.from_dict(data.get("bottom_tier")),
+        )
+
+
+@dataclass(frozen=True)
 class ScoreBreakdown:
+    """The terms of a score, which sum to `final`:
+    `alpha * model + channel + similarity + sum(topics)`.
+
+    `similarity_features` is not a term: it is what the `similarity` term (and the
+    model) were computed from, kept for display. None without an embedding.
+    """
+
     model: float = 0.0
     alpha: float = 0.0
     channel: float = 0.0
+    similarity: float = 0.0
     topics: Mapping[str, float] = field(default_factory=dict)
+    similarity_features: SimilarityFeatures | None = None
 
     @property
     def final(self) -> float:
-        return self.alpha * self.model + self.channel + sum(self.topics.values())
+        return self.alpha * self.model + self.channel + self.similarity + sum(self.topics.values())
 
     def to_dict(self) -> dict[str, object]:
         return {
             "model": self.model,
             "alpha": self.alpha,
             "channel": self.channel,
+            "similarity": self.similarity,
             "topics": dict(self.topics),
             "final": self.final,
+            "similarity_features": (
+                self.similarity_features.to_dict() if self.similarity_features else None
+            ),
         }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "ScoreBreakdown":
+        """Read back `to_dict` output (`final` is recomputed). Missing terms are 0, as
+        in breakdowns stored before they existed."""
+        return cls(
+            model=data["model"],
+            alpha=data["alpha"],
+            channel=data["channel"],
+            similarity=data.get("similarity", 0.0),
+            topics=data.get("topics", {}),
+            similarity_features=SimilarityFeatures.from_dict(data.get("similarity_features")),
+        )
 
 
 @dataclass(frozen=True)
@@ -124,8 +260,9 @@ class ScoredCandidate:
         return self.breakdown.final
 
 
-# Scores a candidate in the same [-1, 1] space as rating values (Milestone 3).
-Model = Callable[[RankCandidate], float]
+# Scores a candidate, given its similarity features (None without an embedding), in the
+# same [-1, 1] space as rating values (Milestone 3).
+Model = Callable[[RankCandidate, SimilarityFeatures | None], float]
 
 
 def channel_score(prior: Prior, ratings: Sequence[float], k: int = CHANNEL_PRIOR_WEIGHT) -> float:
@@ -140,12 +277,76 @@ def alpha(n_ratings: int, *, has_model: bool) -> float:
     return n_ratings / (n_ratings + ALPHA_HALF_RATINGS)
 
 
+def similarity_features(embedding: Sequence[float], tiers: RatedTiers) -> SimilarityFeatures:
+    """Max and mean cosine similarity of `embedding` to the top-tier and bottom-tier
+    sets."""
+    return _similarity_features(embedding, _normalized(tiers.top), _normalized(tiers.bottom))
+
+
+def similarity_score(features: SimilarityFeatures | None) -> float:
+    """The rules-based `similarity` term, in [-SIMILARITY_WEIGHT, SIMILARITY_WEIGHT]:
+    `weight * (affinity(top_tier.max) - affinity(bottom_tier.max))`, where
+    `affinity(s) = max(0, s - SIMILARITY_FLOOR) / (1 - SIMILARITY_FLOOR)`."""
+    if features is None:
+        return 0.0
+
+    def affinity(tier: TierSimilarity | None) -> float:
+        if tier is None:
+            return 0.0
+        return max(0.0, tier.max - SIMILARITY_FLOOR) / (1 - SIMILARITY_FLOOR)
+
+    return SIMILARITY_WEIGHT * (affinity(features.top_tier) - affinity(features.bottom_tier))
+
+
+def _normalized(tier: Mapping[str, Sequence[float]]) -> dict[str, Embedding]:
+    return {video_id: normalize(vector) for video_id, vector in tier.items()}
+
+
+def _similarity_features(
+    embedding: Sequence[float], top: Mapping[str, Embedding], bottom: Mapping[str, Embedding]
+) -> SimilarityFeatures:
+    """`similarity_features` with the tier sets already normalized."""
+    unit = normalize(embedding)
+    return SimilarityFeatures(_tier_similarity(unit, top), _tier_similarity(unit, bottom))
+
+
+def _tier_similarity(unit: Embedding, tier: Mapping[str, Embedding]) -> TierSimilarity | None:
+    """For unit vectors, cosine similarity is the dot product."""
+    if not tier:
+        return None
+    similarities = {video_id: math.sumprod(unit, vector) for video_id, vector in tier.items()}
+    nearest = max(similarities, key=similarities.__getitem__)
+    return TierSimilarity(
+        max=similarities[nearest],
+        mean=sum(similarities.values()) / len(similarities),
+        nearest_video_id=nearest,
+    )
+
+
+def topic_boost(weight: float, similarity: float) -> float:
+    """`weight * max(0, similarity - 0.3) / 0.7`: 0 up to the floor, `weight` at 1."""
+    return weight * max(0.0, similarity - TOPIC_SIMILARITY_FLOOR) / (1 - TOPIC_SIMILARITY_FLOOR)
+
+
+def topic_boosts(embedding: Embedding | None, topics: Iterable[TopicVector]) -> dict[str, float]:
+    """Each topic's boost for a video with `embedding`, by topic name; zeros left out."""
+    if embedding is None:
+        return {}
+    boosts: dict[str, float] = {}
+    for topic in topics:
+        boost = topic_boost(topic.weight, cosine_similarity(embedding, topic.embedding))
+        if boost != 0:
+            boosts[topic.name] = boost
+    return boosts
+
+
 def filter_reason(
     candidate: RankCandidate,
     *,
     curation: Curation,
     history: History,
     bounds: DurationBounds = NO_BOUNDS,
+    keyword_mutes: KeywordMutes = NO_KEYWORD_MUTES,
 ) -> FilterReason | None:
     """Why the candidate is dropped before scoring, or `None` if it passes."""
     duration = candidate.duration_seconds
@@ -159,6 +360,8 @@ def filter_reason(
         return FilterReason.TOO_LONG
     if curation.get(candidate.channel_id, ChannelCuration()).muted:
         return FilterReason.MUTED_CHANNEL
+    if keyword_mutes.matches(candidate.title, candidate.description):
+        return FilterReason.MUTED_KEYWORD
     if candidate.video_id in history.watched:
         return FilterReason.WATCHED
     if candidate.video_id in history.dismissed:
@@ -172,24 +375,46 @@ def rank(
     curation: Curation,
     history: History,
     bounds: DurationBounds = NO_BOUNDS,
+    keyword_mutes: KeywordMutes = NO_KEYWORD_MUTES,
+    embeddings: Mapping[str, Embedding] | None = None,
+    rated_tiers: RatedTiers = NO_RATED_TIERS,
     model: Model | None = None,
+    topics: Sequence[TopicVector] = (),
 ) -> list[ScoredCandidate]:
-    """Filter and score `candidates`, best first (ties keep the input order)."""
+    """Filter and score `candidates`, best first (ties keep the input order).
+
+    `embeddings` holds candidate embeddings by video id, for similarity features and
+    topic boosts; candidates without one get neither."""
+    embeddings = embeddings or {}
     blend = alpha(history.n_ratings, has_model=model is not None)
+    top_tier, bottom_tier = _normalized(rated_tiers.top), _normalized(rated_tiers.bottom)
     channel_scores: dict[str, float] = {}
     scored: list[ScoredCandidate] = []
     for candidate in candidates:
-        if filter_reason(candidate, curation=curation, history=history, bounds=bounds):
+        if filter_reason(
+            candidate,
+            curation=curation,
+            history=history,
+            bounds=bounds,
+            keyword_mutes=keyword_mutes,
+        ):
             continue
         channel_id = candidate.channel_id
         prior = curation.get(channel_id, ChannelCuration()).prior
         ratings = history.channel_ratings.get(channel_id, ())
         if channel_id not in channel_scores:
             channel_scores[channel_id] = channel_score(prior, ratings)
+        embedding = embeddings.get(candidate.video_id)
+        features = (
+            None if embedding is None else _similarity_features(embedding, top_tier, bottom_tier)
+        )
         breakdown = ScoreBreakdown(
-            model=model(candidate) if model is not None else 0.0,
+            model=model(candidate, features) if model is not None else 0.0,
             alpha=blend,
             channel=channel_scores[channel_id],
+            similarity=similarity_score(features),
+            similarity_features=features,
+            topics=topic_boosts(embedding, topics) if topics else {},
         )
         scored.append(ScoredCandidate(candidate, breakdown, prior, len(ratings)))
     scored.sort(key=lambda item: item.score, reverse=True)

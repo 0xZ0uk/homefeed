@@ -192,10 +192,12 @@ priors: love = +0.8, like = +0.4, neutral = 0.0, skeptical = -0.4
 
 ```
 alpha = n / (n + 50)             # n = number of explicit ratings
-final = alpha * model_score + channel_boost + sum(topic_boosts)
+final = alpha * model_score + channel_boost + similarity + sum(topic_boosts)
+similarity = 0.5 * (affinity(max_sim_top) - affinity(max_sim_bottom)),
+             affinity(s) = max(0, s - 0.3) / 0.7
 ```
 
-Before a model exists, `alpha = 0` and `model_score = 0`. Every scored item carries a breakdown `{model, alpha, channel, topics: {...}}` whose parts sum to `final`.
+Before a model exists, `alpha = 0` and `model_score = 0`. Every scored item carries a breakdown `{model, alpha, channel, similarity, topics: {...}}` whose parts sum to `final`, plus the similarity features it came from (max, mean and nearest video for each tier set).
 
 **Feed composition.** Default size 15. Order: pins first (new uploads from pinned channels), then exploration slots (default 3), then top-scored items, with at most 2 items per channel. Exploration uses Thompson sampling over per-channel `Beta(good + 1, not_good + 1)` posteriors (good = B-- or higher), restricted to channels with fewer than 5 ratings or never-rated sources. Estimate each item's selection probability by Monte Carlo (e.g. 500 draws) and store it.
 

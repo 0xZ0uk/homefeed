@@ -3,7 +3,8 @@
 Pure functions over plain dicts, so they are tested against recorded responses.
 """
 
-from collections.abc import Iterable, Mapping, MutableMapping
+from collections.abc import Callable, Iterable, Mapping, MutableMapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
@@ -11,12 +12,15 @@ from urllib.parse import parse_qs, urlsplit
 from homefeed_core.gateway.errors import ExtractionError
 from homefeed_core.gateway.models import (
     ByteRange,
+    Captions,
+    CaptionSegment,
     Channel,
     ChannelUploads,
     Chapter,
     Format,
     FormatKind,
     LiveStatus,
+    RelatedVideo,
     UploadSummary,
     Video,
 )
@@ -164,6 +168,150 @@ def channel_uploads_from_info(info: Info) -> ChannelUploads:
             )
         )
     return ChannelUploads(channel=channel_from_info(info), videos=uploads)
+
+
+# Related videos. A related request (see `ytdlp.py`) reads the watch page's related
+# list and returns {"id": <seed video id>, "entries": [...]}, one flat yt-dlp entry per
+# suggested video (id, title, channel_id, channel, uploader_id, duration, view_count,
+# thumbnails, live_status).
+
+
+def related_from_info(info: Info) -> list[RelatedVideo]:
+    """The suggested videos in a related response, in order, without duplicates or the
+    seed itself. Entries without a channel id are skipped: they can't be stored."""
+    seed = _require_str(info, "id")
+    related: list[RelatedVideo] = []
+    seen = {seed}
+    for raw in _list(info, "entries"):
+        if not isinstance(raw, Mapping):
+            continue
+        entry = cast(Info, raw)
+        video_id, title = _str(entry, "id"), _str(entry, "title")
+        channel_id = _str(entry, "channel_id")
+        if video_id is None or title is None or video_id in seen:
+            continue
+        if channel_id is None or not CHANNEL_ID.match(channel_id):
+            continue
+        seen.add(video_id)
+        related.append(
+            RelatedVideo(
+                id=video_id,
+                title=title,
+                channel_id=channel_id,
+                channel_title=_str(entry, "channel") or _str(entry, "uploader") or "",
+                channel_handle=_handle(entry),
+                duration_seconds=_int(entry, "duration"),
+                view_count=_int(entry, "view_count"),
+                thumbnail_url=_best_thumbnail(entry),
+                live_status=_live_status(entry),
+            )
+        )
+    return related
+
+
+# Captions. A captions request (see `ytdlp.py`) picks one track from the video's info
+# with `pick_caption_track`, downloads it as json3 and returns
+# {"id": ..., "captions": {"language": ..., "automatic": bool, "events": [...]}}, with
+# "captions": null when the video has no usable track.
+
+
+@dataclass(frozen=True)
+class CaptionTrack:
+    language: str
+    is_automatic: bool
+    url: str  # the json3 download
+
+
+def pick_caption_track(info: Info) -> CaptionTrack | None:
+    """The track to read a video's transcript from, preferring English.
+
+    Embeddings are English-only, so in order: uploaded English captions, automatic
+    captions of English speech (`en-orig`), YouTube's automatic English translation,
+    uploaded captions in the video's own language (then any), and finally automatic
+    captions in the original language (`xx-orig`). Only tracks offered as json3 count.
+    """
+    manual = _caption_tracks(info, "subtitles", is_automatic=False)
+    automatic = _caption_tracks(info, "automatic_captions", is_automatic=True)
+    original = _str(info, "language")
+
+    def manual_english(lang: str) -> bool:
+        return lang == "en" or lang.startswith("en-")
+
+    preferences: list[tuple[dict[str, CaptionTrack], Callable[[str], bool]]] = [
+        (manual, lambda lang: lang == "en"),
+        (manual, manual_english),
+        (automatic, lambda lang: lang == "en-orig"),
+        (automatic, lambda lang: lang == "en"),
+        (manual, lambda lang: original is not None and lang.split("-")[0] == original),
+        (manual, lambda _lang: True),
+        (automatic, lambda lang: lang.endswith("-orig")),
+    ]
+    for tracks, wanted in preferences:
+        for lang, track in tracks.items():
+            if wanted(lang):
+                return track
+    return None
+
+
+def _caption_tracks(info: Info, key: str, *, is_automatic: bool) -> dict[str, CaptionTrack]:
+    tracks: dict[str, CaptionTrack] = {}
+    listing = info.get(key)
+    if not isinstance(listing, Mapping):
+        return tracks
+    for lang, formats in cast(Info, listing).items():
+        if lang == "live_chat" or not isinstance(formats, list):
+            continue
+        for raw in cast(list[Any], formats):
+            if isinstance(raw, Mapping) and raw.get("ext") == "json3":
+                url = _str(cast(Info, raw), "url")
+                if url is not None:
+                    tracks[lang] = CaptionTrack(lang, is_automatic, url)
+                    break
+    return tracks
+
+
+def captions_from_info(info: Info) -> Captions | None:
+    """The captions in a captions response, or None when the video has none."""
+    video_id = _require_str(info, "id")
+    raw = info.get("captions")
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        raise ExtractionError("Captions response has a malformed 'captions' entry")
+    track = cast(Info, raw)
+    segments: list[CaptionSegment] = []
+    for event in _list(track, "events"):
+        if isinstance(event, Mapping):
+            segment = _caption_segment(cast(Info, event))
+            if segment is not None:
+                segments.append(segment)
+    return Captions(
+        video_id=video_id,
+        language=_require_str(track, "language"),
+        is_automatic=track.get("automatic") is True,
+        segments=tuple(segments),
+    )
+
+
+def _caption_segment(event: Info) -> CaptionSegment | None:
+    """One json3 event: `tStartMs`, `dDurationMs` and text pieces in `segs`.
+
+    Automatic captions split lines into word-level pieces and add newline-only events
+    between lines; those (and styling-only events without `segs`) are skipped.
+    """
+    start = _int(event, "tStartMs")
+    if start is None:
+        return None
+    pieces = [
+        _str(cast(Info, seg), "utf8") or ""
+        for seg in _list(event, "segs")
+        if isinstance(seg, Mapping)
+    ]
+    text = " ".join("".join(pieces).split())
+    if not text:
+        return None
+    duration = _int(event, "dDurationMs") or 0
+    return CaptionSegment(start / 1000, (start + duration) / 1000, text)
 
 
 def _format(raw: Info) -> Format | None:

@@ -11,7 +11,12 @@ from sqlalchemy.orm import Session, sessionmaker
 from homefeed_core import feeds
 from homefeed_core.candidates import SUBSCRIPTION, record
 from homefeed_core.config import Settings
+from homefeed_core.curation import add_keyword_mute, add_topic
 from homefeed_core.db import open_database
+from homefeed_core.embeddings import EMBEDDING_DIMENSIONS, StubEmbeddingProvider, store_embedding
+from homefeed_core.enricher import Enricher, enrich_candidates, get_features
+from homefeed_core.gateway.fake import FakeGateway, make_channel, make_video
+from homefeed_core.ranker import SIMILARITY_WEIGHT
 from homefeed_core.ratings import set_rating
 from homefeed_core.watch_events import record_watch_event
 
@@ -118,7 +123,15 @@ def test_build_feed_ranks_composes_and_stores(sessions: sessionmaker[Session]) -
 
     with sessions() as session:
         stored = session.execute(text("SELECT breakdown FROM feed_items LIMIT 1")).scalar_one()
-        assert set(json.loads(stored)) == {"model", "alpha", "channel", "topics", "final"}
+        assert set(json.loads(stored)) == {
+            "model",
+            "alpha",
+            "channel",
+            "similarity",
+            "topics",
+            "final",
+            "similarity_features",
+        }
         assert feeds.get_feed(session, TODAY) == feed
 
 
@@ -189,6 +202,88 @@ def test_hard_filters_and_unknown_metadata(sessions: sessionmaker[Session]) -> N
     assert [item.video_id for item in feed.items] == [vid(LOVED, 25), vid(LOVED, 24)]
 
 
+def test_muted_keywords_are_left_out(sessions: sessionmaker[Session]) -> None:
+    with sessions.begin() as session:
+        session.execute(text("DELETE FROM candidates"))
+        add_videos(session, LOVED, range(30, 33))
+        session.execute(
+            text("UPDATE videos SET title = 'Crypto news' WHERE id = :id"), {"id": vid(LOVED, 30)}
+        )
+        session.execute(
+            text("UPDATE videos SET description = 'Sponsored by a CRYPTO exchange' WHERE id = :id"),
+            {"id": vid(LOVED, 31)},
+        )
+        add_keyword_mute(session, "crypto")
+
+    feed = build(sessions)
+
+    assert [item.video_id for item in feed.items] == [vid(LOVED, 32)]
+
+
+def test_topic_boosts_reorder_and_appear_in_the_breakdown(
+    sessions: sessionmaker[Session],
+) -> None:
+    embedder = StubEmbeddingProvider(
+        vectors={
+            "woodworking": [1.0, 0.0, 0.0] + [0.0] * 381,
+            "drama": [0.0, 1.0, 0.0] + [0.0] * 381,
+        }
+    )
+    with sessions.begin() as session:
+        session.execute(text("DELETE FROM candidates"))
+        add_videos(session, PLAIN, range(50, 54))
+        for n, vector in [(50, [0.0, 1.0, 0.0]), (51, [0.0, 0.0, 1.0]), (52, [1.0, 0.0, 0.0])]:
+            store_embedding(session, vid(PLAIN, n), vector + [0.0] * 381)
+        # 53 has no embedding (not enriched yet): no topic boosts.
+        add_topic(session, embedder, name="Woodworking", description="woodworking", weight=0.6)
+        add_topic(
+            session,
+            embedder,
+            name="Drama",
+            description="drama",
+            weight=-1.0,
+            decay=True,
+            now=NOW - timedelta(days=30),
+        )
+
+    feed = build(sessions, settings=Settings(feed_size=15))
+
+    plain = [item for item in feed.items if item.channel_id == PLAIN]
+    by_id = {item.video_id: item for item in plain}
+    # At most 2 per channel: the boosted one, then the newer unboosted.
+    assert [item.video_id for item in plain] == [vid(PLAIN, 52), vid(PLAIN, 53)]
+    assert by_id[vid(PLAIN, 52)].breakdown.topics == {"Woodworking": pytest.approx(0.6)}
+    assert by_id[vid(PLAIN, 53)].breakdown.topics == {}
+    assert by_id[vid(PLAIN, 52)].score == pytest.approx(0.6)
+    with sessions() as session:
+        stored = session.execute(
+            text("SELECT breakdown FROM feed_items WHERE video_id = :id"), {"id": vid(PLAIN, 52)}
+        ).scalar_one()
+    assert json.loads(stored)["topics"] == {"Woodworking": pytest.approx(0.6)}
+
+
+def test_decayed_suppression(sessions: sessionmaker[Session]) -> None:
+    embedder = StubEmbeddingProvider(vectors={"drama": [1.0] + [0.0] * 383})
+    with sessions.begin() as session:
+        session.execute(text("DELETE FROM candidates"))
+        add_videos(session, PLAIN, range(60, 61))
+        store_embedding(session, vid(PLAIN, 60), [1.0] + [0.0] * 383)
+        add_topic(
+            session,
+            embedder,
+            name="Drama",
+            description="drama",
+            weight=-1.0,
+            decay=True,
+            now=NOW - timedelta(days=30),
+        )
+
+    [item] = build(sessions).items
+
+    assert item.breakdown.topics == {"Drama": pytest.approx(-0.5)}
+    assert item.score == pytest.approx(-0.5)
+
+
 def test_candidate_window(sessions: sessionmaker[Session]) -> None:
     with sessions.begin() as session:
         add_videos(session, PLAIN, range(30, 31), seen=NOW - timedelta(days=30))
@@ -249,3 +344,121 @@ def test_refresh_feed_survives_a_failing_poll(sessions: sessionmaker[Session]) -
     feed = feeds.refresh_feed(sessions=sessions, poll=poll, settings=SETTINGS, now=NOW)
 
     assert len(feed.items) == 6
+
+
+def test_refresh_feed_enriches_candidates_before_ranking(
+    sessions: sessionmaker[Session],
+) -> None:
+    # RSS doesn't give durations; enrichment finds that one candidate is a Short.
+    gateway = FakeGateway()
+    channel = make_channel(LOVED)
+    gateway.add_channel(
+        channel,
+        [
+            make_video(vid(LOVED, n), channel=channel, duration_seconds=30 if n == 3 else 600)
+            for n in range(4)
+        ],
+    )
+    enricher = Enricher(sessions, gateway, StubEmbeddingProvider(), now=lambda: NOW)
+    calls: list[str] = []
+
+    def enrich() -> None:
+        calls.append("enrich")
+        enrich_candidates(enricher=enricher, sessions=sessions, settings=SETTINGS, now=NOW)
+
+    feed = feeds.refresh_feed(
+        sessions=sessions,
+        poll=lambda: calls.append("poll"),
+        enrich=enrich,
+        settings=SETTINGS,
+        rng=random.Random(0),
+        now=NOW,
+    )
+
+    assert calls == ["poll", "enrich"]
+    loved = [item.video_id for item in feed.items if item.channel_id == LOVED]
+    # The newest upload is the Short, so the next two fill the channel's slots.
+    assert sorted(loved) == [vid(LOVED, 1), vid(LOVED, 2)]
+    with sessions() as session:
+        features = get_features(session, vid(LOVED, 3))
+    assert features is not None and features.duration_seconds == 30
+
+
+def test_refresh_feed_survives_a_failing_enrichment(sessions: sessionmaker[Session]) -> None:
+    def enrich() -> None:
+        raise RuntimeError("model download failed")
+
+    feed = feeds.refresh_feed(
+        sessions=sessions, poll=None, enrich=enrich, settings=SETTINGS, now=NOW
+    )
+
+    assert len(feed.items) == 6
+
+
+LOVED_TOO = "UC" + "t" * 22
+
+
+def unit(i: int) -> list[float]:
+    return [1.0 if j == i else 0.0 for j in range(EMBEDDING_DIMENSIONS)]
+
+
+def test_similarity_to_rated_tiers_shapes_ranking(sessions: sessionmaker[Session]) -> None:
+    loved, hated = vid(PLAIN, 40), vid(PLAIN, 41)
+    with sessions.begin() as session:
+        session.execute(text("DELETE FROM candidates"))
+        add_videos(session, PLAIN, range(40, 42), seen=NOW - timedelta(days=60))  # old
+        set_rating(session, loved, "S")
+        set_rating(session, hated, "F+")
+        store_embedding(session, loved, unit(0))
+        store_embedding(session, hated, unit(1))
+        add_videos(session, LOVED, range(42, 44))
+        store_embedding(session, vid(LOVED, 42), unit(0))  # like the loved one
+        store_embedding(session, vid(LOVED, 43), unit(1))  # like the hated one
+        session.execute(
+            text("INSERT INTO channels (id, title) VALUES (:id, 'Also loved')"), {"id": LOVED_TOO}
+        )
+        session.execute(
+            text("INSERT INTO channel_prefs (channel_id, prior) VALUES (:id, 'love')"),
+            {"id": LOVED_TOO},
+        )
+        add_videos(session, LOVED_TOO, range(44, 45))  # not enriched
+
+    feed = build(sessions)
+
+    assert [item.video_id for item in feed.items] == [
+        vid(LOVED, 42),
+        vid(LOVED_TOO, 44),
+        vid(LOVED, 43),
+    ]
+    first, unenriched, last = (item.breakdown for item in feed.items)
+    assert first.similarity == pytest.approx(SIMILARITY_WEIGHT)
+    assert last.similarity == pytest.approx(-SIMILARITY_WEIGHT)
+    assert unenriched.similarity == 0.0 and unenriched.similarity_features is None
+    assert first.similarity_features is not None
+    assert first.similarity_features.top_tier is not None
+    assert first.similarity_features.top_tier.nearest_video_id == loved
+    assert first.similarity_features.top_tier.max == pytest.approx(1.0)
+    assert first.similarity_features.bottom_tier is not None
+    assert first.similarity_features.bottom_tier.max == pytest.approx(0.0)
+    for item in feed.items:
+        assert item.score == pytest.approx(item.breakdown.final)
+
+
+def test_explanations_name_the_nearest_top_tier_video(sessions: sessionmaker[Session]) -> None:
+    loved = vid(PLAIN, 40)
+    with sessions.begin() as session:
+        session.execute(text("DELETE FROM candidates"))
+        add_videos(session, PLAIN, range(40, 41), seen=NOW - timedelta(days=60))  # old
+        set_rating(session, loved, "A+")
+        store_embedding(session, loved, unit(0))
+        add_videos(session, PLAIN, range(41, 42))
+        store_embedding(session, vid(PLAIN, 41), unit(0))
+
+    feed = build(sessions)
+
+    assert [item.explanation for item in feed.items] == [
+        "New from your subscriptions · similar to Video 40 (A+)"
+    ]
+    with sessions.begin() as session:
+        stored = session.execute(text("SELECT explanation FROM feed_items")).scalar_one()
+    assert stored == feed.items[0].explanation

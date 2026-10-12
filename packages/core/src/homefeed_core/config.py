@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     feed_max_duration_seconds: int | None = None
     # How far back (by when a video entered the candidate pool) the feed looks.
     feed_candidate_days: int = 7
+    # sentence-transformers model for content embeddings (downloaded into DATA_DIR/models).
+    # Changing it re-embeds every video on its next enrichment; it must be 384-dimensional.
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
     llm_provider: str = "none"
 
 

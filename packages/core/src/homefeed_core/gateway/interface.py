@@ -2,9 +2,18 @@ from typing import Protocol
 
 from homefeed_core.gateway.dash import DashRanges
 from homefeed_core.gateway.media import MediaStream
-from homefeed_core.gateway.models import ByteRange, ChannelUploads, Format, ResolvedUrl, Video
+from homefeed_core.gateway.models import (
+    ByteRange,
+    Captions,
+    ChannelUploads,
+    Format,
+    RelatedVideo,
+    ResolvedUrl,
+    Video,
+)
 
 DEFAULT_UPLOADS_LIMIT = 30
+DEFAULT_RELATED_LIMIT = 20
 
 
 class Gateway(Protocol):
@@ -20,6 +29,22 @@ class Gateway(Protocol):
 
     def get_formats(self, video_id: str) -> list[Format]:
         """Playable streams for a video. URLs expire; see `Format.expires_at`."""
+        ...
+
+    def get_captions(self, video_id: str) -> Captions | None:
+        """One caption track of a video, preferring English; None if it has no captions.
+
+        Raises `UnavailableError` if the video can't be watched.
+        """
+        ...
+
+    def get_related(
+        self, video_id: str, *, limit: int = DEFAULT_RELATED_LIMIT
+    ) -> list[RelatedVideo]:
+        """Up to `limit` videos YouTube suggests next to a video (its watch page's
+        related list), in YouTube's order. Playlists, mixes and Shorts shelves are left
+        out. Raises `UnavailableError` if the video can't be watched.
+        """
         ...
 
     def get_channel_uploads(

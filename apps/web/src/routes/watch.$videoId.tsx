@@ -14,7 +14,9 @@ import { useEffect, type ReactNode } from "react";
 import { AppHeader } from "#/components/AppHeader";
 import { WatchAndRate } from "#/components/WatchAndRate";
 import { formatDuration } from "#/lib/format";
+import { showsImages } from "#/lib/display";
 import { isVideoId } from "#/lib/ids";
+import { displayPrefsQuery } from "#/server/display";
 import { ratingQuery } from "#/server/ratings";
 import { videoQuery } from "#/server/videos";
 
@@ -28,7 +30,10 @@ export const Route = createFileRoute("/watch/$videoId")({
     if (!isVideoId(params.videoId)) throw notFound();
     // Not awaited: a missing rating shouldn't hold up (or fail) the page.
     void queryClient.prefetchQuery(ratingQuery(params.videoId));
-    const video = await queryClient.ensureQueryData(videoQuery(params.videoId));
+    const [video] = await Promise.all([
+      queryClient.ensureQueryData(videoQuery(params.videoId)),
+      queryClient.ensureQueryData(displayPrefsQuery),
+    ]);
     if (!video) throw notFound();
     return { title: video.title };
   },
@@ -55,6 +60,7 @@ export const Route = createFileRoute("/watch/$videoId")({
 function Watch() {
   const { videoId } = Route.useParams();
   const { data: video } = useSuspenseQuery(videoQuery(videoId));
+  const { data: display } = useSuspenseQuery(displayPrefsQuery);
   if (!video) return null; // the loader already threw notFound
 
   return (
@@ -62,7 +68,7 @@ function Watch() {
       <WatchAndRate
         key={video.id}
         videoId={video.id}
-        poster={video.thumbnail_url}
+        poster={showsImages(display) ? video.thumbnail_url : null}
       />
       <article className="flex flex-col gap-3">
         <h2 className="text-2xl font-semibold">{video.title}</h2>

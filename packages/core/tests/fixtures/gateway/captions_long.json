@@ -1,0 +1,2492 @@
+{
+ "request": {
+  "url": "https://www.youtube.com/watch?v=NiCgcUTL9_Q",
+  "flat": false,
+  "limit": null,
+  "captions": true
+ },
+ "response": {
+  "id": "NiCgcUTL9_Q",
+  "captions": {
+   "language": "en",
+   "automatic": false,
+   "events": [
+    {
+     "tStartMs": 0,
+     "dDurationMs": 2820,
+     "segs": [
+      {
+       "utf8": "- In 1887, a young\nphysics teacher attached"
+      }
+     ]
+    },
+    {
+     "tStartMs": 2820,
+     "dDurationMs": 2430,
+     "segs": [
+      {
+       "utf8": "a thin glass rod to the end of an arrow"
+      }
+     ]
+    },
+    {
+     "tStartMs": 5250,
+     "dDurationMs": 2460,
+     "segs": [
+      {
+       "utf8": "and loaded it into his homemade crossbow."
+      }
+     ]
+    },
+    {
+     "tStartMs": 7710,
+     "dDurationMs": 2730,
+     "segs": [
+      {
+       "utf8": "He torched the rod's end\nuntil a molten glass bead."
+      }
+     ]
+    },
+    {
+     "tStartMs": 10440,
+     "dDurationMs": 1620,
+     "segs": [
+      {
+       "utf8": "Roughly the size of a pin's head,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 12060,
+     "dDurationMs": 1620,
+     "segs": [
+      {
+       "utf8": "it was barely hanging on."
+      }
+     ]
+    },
+    {
+     "tStartMs": 13680,
+     "dDurationMs": 2055,
+     "segs": [
+      {
+       "utf8": "And then he fired the arrow."
+      }
+     ]
+    },
+    {
+     "tStartMs": 15735,
+     "dDurationMs": 2261,
+     "segs": [
+      {
+       "utf8": "(air whooshing)"
+      }
+     ]
+    },
+    {
+     "tStartMs": 17996,
+     "dDurationMs": 3083,
+     "segs": [
+      {
+       "utf8": "(suspenseful music)"
+      }
+     ]
+    },
+    {
+     "tStartMs": 23610,
+     "dDurationMs": 1680,
+     "segs": [
+      {
+       "utf8": "Bright sunlight streaming into the room"
+      }
+     ]
+    },
+    {
+     "tStartMs": 25290,
+     "dDurationMs": 2940,
+     "segs": [
+      {
+       "utf8": "glinted off a tiny glass fiber."
+      }
+     ]
+    },
+    {
+     "tStartMs": 28230,
+     "dDurationMs": 1830,
+     "segs": [
+      {
+       "utf8": "At its thinnest, it was less than a tenth"
+      }
+     ]
+    },
+    {
+     "tStartMs": 30060,
+     "dDurationMs": 2430,
+     "segs": [
+      {
+       "utf8": "of the diameter of a human hair."
+      }
+     ]
+    },
+    {
+     "tStartMs": 32490,
+     "dDurationMs": 3690,
+     "segs": [
+      {
+       "utf8": "Now legally we cannot\nshoot a crossbow indoors."
+      }
+     ]
+    },
+    {
+     "tStartMs": 36180,
+     "dDurationMs": 1521,
+     "segs": [
+      {
+       "utf8": "Luckily I am pretty quick."
+      }
+     ]
+    },
+    {
+     "tStartMs": 37701,
+     "dDurationMs": 1646,
+     "segs": [
+      {
+       "utf8": "(Henry chuckles)"
+      }
+     ]
+    },
+    {
+     "tStartMs": 39347,
+     "dDurationMs": 3083,
+     "segs": [
+      {
+       "utf8": "(suspenseful music)"
+      }
+     ]
+    },
+    {
+     "tStartMs": 46141,
+     "dDurationMs": 1212,
+     "segs": [
+      {
+       "utf8": "That is cool."
+      }
+     ]
+    },
+    {
+     "tStartMs": 47353,
+     "dDurationMs": 833,
+     "segs": [
+      {
+       "utf8": "Look at that."
+      }
+     ]
+    },
+    {
+     "tStartMs": 48186,
+     "dDurationMs": 1644,
+     "segs": [
+      {
+       "utf8": "Look how thin we got it."
+      }
+     ]
+    },
+    {
+     "tStartMs": 49830,
+     "dDurationMs": 1800,
+     "segs": [
+      {
+       "utf8": "The physics teacher was using these fibers"
+      }
+     ]
+    },
+    {
+     "tStartMs": 51630,
+     "dDurationMs": 1650,
+     "segs": [
+      {
+       "utf8": "to measure very small forces,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 53280,
+     "dDurationMs": 1410,
+     "segs": [
+      {
+       "utf8": "but in the decades that followed,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 54690,
+     "dDurationMs": 2910,
+     "segs": [
+      {
+       "utf8": "other researchers found\na different use for them:"
+      }
+     ]
+    },
+    {
+     "tStartMs": 57600,
+     "dDurationMs": 1560,
+     "segs": [
+      {
+       "utf8": "sending light signals."
+      }
+     ]
+    },
+    {
+     "tStartMs": 59160,
+     "dDurationMs": 833,
+     "segs": [
+      {
+       "utf8": "(quiet dramatic music)"
+      }
+     ]
+    },
+    {
+     "tStartMs": 59993,
+     "dDurationMs": 2467,
+     "segs": [
+      {
+       "utf8": "Glass fibers can carry\nlight even through bends."
+      }
+     ]
+    },
+    {
+     "tStartMs": 62460,
+     "dDurationMs": 2130,
+     "segs": [
+      {
+       "utf8": "Look at it. It's like that's 90 degrees."
+      }
+     ]
+    },
+    {
+     "tStartMs": 64590,
+     "dDurationMs": 1470,
+     "segs": [
+      {
+       "utf8": "And during the 1960s,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 66060,
+     "dDurationMs": 1650,
+     "segs": [
+      {
+       "utf8": "the telecoms industry was desperate"
+      }
+     ]
+    },
+    {
+     "tStartMs": 67710,
+     "dDurationMs": 2400,
+     "segs": [
+      {
+       "utf8": "for a better way to\ncarry more information."
+      }
+     ]
+    },
+    {
+     "tStartMs": 70110,
+     "dDurationMs": 1807,
+     "segs": [
+      {
+       "utf8": "As one American engineer said,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 71917,
+     "dDurationMs": 2190,
+     "segs": [
+      {
+       "utf8": "\"It should be possible to transmit"
+      }
+     ]
+    },
+    {
+     "tStartMs": 74107,
+     "dDurationMs": 1920,
+     "segs": [
+      {
+       "utf8": "\"all of the conversations going on"
+      }
+     ]
+    },
+    {
+     "tStartMs": 76027,
+     "dDurationMs": 2490,
+     "segs": [
+      {
+       "utf8": "\"anywhere in the world simultaneously"
+      }
+     ]
+    },
+    {
+     "tStartMs": 78517,
+     "dDurationMs": 2963,
+     "segs": [
+      {
+       "utf8": "\"over a single thread of light.\""
+      }
+     ]
+    },
+    {
+     "tStartMs": 81480,
+     "dDurationMs": 2730,
+     "segs": [
+      {
+       "utf8": "But these glass fibers were terrible."
+      }
+     ]
+    },
+    {
+     "tStartMs": 84210,
+     "dDurationMs": 2670,
+     "segs": [
+      {
+       "utf8": "The light faded so much that\nyou couldn't decode a signal"
+      }
+     ]
+    },
+    {
+     "tStartMs": 86880,
+     "dDurationMs": 2010,
+     "segs": [
+      {
+       "utf8": "after just one kilometer."
+      }
+     ]
+    },
+    {
+     "tStartMs": 88890,
+     "dDurationMs": 1980,
+     "segs": [
+      {
+       "utf8": "No one thought they'd be practical."
+      }
+     ]
+    },
+    {
+     "tStartMs": 90870,
+     "dDurationMs": 1541,
+     "segs": [
+      {
+       "utf8": "Except for one man."
+      }
+     ]
+    },
+    {
+     "tStartMs": 92411,
+     "dDurationMs": 833,
+     "segs": [
+      {
+       "utf8": "(dramatic theatrical music)"
+      }
+     ]
+    },
+    {
+     "tStartMs": 93244,
+     "dDurationMs": 3056,
+     "segs": [
+      {
+       "utf8": "His own boss called his\ndream \"a wild goose chase,\""
+      }
+     ]
+    },
+    {
+     "tStartMs": 96300,
+     "dDurationMs": 1470,
+     "segs": [
+      {
+       "utf8": "but if he was right,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 97770,
+     "dDurationMs": 2850,
+     "segs": [
+      {
+       "utf8": "if he could prove that fiber\noptics were in fact viable,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 100620,
+     "dDurationMs": 1800,
+     "segs": [
+      {
+       "utf8": "and if someone could then\nfigure out how to make them"
+      }
+     ]
+    },
+    {
+     "tStartMs": 102420,
+     "dDurationMs": 3270,
+     "segs": [
+      {
+       "utf8": "at scale, well, eventually\nthey could connect continents."
+      }
+     ]
+    },
+    {
+     "tStartMs": 105690,
+     "dDurationMs": 1380,
+     "segs": [
+      {
+       "utf8": "How much is in this warehouse?"
+      }
+     ]
+    },
+    {
+     "tStartMs": 107070,
+     "dDurationMs": 1470,
+     "segs": [
+      {
+       "utf8": "- Oh, there's millions of kilometers here"
+      }
+     ]
+    },
+    {
+     "tStartMs": 108540,
+     "dDurationMs": 2010,
+     "segs": [
+      {
+       "utf8": "that we're pushing\nthrough here every month."
+      }
+     ]
+    },
+    {
+     "tStartMs": 110550,
+     "dDurationMs": 2550,
+     "segs": [
+      {
+       "utf8": "- It's approximately three times as hot"
+      }
+     ]
+    },
+    {
+     "tStartMs": 113100,
+     "dDurationMs": 990,
+     "segs": [
+      {
+       "utf8": "as the surface of the sun."
+      }
+     ]
+    },
+    {
+     "tStartMs": 114090,
+     "dDurationMs": 1347,
+     "segs": [
+      {
+       "utf8": "- That's crazy."
+      }
+     ]
+    },
+    {
+     "tStartMs": 115437,
+     "dDurationMs": 1413,
+     "segs": [
+      {
+       "utf8": "And one day,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 116850,
+     "dDurationMs": 2549,
+     "segs": [
+      {
+       "utf8": "it could build the internet."
+      }
+     ]
+    },
+    {
+     "tStartMs": 119399,
+     "dDurationMs": 2041,
+     "segs": [
+      {
+       "utf8": "(dramatic music fading)"
+      }
+     ]
+    },
+    {
+     "tStartMs": 121440,
+     "dDurationMs": 2880,
+     "segs": [
+      {
+       "utf8": "All that was unimaginable in the 1960s,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 124320,
+     "dDurationMs": 1920,
+     "segs": [
+      {
+       "utf8": "but even then telecom companies wanted"
+      }
+     ]
+    },
+    {
+     "tStartMs": 126240,
+     "dDurationMs": 1800,
+     "segs": [
+      {
+       "utf8": "a better communication system,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 128040,
+     "dDurationMs": 2010,
+     "segs": [
+      {
+       "utf8": "just for phone calls."
+      }
+     ]
+    },
+    {
+     "tStartMs": 130050,
+     "dDurationMs": 2280,
+     "segs": [
+      {
+       "utf8": "Between 1960 and 1973,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 132330,
+     "dDurationMs": 2460,
+     "segs": [
+      {
+       "utf8": "the number of daily\ncalls doubled in the U.S."
+      }
+     ]
+    },
+    {
+     "tStartMs": 134790,
+     "dDurationMs": 3720,
+     "segs": [
+      {
+       "utf8": "from 285 million to 576 million."
+      }
+     ]
+    },
+    {
+     "tStartMs": 138510,
+     "dDurationMs": 1170,
+     "segs": [
+      {
+       "utf8": "In that same time period,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 139680,
+     "dDurationMs": 1740,
+     "segs": [
+      {
+       "utf8": "NASA sent people to the moon"
+      }
+     ]
+    },
+    {
+     "tStartMs": 141420,
+     "dDurationMs": 3150,
+     "segs": [
+      {
+       "utf8": "for a total cost of $26 billion."
+      }
+     ]
+    },
+    {
+     "tStartMs": 144570,
+     "dDurationMs": 2580,
+     "segs": [
+      {
+       "utf8": "While AT&T had to spend\nnearly triple that amount"
+      }
+     ]
+    },
+    {
+     "tStartMs": 147150,
+     "dDurationMs": 2490,
+     "segs": [
+      {
+       "utf8": "just to install new\ntelephone infrastructure."
+      }
+     ]
+    },
+    {
+     "tStartMs": 149640,
+     "dDurationMs": 2820,
+     "segs": [
+      {
+       "utf8": "They just couldn't keep\nup with the demand."
+      }
+     ]
+    },
+    {
+     "tStartMs": 152460,
+     "dDurationMs": 1650,
+     "segs": [
+      {
+       "utf8": "At the time, phone calls were mostly"
+      }
+     ]
+    },
+    {
+     "tStartMs": 154110,
+     "dDurationMs": 1980,
+     "segs": [
+      {
+       "utf8": "transmitted over copper wires."
+      }
+     ]
+    },
+    {
+     "tStartMs": 156090,
+     "dDurationMs": 2640,
+     "segs": [
+      {
+       "utf8": "Now imagine I'm trying\nto phone my buddy Gregor."
+      }
+     ]
+    },
+    {
+     "tStartMs": 158730,
+     "dDurationMs": 1770,
+     "segs": [
+      {
+       "utf8": "Now, when I pick up, a constant current"
+      }
+     ]
+    },
+    {
+     "tStartMs": 160500,
+     "dDurationMs": 1440,
+     "segs": [
+      {
+       "utf8": "immediately flows through the wire"
+      }
+     ]
+    },
+    {
+     "tStartMs": 161940,
+     "dDurationMs": 1950,
+     "segs": [
+      {
+       "utf8": "to supply power to the phone."
+      }
+     ]
+    },
+    {
+     "tStartMs": 163890,
+     "dDurationMs": 1530,
+     "segs": [
+      {
+       "utf8": "When I speak, my voice vibrates"
+      }
+     ]
+    },
+    {
+     "tStartMs": 165420,
+     "dDurationMs": 1560,
+     "segs": [
+      {
+       "utf8": "a tiny diaphragm in the mouthpiece"
+      }
+     ]
+    },
+    {
+     "tStartMs": 166980,
+     "dDurationMs": 1680,
+     "segs": [
+      {
+       "utf8": "that modulates the current."
+      }
+     ]
+    },
+    {
+     "tStartMs": 168660,
+     "dDurationMs": 2070,
+     "segs": [
+      {
+       "utf8": "The louder I am, the\nbigger the current swing,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 170730,
+     "dDurationMs": 1350,
+     "segs": [
+      {
+       "utf8": "and my voice's pitch changes"
+      }
+     ]
+    },
+    {
+     "tStartMs": 172080,
+     "dDurationMs": 1980,
+     "segs": [
+      {
+       "utf8": "how fast the current oscillates."
+      }
+     ]
+    },
+    {
+     "tStartMs": 174060,
+     "dDurationMs": 1560,
+     "segs": [
+      {
+       "utf8": "At Gregor's end, that current reaches"
+      }
+     ]
+    },
+    {
+     "tStartMs": 175620,
+     "dDurationMs": 2550,
+     "segs": [
+      {
+       "utf8": "a speaker that turns it back into sound."
+      }
+     ]
+    },
+    {
+     "tStartMs": 178170,
+     "dDurationMs": 2190,
+     "segs": [
+      {
+       "utf8": "Now, this works for one call on one line,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 180360,
+     "dDurationMs": 2490,
+     "segs": [
+      {
+       "utf8": "but phone companies aren't\ngoing to install wires"
+      }
+     ]
+    },
+    {
+     "tStartMs": 182850,
+     "dDurationMs": 1410,
+     "segs": [
+      {
+       "utf8": "between every single house."
+      }
+     ]
+    },
+    {
+     "tStartMs": 184260,
+     "dDurationMs": 2610,
+     "segs": [
+      {
+       "utf8": "One cable needs to carry multiple calls."
+      }
+     ]
+    },
+    {
+     "tStartMs": 186870,
+     "dDurationMs": 2850,
+     "segs": [
+      {
+       "utf8": "So phone companies figure\nout a neat little trick."
+      }
+     ]
+    },
+    {
+     "tStartMs": 189720,
+     "dDurationMs": 3000,
+     "segs": [
+      {
+       "utf8": "Even though humans can hear\nfrequencies up to 20 kilohertz,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 192720,
+     "dDurationMs": 2448,
+     "segs": [
+      {
+       "utf8": "you really only need to\nhear the ones between"
+      }
+     ]
+    },
+    {
+     "tStartMs": 195168,
+     "dDurationMs": 1782,
+     "segs": [
+      {
+       "utf8": "300 and 3400 hertz"
+      }
+     ]
+    },
+    {
+     "tStartMs": 196950,
+     "dDurationMs": 1620,
+     "segs": [
+      {
+       "utf8": "to understand what someone's saying."
+      }
+     ]
+    },
+    {
+     "tStartMs": 198570,
+     "dDurationMs": 3180,
+     "segs": [
+      {
+       "utf8": "So phone companies drop\nfrequencies above four kilohertz"
+      }
+     ]
+    },
+    {
+     "tStartMs": 201750,
+     "dDurationMs": 2010,
+     "segs": [
+      {
+       "utf8": "or anything outside the voice band."
+      }
+     ]
+    },
+    {
+     "tStartMs": 203760,
+     "dDurationMs": 2850,
+     "segs": [
+      {
+       "utf8": "But if everyone used that\nzero to four kilohertz band"
+      }
+     ]
+    },
+    {
+     "tStartMs": 206610,
+     "dDurationMs": 2640,
+     "segs": [
+      {
+       "utf8": "on the same line, well,\nthen all the conversations"
+      }
+     ]
+    },
+    {
+     "tStartMs": 209250,
+     "dDurationMs": 1260,
+     "segs": [
+      {
+       "utf8": "would be on top of each other"
+      }
+     ]
+    },
+    {
+     "tStartMs": 210510,
+     "dDurationMs": 900,
+     "segs": [
+      {
+       "utf8": "and you wouldn't be able to hear"
+      }
+     ]
+    },
+    {
+     "tStartMs": 211410,
+     "dDurationMs": 1560,
+     "segs": [
+      {
+       "utf8": "the person that you're talking to."
+      }
+     ]
+    },
+    {
+     "tStartMs": 212970,
+     "dDurationMs": 2550,
+     "segs": [
+      {
+       "utf8": "Luckily, we can shift\nthose electrical signals,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 215520,
+     "dDurationMs": 2550,
+     "segs": [
+      {
+       "utf8": "so my conversation can\nuse zero to four kilohertz"
+      }
+     ]
+    },
+    {
+     "tStartMs": 218070,
+     "dDurationMs": 2280,
+     "segs": [
+      {
+       "utf8": "while another person's\ncan use four to eight"
+      }
+     ]
+    },
+    {
+     "tStartMs": 220350,
+     "dDurationMs": 2970,
+     "segs": [
+      {
+       "utf8": "and so on all the way\ndown the same copper wire."
+      }
+     ]
+    },
+    {
+     "tStartMs": 223320,
+     "dDurationMs": 1860,
+     "segs": [
+      {
+       "utf8": "At the other end, a filter separates out"
+      }
+     ]
+    },
+    {
+     "tStartMs": 225180,
+     "dDurationMs": 1290,
+     "segs": [
+      {
+       "utf8": "the different frequency bands,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 226470,
+     "dDurationMs": 2880,
+     "segs": [
+      {
+       "utf8": "similar to how a radio\ncan tune into one station."
+      }
+     ]
+    },
+    {
+     "tStartMs": 229350,
+     "dDurationMs": 1860,
+     "segs": [
+      {
+       "utf8": "Then the signal is shifted back down"
+      }
+     ]
+    },
+    {
+     "tStartMs": 231210,
+     "dDurationMs": 1620,
+     "segs": [
+      {
+       "utf8": "to the zero to four kilohertz range"
+      }
+     ]
+    },
+    {
+     "tStartMs": 232830,
+     "dDurationMs": 1170,
+     "segs": [
+      {
+       "utf8": "before it hits the speaker,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 234000,
+     "dDurationMs": 2340,
+     "segs": [
+      {
+       "utf8": "so it sounds like a normal voice."
+      }
+     ]
+    },
+    {
+     "tStartMs": 236340,
+     "dDurationMs": 1530,
+     "segs": [
+      {
+       "utf8": "But as phone companies started"
+      }
+     ]
+    },
+    {
+     "tStartMs": 237870,
+     "dDurationMs": 1590,
+     "segs": [
+      {
+       "utf8": "using higher and higher frequencies,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 239460,
+     "dDurationMs": 1950,
+     "segs": [
+      {
+       "utf8": "they started running into problems."
+      }
+     ]
+    },
+    {
+     "tStartMs": 241410,
+     "dDurationMs": 1980,
+     "segs": [
+      {
+       "utf8": "That oscillating current\ncarrying the signal"
+      }
+     ]
+    },
+    {
+     "tStartMs": 243390,
+     "dDurationMs": 1590,
+     "segs": [
+      {
+       "utf8": "generates additional fields,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 244980,
+     "dDurationMs": 1950,
+     "segs": [
+      {
+       "utf8": "a magnetic field shown here in red,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 246930,
+     "dDurationMs": 2310,
+     "segs": [
+      {
+       "utf8": "and little loops of current\ncalled eddy currents,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 249240,
+     "dDurationMs": 1650,
+     "segs": [
+      {
+       "utf8": "which are shown here in blue."
+      }
+     ]
+    },
+    {
+     "tStartMs": 250890,
+     "dDurationMs": 1080,
+     "segs": [
+      {
+       "utf8": "Now, because of their shape,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 251970,
+     "dDurationMs": 1350,
+     "segs": [
+      {
+       "utf8": "those loops resist changes"
+      }
+     ]
+    },
+    {
+     "tStartMs": 253320,
+     "dDurationMs": 1890,
+     "segs": [
+      {
+       "utf8": "to the current at the center of the wire,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 255210,
+     "dDurationMs": 2700,
+     "segs": [
+      {
+       "utf8": "and they reinforce\nchanges along the surface,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 257910,
+     "dDurationMs": 1530,
+     "segs": [
+      {
+       "utf8": "but eddy currents get stronger"
+      }
+     ]
+    },
+    {
+     "tStartMs": 259440,
+     "dDurationMs": 1650,
+     "segs": [
+      {
+       "utf8": "the faster the signal changes."
+      }
+     ]
+    },
+    {
+     "tStartMs": 261090,
+     "dDurationMs": 1170,
+     "segs": [
+      {
+       "utf8": "And if you want more calls,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 262260,
+     "dDurationMs": 1020,
+     "segs": [
+      {
+       "utf8": "you need more bands,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 263280,
+     "dDurationMs": 1980,
+     "segs": [
+      {
+       "utf8": "which use higher and higher frequencies."
+      }
+     ]
+    },
+    {
+     "tStartMs": 265260,
+     "dDurationMs": 1860,
+     "segs": [
+      {
+       "utf8": "So soon the eddy currents\nare strong enough"
+      }
+     ]
+    },
+    {
+     "tStartMs": 267120,
+     "dDurationMs": 3210,
+     "segs": [
+      {
+       "utf8": "to cancel out the oscillation\nin the center of the wire."
+      }
+     ]
+    },
+    {
+     "tStartMs": 270330,
+     "dDurationMs": 2670,
+     "segs": [
+      {
+       "utf8": "But if the signal can only\ntravel along the wire's surface,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 273000,
+     "dDurationMs": 2250,
+     "segs": [
+      {
+       "utf8": "it's limited to a smaller cross section."
+      }
+     ]
+    },
+    {
+     "tStartMs": 275250,
+     "dDurationMs": 2430,
+     "segs": [
+      {
+       "utf8": "So resistance goes up and\nhigher frequency signals"
+      }
+     ]
+    },
+    {
+     "tStartMs": 277680,
+     "dDurationMs": 2300,
+     "segs": [
+      {
+       "utf8": "can't travel very far\nbefore they're absorbed."
+      }
+     ]
+    },
+    {
+     "tStartMs": 280860,
+     "dDurationMs": 2400,
+     "segs": [
+      {
+       "utf8": "For a while, telephone companies\nwere able to work around"
+      }
+     ]
+    },
+    {
+     "tStartMs": 283260,
+     "dDurationMs": 3240,
+     "segs": [
+      {
+       "utf8": "the high loss by boosting\nsignals every few kilometers."
+      }
+     ]
+    },
+    {
+     "tStartMs": 286500,
+     "dDurationMs": 3360,
+     "segs": [
+      {
+       "utf8": "But past 65 megahertz, well,\nthe high frequencies died off"
+      }
+     ]
+    },
+    {
+     "tStartMs": 289860,
+     "dDurationMs": 1740,
+     "segs": [
+      {
+       "utf8": "in less than two kilometers,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 291600,
+     "dDurationMs": 2370,
+     "segs": [
+      {
+       "utf8": "so they were too impractical to use."
+      }
+     ]
+    },
+    {
+     "tStartMs": 293970,
+     "dDurationMs": 2010,
+     "segs": [
+      {
+       "utf8": "And this trade-off between signal power"
+      }
+     ]
+    },
+    {
+     "tStartMs": 295980,
+     "dDurationMs": 3870,
+     "segs": [
+      {
+       "utf8": "and data rate was actually\ndiscovered back in 1948."
+      }
+     ]
+    },
+    {
+     "tStartMs": 299850,
+     "dDurationMs": 2820,
+     "segs": [
+      {
+       "utf8": "The Shannon-Hartley theorem\ndescribed the maximum capacity"
+      }
+     ]
+    },
+    {
+     "tStartMs": 302670,
+     "dDurationMs": 1620,
+     "segs": [
+      {
+       "utf8": "of a communication channel based on"
+      }
+     ]
+    },
+    {
+     "tStartMs": 304290,
+     "dDurationMs": 2250,
+     "segs": [
+      {
+       "utf8": "the signal power, noise, and bandwidth,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 306540,
+     "dDurationMs": 1260,
+     "segs": [
+      {
+       "utf8": "or the difference between the highest"
+      }
+     ]
+    },
+    {
+     "tStartMs": 307800,
+     "dDurationMs": 1500,
+     "segs": [
+      {
+       "utf8": "and lowest frequencies."
+      }
+     ]
+    },
+    {
+     "tStartMs": 309300,
+     "dDurationMs": 1440,
+     "segs": [
+      {
+       "utf8": "The best way to increase capacity"
+      }
+     ]
+    },
+    {
+     "tStartMs": 310740,
+     "dDurationMs": 1623,
+     "segs": [
+      {
+       "utf8": "is to increase the bandwidth."
+      }
+     ]
+    },
+    {
+     "tStartMs": 313560,
+     "dDurationMs": 2010,
+     "segs": [
+      {
+       "utf8": "But they'd already reached\nthe limit for copper."
+      }
+     ]
+    },
+    {
+     "tStartMs": 315570,
+     "dDurationMs": 2650,
+     "segs": [
+      {
+       "utf8": "The telecoms industry didn't\nhave another alternative,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 318220,
+     "dDurationMs": 833,
+     "segs": [
+      {
+       "utf8": "(dramatic music)"
+      }
+     ]
+    },
+    {
+     "tStartMs": 319053,
+     "dDurationMs": 1497,
+     "segs": [
+      {
+       "utf8": "but then they saw the light."
+      }
+     ]
+    },
+    {
+     "tStartMs": 320550,
+     "dDurationMs": 3420,
+     "segs": [
+      {
+       "utf8": "Visible light has frequencies\nin the hundreds of terahertz."
+      }
+     ]
+    },
+    {
+     "tStartMs": 323970,
+     "dDurationMs": 1897,
+     "segs": [
+      {
+       "utf8": "As one researcher for Bell Labs put it,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 325867,
+     "dDurationMs": 2940,
+     "segs": [
+      {
+       "utf8": "\"the possibility of\nextremely high frequencies"
+      }
+     ]
+    },
+    {
+     "tStartMs": 328807,
+     "dDurationMs": 3030,
+     "segs": [
+      {
+       "utf8": "\"and accordingly vastly\nwider bands of frequencies"
+      }
+     ]
+    },
+    {
+     "tStartMs": 331837,
+     "dDurationMs": 2250,
+     "segs": [
+      {
+       "utf8": "\"appeared as a fabulous El Dorado,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 334087,
+     "dDurationMs": 1640,
+     "segs": [
+      {
+       "utf8": "\"always beckoning us onward.\""
+      }
+     ]
+    },
+    {
+     "tStartMs": 337470,
+     "dDurationMs": 1080,
+     "segs": [
+      {
+       "utf8": "But if you're going to use light,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 338550,
+     "dDurationMs": 1440,
+     "segs": [
+      {
+       "utf8": "there are two problems."
+      }
+     ]
+    },
+    {
+     "tStartMs": 339990,
+     "dDurationMs": 1530,
+     "segs": [
+      {
+       "utf8": "First, there wasn't a strong enough"
+      }
+     ]
+    },
+    {
+     "tStartMs": 341520,
+     "dDurationMs": 1530,
+     "segs": [
+      {
+       "utf8": "light source to send a signal."
+      }
+     ]
+    },
+    {
+     "tStartMs": 343050,
+     "dDurationMs": 2100,
+     "segs": [
+      {
+       "utf8": "A light bulb couldn't\nproduce enough power."
+      }
+     ]
+    },
+    {
+     "tStartMs": 345150,
+     "dDurationMs": 2100,
+     "segs": [
+      {
+       "utf8": "There just weren't any options."
+      }
+     ]
+    },
+    {
+     "tStartMs": 347250,
+     "dDurationMs": 1620,
+     "segs": [
+      {
+       "utf8": "- And along in 1960,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 348870,
+     "dDurationMs": 1980,
+     "segs": [
+      {
+       "utf8": "Ted Maiman invented the laser."
+      }
+     ]
+    },
+    {
+     "tStartMs": 350850,
+     "dDurationMs": 3000,
+     "segs": [
+      {
+       "utf8": "- [Reporter] A science fiction\nweapon that melts steel,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 353850,
+     "dDurationMs": 2700,
+     "segs": [
+      {
+       "utf8": "a death ray that could be more deadly"
+      }
+     ]
+    },
+    {
+     "tStartMs": 356550,
+     "dDurationMs": 1320,
+     "segs": [
+      {
+       "utf8": "than a nuclear bomb."
+      }
+     ]
+    },
+    {
+     "tStartMs": 357870,
+     "dDurationMs": 1980,
+     "segs": [
+      {
+       "utf8": "It's a beam of light."
+      }
+     ]
+    },
+    {
+     "tStartMs": 359850,
+     "dDurationMs": 2610,
+     "segs": [
+      {
+       "utf8": "This is called a laser."
+      }
+     ]
+    },
+    {
+     "tStartMs": 362460,
+     "dDurationMs": 1717,
+     "segs": [
+      {
+       "utf8": "- [Henry] There's a running\njoke that the laser was"
+      }
+     ]
+    },
+    {
+     "tStartMs": 364177,
+     "dDurationMs": 1883,
+     "segs": [
+      {
+       "utf8": "\"a solution looking for a problem,\""
+      }
+     ]
+    },
+    {
+     "tStartMs": 366060,
+     "dDurationMs": 2159,
+     "segs": [
+      {
+       "utf8": "but that's not really true."
+      }
+     ]
+    },
+    {
+     "tStartMs": 368219,
+     "dDurationMs": 2251,
+     "segs": [
+      {
+       "utf8": "- [Donald] It rejuvenated the interest"
+      }
+     ]
+    },
+    {
+     "tStartMs": 370470,
+     "dDurationMs": 3000,
+     "segs": [
+      {
+       "utf8": "in possible optical communications."
+      }
+     ]
+    },
+    {
+     "tStartMs": 373470,
+     "dDurationMs": 1747,
+     "segs": [
+      {
+       "utf8": "- As one Bell Labs engineer said,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 375217,
+     "dDurationMs": 1730,
+     "segs": [
+      {
+       "utf8": "\"Think of all this bandwidth!\""
+      }
+     ]
+    },
+    {
+     "tStartMs": 378090,
+     "dDurationMs": 2820,
+     "segs": [
+      {
+       "utf8": "But they couldn't figure\nout the second problem."
+      }
+     ]
+    },
+    {
+     "tStartMs": 380910,
+     "dDurationMs": 2490,
+     "segs": [
+      {
+       "utf8": "Glass is not as clear as it looks."
+      }
+     ]
+    },
+    {
+     "tStartMs": 383400,
+     "dDurationMs": 3120,
+     "segs": [
+      {
+       "utf8": "Only a small amount of light\nactually makes it through."
+      }
+     ]
+    },
+    {
+     "tStartMs": 386520,
+     "dDurationMs": 2370,
+     "segs": [
+      {
+       "utf8": "In fact, only a year after\nthe laser's invention,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 388890,
+     "dDurationMs": 3180,
+     "segs": [
+      {
+       "utf8": "a Bell Labs scientist started\nlooking into fiber optics."
+      }
+     ]
+    },
+    {
+     "tStartMs": 392070,
+     "dDurationMs": 2100,
+     "segs": [
+      {
+       "utf8": "His boss told him to check its loss,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 394170,
+     "dDurationMs": 1650,
+     "segs": [
+      {
+       "utf8": "or how much a light signal weakens"
+      }
+     ]
+    },
+    {
+     "tStartMs": 395820,
+     "dDurationMs": 2220,
+     "segs": [
+      {
+       "utf8": "as it travels through the glass."
+      }
+     ]
+    },
+    {
+     "tStartMs": 398040,
+     "dDurationMs": 2220,
+     "segs": [
+      {
+       "utf8": "Now, signal loss is\nmeasured with decibels,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 400260,
+     "dDurationMs": 2190,
+     "segs": [
+      {
+       "utf8": "similar to how you measure audio volume."
+      }
+     ]
+    },
+    {
+     "tStartMs": 402450,
+     "dDurationMs": 2220,
+     "segs": [
+      {
+       "utf8": "Both are on a logarithmic scale,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 404670,
+     "dDurationMs": 1980,
+     "segs": [
+      {
+       "utf8": "but while volume uses sound pressure,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 406650,
+     "dDurationMs": 1920,
+     "segs": [
+      {
+       "utf8": "loss uses signal power."
+      }
+     ]
+    },
+    {
+     "tStartMs": 408570,
+     "dDurationMs": 1920,
+     "segs": [
+      {
+       "utf8": "His boss said it would only be worthwhile"
+      }
+     ]
+    },
+    {
+     "tStartMs": 410490,
+     "dDurationMs": 2730,
+     "segs": [
+      {
+       "utf8": "if the loss was less than\n20 decibels a kilometer,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 413220,
+     "dDurationMs": 1500,
+     "segs": [
+      {
+       "utf8": "so it was comparable to copper."
+      }
+     ]
+    },
+    {
+     "tStartMs": 414720,
+     "dDurationMs": 3180,
+     "segs": [
+      {
+       "utf8": "But when he checked the\nloss for the best fibers,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 417900,
+     "dDurationMs": 3150,
+     "segs": [
+      {
+       "utf8": "a thousand decibels a kilometer."
+      }
+     ]
+    },
+    {
+     "tStartMs": 421050,
+     "dDurationMs": 1920,
+     "segs": [
+      {
+       "utf8": "To understand just how bad that was,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 422970,
+     "dDurationMs": 2250,
+     "segs": [
+      {
+       "utf8": "imagine a leaky truck carrying sand"
+      }
+     ]
+    },
+    {
+     "tStartMs": 425220,
+     "dDurationMs": 1650,
+     "segs": [
+      {
+       "utf8": "over one kilometer."
+      }
+     ]
+    },
+    {
+     "tStartMs": 426870,
+     "dDurationMs": 1920,
+     "segs": [
+      {
+       "utf8": "If the truck starts with 100 kilograms,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 428790,
+     "dDurationMs": 1530,
+     "segs": [
+      {
+       "utf8": "and it ends up with one,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 430320,
+     "dDurationMs": 3090,
+     "segs": [
+      {
+       "utf8": "well, that represents a loss\nof 20 decibels per kilometer."
+      }
+     ]
+    },
+    {
+     "tStartMs": 433410,
+     "dDurationMs": 2280,
+     "segs": [
+      {
+       "utf8": "That's only 1% of the signal left."
+      }
+     ]
+    },
+    {
+     "tStartMs": 435690,
+     "dDurationMs": 1980,
+     "segs": [
+      {
+       "utf8": "It's what was happening with copper,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 437670,
+     "dDurationMs": 2370,
+     "segs": [
+      {
+       "utf8": "bad but still manageable."
+      }
+     ]
+    },
+    {
+     "tStartMs": 440040,
+     "dDurationMs": 2070,
+     "segs": [
+      {
+       "utf8": "A loss of a thousand decibels a kilometer"
+      }
+     ]
+    },
+    {
+     "tStartMs": 442110,
+     "dDurationMs": 3390,
+     "segs": [
+      {
+       "utf8": "is like starting with the mass\nof the observable universe"
+      }
+     ]
+    },
+    {
+     "tStartMs": 445500,
+     "dDurationMs": 3630,
+     "segs": [
+      {
+       "utf8": "and ending up with less than\nthe mass of a single atom."
+      }
+     ]
+    },
+    {
+     "tStartMs": 449130,
+     "dDurationMs": 2040,
+     "segs": [
+      {
+       "utf8": "To be practical, these\nfibers would need to improve"
+      }
+     ]
+    },
+    {
+     "tStartMs": 451170,
+     "dDurationMs": 2640,
+     "segs": [
+      {
+       "utf8": "by a factor of 10 the 98th."
+      }
+     ]
+    },
+    {
+     "tStartMs": 453810,
+     "dDurationMs": 2340,
+     "segs": [
+      {
+       "utf8": "It sounded impossible. It would\nhave to be one of the most"
+      }
+     ]
+    },
+    {
+     "tStartMs": 456150,
+     "dDurationMs": 3000,
+     "segs": [
+      {
+       "utf8": "absurd engineering\nimprovements in history."
+      }
+     ]
+    },
+    {
+     "tStartMs": 459150,
+     "dDurationMs": 1620,
+     "segs": [
+      {
+       "utf8": "So Bell Labs gave up."
+      }
+     ]
+    },
+    {
+     "tStartMs": 460770,
+     "dDurationMs": 2430,
+     "segs": [
+      {
+       "utf8": "And fiber optics might\nhave died right there"
+      }
+     ]
+    },
+    {
+     "tStartMs": 463200,
+     "dDurationMs": 1743,
+     "segs": [
+      {
+       "utf8": "if it wasn't for one man."
+      }
+     ]
+    },
+    {
+     "tStartMs": 465810,
+     "dDurationMs": 1410,
+     "segs": [
+      {
+       "utf8": "Charles Kao."
+      }
+     ]
+    },
+    {
+     "tStartMs": 467220,
+     "dDurationMs": 1560,
+     "segs": [
+      {
+       "utf8": "In 1960, he started working"
+      }
+     ]
+    },
+    {
+     "tStartMs": 468780,
+     "dDurationMs": 1590,
+     "segs": [
+      {
+       "utf8": "for an English telecoms lab"
+      }
+     ]
+    },
+    {
+     "tStartMs": 470370,
+     "dDurationMs": 1560,
+     "segs": [
+      {
+       "utf8": "that was looking for a way to communicate"
+      }
+     ]
+    },
+    {
+     "tStartMs": 471930,
+     "dDurationMs": 1440,
+     "segs": [
+      {
+       "utf8": "with higher frequencies,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 473370,
+     "dDurationMs": 2010,
+     "segs": [
+      {
+       "utf8": "but not with fiber optics."
+      }
+     ]
+    },
+    {
+     "tStartMs": 475380,
+     "dDurationMs": 2250,
+     "segs": [
+      {
+       "utf8": "Kao's boss said that it\nwas \"a wild goose chase\""
+      }
+     ]
+    },
+    {
+     "tStartMs": 477630,
+     "dDurationMs": 2370,
+     "segs": [
+      {
+       "utf8": "and the rest of the lab agreed."
+      }
+     ]
+    },
+    {
+     "tStartMs": 480000,
+     "dDurationMs": 1770,
+     "segs": [
+      {
+       "utf8": "But Kao kept coming back to it,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 481770,
+     "dDurationMs": 2707,
+     "segs": [
+      {
+       "utf8": "asking, \"Why is glass so lossy"
+      }
+     ]
+    },
+    {
+     "tStartMs": 484477,
+     "dDurationMs": 1680,
+     "segs": [
+      {
+       "utf8": "\"and can we remove those factors"
+      }
+     ]
+    },
+    {
+     "tStartMs": 486157,
+     "dDurationMs": 2693,
+     "segs": [
+      {
+       "utf8": "\"or are they intrinsic to the material?\""
+      }
+     ]
+    },
+    {
+     "tStartMs": 488850,
+     "dDurationMs": 870,
+     "segs": [
+      {
+       "utf8": "If it was the latter,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 489720,
+     "dDurationMs": 2220,
+     "segs": [
+      {
+       "utf8": "then fiber would be dead in the water."
+      }
+     ]
+    },
+    {
+     "tStartMs": 491940,
+     "dDurationMs": 3420,
+     "segs": [
+      {
+       "utf8": "But if not, then maybe it had a chance."
+      }
+     ]
+    },
+    {
+     "tStartMs": 495360,
+     "dDurationMs": 1110,
+     "segs": [
+      {
+       "utf8": "So the question was:"
+      }
+     ]
+    },
+    {
+     "tStartMs": 496470,
+     "dDurationMs": 1980,
+     "segs": [
+      {
+       "utf8": "Why was the loss so high?"
+      }
+     ]
+    },
+    {
+     "tStartMs": 498450,
+     "dDurationMs": 1800,
+     "segs": [
+      {
+       "utf8": "Well, you might think it's because light"
+      }
+     ]
+    },
+    {
+     "tStartMs": 500250,
+     "dDurationMs": 2430,
+     "segs": [
+      {
+       "utf8": "is exiting through the\nsides of this fiber,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 502680,
+     "dDurationMs": 2220,
+     "segs": [
+      {
+       "utf8": "but glass is really\ngood at trapping light,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 504900,
+     "dDurationMs": 1530,
+     "segs": [
+      {
+       "utf8": "even through bends."
+      }
+     ]
+    },
+    {
+     "tStartMs": 506430,
+     "dDurationMs": 990,
+     "segs": [
+      {
+       "utf8": "Here's how."
+      }
+     ]
+    },
+    {
+     "tStartMs": 507420,
+     "dDurationMs": 1890,
+     "segs": [
+      {
+       "utf8": "I've got a bucket of propylene glycol here"
+      }
+     ]
+    },
+    {
+     "tStartMs": 509310,
+     "dDurationMs": 1170,
+     "segs": [
+      {
+       "utf8": "and a green laser."
+      }
+     ]
+    },
+    {
+     "tStartMs": 510480,
+     "dDurationMs": 1760,
+     "segs": [
+      {
+       "utf8": "When I remove the tape,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 512240,
+     "dDurationMs": 3850,
+     "segs": [
+      {
+       "utf8": "(gentle dramatic music)"
+      }
+     ]
+    },
+    {
+     "tStartMs": 516090,
+     "dDurationMs": 3450,
+     "segs": [
+      {
+       "utf8": "the laser bounces one, two, three times."
+      }
+     ]
+    },
+    {
+     "tStartMs": 519540,
+     "dDurationMs": 1680,
+     "segs": [
+      {
+       "utf8": "And there are two things\nworking together here"
+      }
+     ]
+    },
+    {
+     "tStartMs": 521220,
+     "dDurationMs": 2130,
+     "segs": [
+      {
+       "utf8": "that actually trap the light."
+      }
+     ]
+    },
+    {
+     "tStartMs": 523350,
+     "dDurationMs": 2970,
+     "segs": [
+      {
+       "utf8": "See, light travels slower in\nsome materials than others,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 526320,
+     "dDurationMs": 3180,
+     "segs": [
+      {
+       "utf8": "and it travels as a wave\nshown here as a line of crests"
+      }
+     ]
+    },
+    {
+     "tStartMs": 529500,
+     "dDurationMs": 3150,
+     "segs": [
+      {
+       "utf8": "with the beam always pointing\nperpendicular to that line."
+      }
+     ]
+    },
+    {
+     "tStartMs": 532650,
+     "dDurationMs": 2100,
+     "segs": [
+      {
+       "utf8": "When the wave meets a\nboundary at an angle,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 534750,
+     "dDurationMs": 3450,
+     "segs": [
+      {
+       "utf8": "one end of the crest crosses\ninto the new material first,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 538200,
+     "dDurationMs": 2280,
+     "segs": [
+      {
+       "utf8": "and it changes speed before the rest."
+      }
+     ]
+    },
+    {
+     "tStartMs": 540480,
+     "dDurationMs": 2190,
+     "segs": [
+      {
+       "utf8": "If light travels slower\nin that new material,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 542670,
+     "dDurationMs": 3150,
+     "segs": [
+      {
+       "utf8": "then that end drags\nbehind and the beam bends"
+      }
+     ]
+    },
+    {
+     "tStartMs": 545820,
+     "dDurationMs": 2520,
+     "segs": [
+      {
+       "utf8": "or refracts away from the boundary."
+      }
+     ]
+    },
+    {
+     "tStartMs": 548340,
+     "dDurationMs": 2730,
+     "segs": [
+      {
+       "utf8": "How much it bends depends on\nthe angle it hits the boundary"
+      }
+     ]
+    },
+    {
+     "tStartMs": 551070,
+     "dDurationMs": 2370,
+     "segs": [
+      {
+       "utf8": "and on how much each\nmaterial slows light down,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 553440,
+     "dDurationMs": 2670,
+     "segs": [
+      {
+       "utf8": "which is described by\ntheir index of refraction."
+      }
+     ]
+    },
+    {
+     "tStartMs": 556110,
+     "dDurationMs": 2223,
+     "segs": [
+      {
+       "utf8": "This relationship is\ndefined by Snell's Law."
+      }
+     ]
+    },
+    {
+     "tStartMs": 559650,
+     "dDurationMs": 1950,
+     "segs": [
+      {
+       "utf8": "Now if light is moving from a material"
+      }
+     ]
+    },
+    {
+     "tStartMs": 561600,
+     "dDurationMs": 1710,
+     "segs": [
+      {
+       "utf8": "with a higher index of refraction"
+      }
+     ]
+    },
+    {
+     "tStartMs": 563310,
+     "dDurationMs": 1710,
+     "segs": [
+      {
+       "utf8": "into one with a lower index,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 565020,
+     "dDurationMs": 2220,
+     "segs": [
+      {
+       "utf8": "like propylene glycol to air,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 567240,
+     "dDurationMs": 2430,
+     "segs": [
+      {
+       "utf8": "well then one part of\nthe wave crest speeds up"
+      }
+     ]
+    },
+    {
+     "tStartMs": 569670,
+     "dDurationMs": 2220,
+     "segs": [
+      {
+       "utf8": "and the beam bends toward the boundary."
+      }
+     ]
+    },
+    {
+     "tStartMs": 571890,
+     "dDurationMs": 2100,
+     "segs": [
+      {
+       "utf8": "But as you increase\nthe angle of the light,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 573990,
+     "dDurationMs": 3540,
+     "segs": [
+      {
+       "utf8": "the refracted beam gets closer\nand closer to the boundary"
+      }
+     ]
+    },
+    {
+     "tStartMs": 577530,
+     "dDurationMs": 1890,
+     "segs": [
+      {
+       "utf8": "until it's running right along it."
+      }
+     ]
+    },
+    {
+     "tStartMs": 579420,
+     "dDurationMs": 2160,
+     "segs": [
+      {
+       "utf8": "That's the critical angle."
+      }
+     ]
+    },
+    {
+     "tStartMs": 581580,
+     "dDurationMs": 1890,
+     "segs": [
+      {
+       "utf8": "A little bit more and all the light"
+      }
+     ]
+    },
+    {
+     "tStartMs": 583470,
+     "dDurationMs": 2130,
+     "segs": [
+      {
+       "utf8": "reflects back into the glycol."
+      }
+     ]
+    },
+    {
+     "tStartMs": 585600,
+     "dDurationMs": 1680,
+     "segs": [
+      {
+       "utf8": "That's total internal reflection,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 587280,
+     "dDurationMs": 1530,
+     "segs": [
+      {
+       "utf8": "and you get the exact critical angle"
+      }
+     ]
+    },
+    {
+     "tStartMs": 588810,
+     "dDurationMs": 2460,
+     "segs": [
+      {
+       "utf8": "by setting the angle of\nrefraction to 90 degrees"
+      }
+     ]
+    },
+    {
+     "tStartMs": 591270,
+     "dDurationMs": 2010,
+     "segs": [
+      {
+       "utf8": "and then rearranging Snell's Law."
+      }
+     ]
+    },
+    {
+     "tStartMs": 593280,
+     "dDurationMs": 2910,
+     "segs": [
+      {
+       "utf8": "- The key of it is the\nbigger the difference"
+      }
+     ]
+    },
+    {
+     "tStartMs": 596190,
+     "dDurationMs": 1860,
+     "segs": [
+      {
+       "utf8": "in index of refraction,"
+      }
+     ]
+    },
+    {
+     "tStartMs": 598050,
+     "dDurationMs": 2220,
+     "segs": [
+      {
+       "utf8": "the more powerful this effect is."
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

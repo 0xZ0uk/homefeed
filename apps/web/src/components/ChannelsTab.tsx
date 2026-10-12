@@ -15,6 +15,8 @@ import {
   type ChannelPrefsUpdate,
   type Prior,
 } from "#/server/channels";
+import { showsImages } from "#/lib/display";
+import { displayPrefsQuery } from "#/server/display";
 
 const PRIOR_LABELS: Record<Prior, string> = {
   love: "Love",
@@ -26,6 +28,8 @@ const PRIOR_LABELS: Record<Prior, string> = {
 /** Subscribe by URL, and set each subscribed channel's prior, pin and mute. */
 export function ChannelsTab() {
   const { data: channels } = useSuspenseQuery(channelsQuery);
+  const { data: display } = useSuspenseQuery(displayPrefsQuery);
+  const avatars = showsImages(display);
 
   return (
     <div className="flex flex-col gap-6">
@@ -37,7 +41,11 @@ export function ChannelsTab() {
       ) : (
         <ul className="flex flex-col divide-y" aria-label="Subscriptions">
           {channels.map((channel) => (
-            <ChannelRow key={channel.channel_id} channel={channel} />
+            <ChannelRow
+              key={channel.channel_id}
+              channel={channel}
+              avatar={avatars}
+            />
           ))}
         </ul>
       )}
@@ -114,7 +122,13 @@ function SubscribeForm() {
   );
 }
 
-function ChannelRow({ channel }: { channel: SubscribedChannel }) {
+function ChannelRow({
+  channel,
+  avatar,
+}: {
+  channel: SubscribedChannel;
+  avatar: boolean;
+}) {
   const invalidate = useInvalidateChannels();
   const update = useMutation({
     mutationFn: (prefs: Omit<ChannelPrefsUpdate, "channelId">) =>
@@ -131,7 +145,7 @@ function ChannelRow({ channel }: { channel: SubscribedChannel }) {
   return (
     <li className="flex flex-wrap items-center gap-x-6 gap-y-2 py-3">
       <div className="flex min-w-48 flex-1 items-center gap-3">
-        {channel.thumbnail_url && (
+        {avatar && channel.thumbnail_url && (
           <img
             src={channel.thumbnail_url}
             alt=""

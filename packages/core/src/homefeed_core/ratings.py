@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from homefeed_core.grades import Grade, grade_value
+from homefeed_core.grades import Grade, grade_value, is_bottom_tier, is_top_tier
 
 
 @dataclass(frozen=True)
@@ -44,6 +44,22 @@ def get_rating(session: Session, video_id: str) -> Rating | None:
         {"video_id": video_id},
     ).one_or_none()
     return None if row is None else Rating(*row)
+
+
+def list_ratings(session: Session) -> list[Rating]:
+    """Every rating, oldest first."""
+    rows = session.execute(text(f"SELECT {_COLUMNS} FROM ratings ORDER BY rated_at, video_id"))
+    return [Rating(*row) for row in rows]
+
+
+def tier_rated_video_ids(session: Session) -> list[str]:
+    """Videos rated top tier (A-- and up) or bottom tier (D++ and down), oldest rating
+    first: the sets the ranker's similarity features compare candidates with."""
+    return [
+        rating.video_id
+        for rating in list_ratings(session)
+        if is_top_tier(rating.grade) or is_bottom_tier(rating.grade)
+    ]
 
 
 def delete_rating(session: Session, video_id: str) -> bool:

@@ -1,13 +1,15 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 
-import type { DisplayPrefs } from "#/lib/display";
+import { WhyThisPopover } from "#/components/WhyThisPopover";
+import { showsThumbnails, type DisplayPrefs } from "#/lib/display";
 import { formatAge, formatDuration, formatViews } from "#/lib/format";
 import type { Feed, FeedItem } from "#/server/feeds";
 
 /**
- * A feed as a fixed, numbered list. Every item links to its watch page. There
- * is deliberately no pagination or "load more": the feed is the whole list.
+ * A feed as a fixed, numbered list. Every item links to its watch page and
+ * says why it's there, expandable into its score breakdown. There is
+ * deliberately no pagination or "load more": the feed is the whole list.
  */
 export function FeedList({
   feed,
@@ -48,55 +50,71 @@ function FeedItemRow({
   const duration = formatDuration(item.duration_seconds);
   const age = formatAge(item.published_at, now);
   const views = display.viewCounts ? formatViews(item.view_count) : null;
+  const thumbnails = showsThumbnails(display);
+  const params = { videoId: item.video_id };
 
+  // Only the title is a link: the explanation is a button of its own.
   return (
-    <li className="py-3">
-      <Link
-        to="/watch/$videoId"
-        params={{ videoId: item.video_id }}
-        className="group flex gap-4"
-      >
-        {display.thumbnails && (
-          <div className="relative aspect-video w-40 shrink-0 overflow-hidden rounded bg-gray-200">
-            {item.thumbnail_url && (
-              <img
-                src={item.thumbnail_url}
-                alt=""
-                loading="lazy"
-                className="size-full object-cover"
-              />
-            )}
-            {duration && (
-              <span className="absolute right-1 bottom-1 rounded bg-black/80 px-1 text-xs text-white tabular-nums">
-                {duration}
-              </span>
-            )}
-          </div>
-        )}
-        <div className="flex min-w-0 flex-col gap-1">
-          <h3 className="font-medium group-hover:underline">{item.title}</h3>
-          <p className="flex flex-wrap gap-x-2 text-sm text-gray-600">
-            <span>{item.channel_title}</span>
-            {duration && !display.thumbnails && (
-              <span className="tabular-nums">· {duration}</span>
-            )}
-            {age && item.published_at && (
-              <span>
-                ·{" "}
-                <time dateTime={item.published_at} suppressHydrationWarning>
-                  {age}
-                </time>
-              </span>
-            )}
-            {views && <span>· {views}</span>}
-          </p>
-          <p className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
-            {item.is_pinned && <Badge>Pinned</Badge>}
-            {item.is_exploration && <Badge>Exploring</Badge>}
-            <span>{item.explanation}</span>
-          </p>
+    <li className="flex gap-4 py-3">
+      {thumbnails && (
+        // A second, mouse-only way in: the title link is the one in the
+        // tab order and the accessibility tree.
+        <Link
+          to="/watch/$videoId"
+          params={params}
+          tabIndex={-1}
+          aria-hidden="true"
+          className="relative aspect-video w-40 shrink-0 overflow-hidden rounded bg-gray-200"
+        >
+          {item.thumbnail_url && (
+            <img
+              src={item.thumbnail_url}
+              alt=""
+              loading="lazy"
+              className="size-full object-cover"
+            />
+          )}
+          {duration && (
+            <span className="absolute right-1 bottom-1 rounded bg-black/80 px-1 text-xs text-white tabular-nums">
+              {duration}
+            </span>
+          )}
+        </Link>
+      )}
+      <div className="flex min-w-0 flex-col gap-1">
+        <h3 className="font-medium">
+          <Link
+            to="/watch/$videoId"
+            params={params}
+            className="hover:underline"
+          >
+            {item.title}
+          </Link>
+        </h3>
+        <p className="flex flex-wrap gap-x-2 text-sm text-gray-600">
+          <span>{item.channel_title}</span>
+          {duration && !thumbnails && (
+            <span className="tabular-nums">· {duration}</span>
+          )}
+          {age && item.published_at && (
+            <span>
+              ·{" "}
+              <time dateTime={item.published_at} suppressHydrationWarning>
+                {age}
+              </time>
+            </span>
+          )}
+          {views && <span>· {views}</span>}
+        </p>
+        <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
+          {item.is_pinned && <Badge>Pinned</Badge>}
+          {item.is_exploration && <Badge>Exploring</Badge>}
+          <WhyThisPopover
+            explanation={item.explanation}
+            breakdown={item.breakdown}
+          />
         </div>
-      </Link>
+      </div>
     </li>
   );
 }
