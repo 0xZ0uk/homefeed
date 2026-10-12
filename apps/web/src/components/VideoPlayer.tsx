@@ -1,0 +1,157 @@
+import {
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
+
+import {
+  trackWatchEvents,
+  watchPosition,
+  type WatchEventListener,
+} from "#/lib/player-events";
+import { manifestUrl } from "#/server/videos";
+
+/** Control over the player for the page around it (e.g. the rating prompt, #15). */
+export interface VideoPlayerHandle {
+  /** Current playback position in seconds. */
+  getPosition: () => number;
+  /** Duration in seconds, or null until the manifest has loaded. */
+  getDuration: () => number | null;
+  pause: () => void;
+}
+
+interface VideoPlayerProps {
+  videoId: string;
+  poster?: string | null;
+  /** Play, pause, seek, end and close (leaving the page), with the position. */
+  onWatchEvent?: WatchEventListener;
+  ref?: Ref<VideoPlayerHandle>;
+}
+
+type ShakaPlayer = InstanceType<
+  (typeof import("shaka-player/dist/shaka-player.dash"))["default"]["Player"]
+>;
+
+/**
+ * Shaka Player over the video's DASH manifest, proxied through this app.
+ *
+ * Playback only starts when the viewer presses play (no autoplay), and when the
+ * video ends nothing else is offered or played.
+ */
+export function VideoPlayer({
+  videoId,
+  poster,
+  onWatchEvent,
+  ref,
+}: VideoPlayerProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const listenerRef = useRef(onWatchEvent);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    listenerRef.current = onWatchEvent;
+  }, [onWatchEvent]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      getPosition: () =>
+        videoRef.current ? watchPosition(videoRef.current) : 0,
+      getDuration: () => {
+        const duration = videoRef.current?.duration;
+        return duration && Number.isFinite(duration) ? duration : null;
+      },
+      pause: () => videoRef.current?.pause(),
+    }),
+    [],
+  );
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.autoplay = false;
+    setError(null);
+
+    const stopTracking = trackWatchEvents(video, (event) =>
+      listenerRef.current?.(event),
+    );
+
+    let player: ShakaPlayer | null = null;
+    let cancelled = false;
+    void (async () => {
+      // Shaka touches browser APIs at import time, so load it in the browser only.
+      const { default: shaka } =
+        await import("shaka-player/dist/shaka-player.dash");
+      if (cancelled) return;
+      shaka.polyfill.installAll();
+      if (!shaka.Player.isBrowserSupported()) {
+        setError("This browser can't play these videos.");
+        return;
+      }
+      const instance = new shaka.Player();
+      player = instance;
+      instance.addEventListener("error", (event) => {
+        setError(
+          playerErrorMessage((event as Event & { detail?: unknown }).detail),
+        );
+      });
+      try {
+        await instance.attach(video);
+        if (cancelled) return;
+        await instance.load(manifestUrl(videoId));
+      } catch (loadError) {
+        if (!cancelled) setError(playerErrorMessage(loadError));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      stopTracking();
+      void player?.destroy();
+    };
+  }, [videoId]);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <video
+        ref={videoRef}
+        controls
+        playsInline
+        preload="metadata"
+        poster={poster ?? undefined}
+        className="aspect-video w-full rounded bg-black"
+      />
+      {error && (
+        <p role="alert" className="text-red-700">
+          {error}{" "}
+          <button
+            type="button"
+            className="underline"
+            onClick={() => window.location.reload()}
+          >
+            Reload
+          </button>
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** A short explanation of a Shaka error (`shaka.util.Error`) or anything else. */
+function playerErrorMessage(error: unknown): string {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const { code, data } = error as { code: number; data?: unknown[] };
+    // 1001 BAD_HTTP_STATUS: data is [uri, status, ...]
+    const status = code === 1001 ? data?.[1] : undefined;
+    if (status === 409) {
+      return "This video changed on YouTube. Reload to keep watching.";
+    }
+    if (status === 404) return "This video can't be played.";
+    if (status === 422)
+      return "This video has no playable streams (is it live?).";
+    return `The video couldn't be played (error ${code}).`;
+  }
+  return "The video couldn't be played.";
+}

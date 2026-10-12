@@ -28,7 +28,7 @@
     },
     "dev": {
       "dependsOn": ["^generate"],
-      "env": ["API_URL"],
+      "env": ["API_URL", "APP_PASSWORD", "SESSION_SECRET"],
       "persistent": true,
       "cache": false
     }

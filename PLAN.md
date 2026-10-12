@@ -215,7 +215,7 @@ Store the grade as text (`"B+"`) and the numeric value alongside it.
 | --- | --- |
 | Feed | `GET /feed/today`, `GET /feed/{date}`, `GET /feeds` (history), `POST /feed/refresh`, `POST /feed-items/{id}/dismiss` `{reason?}` |
 | Videos | `GET /videos/{id}`, `GET /videos/{id}/manifest.mpd`, `GET /videos/{id}/media/{itag}` (Range proxy), `GET /videos/{id}/comments`, `GET /videos/{id}/segments` (SponsorBlock), `POST /resolve` `{url}` |
-| Ratings and watching | `PUT /ratings/{video_id}` `{grade}`, `DELETE /ratings/{video_id}`, `POST /watch-events` |
+| Ratings and watching | `GET /ratings/{video_id}`, `PUT /ratings/{video_id}` `{grade}`, `DELETE /ratings/{video_id}`, `POST /watch-events` `{video_id, event_type, position, duration}` |
 | Library | `GET/POST/PATCH/DELETE /queue`, `GET /history?q=`, `/playlists` CRUD |
 | Curation | `/channels` (subscribe by URL, list, update prior/pin/mute, unsubscribe), `/topics`, `/keyword-mutes`, `/saved-searches`, `/external-sources` |
 | Discovery | `GET /search?q=&filters`, `GET /channels/{id}/uploads`, `GET /channels/{id}/featured`, `GET /discover/suggested-channels` |

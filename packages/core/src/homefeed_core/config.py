@@ -14,7 +14,13 @@ class Settings(BaseSettings):
     data_dir: Path = Path("data")
     database_path: Path = Path("data/homefeed.sqlite")
     feed_size: int = 15
+    # Local time (the process's TZ) when the worker builds the day's feed.
     feed_refresh_time: time = time(6, 0)
+    # Hard duration bounds for feed videos, in seconds; unset means no bound.
+    feed_min_duration_seconds: int | None = None
+    feed_max_duration_seconds: int | None = None
+    # How far back (by when a video entered the candidate pool) the feed looks.
+    feed_candidate_days: int = 7
     llm_provider: str = "none"
 
 

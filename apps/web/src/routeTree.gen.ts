@@ -10,33 +10,142 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CurationRouteImport } from './routes/curation'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as LogoutRouteImport } from './routes/logout'
+import { Route as WatchEventsRouteImport } from './routes/watch-events'
+import { Route as FeedDateRouteImport } from './routes/feed.$date'
+import { Route as WatchVideoIdRouteImport } from './routes/watch.$videoId'
+import { Route as VideosVideoIdManifestDotmpdRouteImport } from './routes/videos.$videoId.manifest[.]mpd'
+import { Route as VideosVideoIdMediaItagRouteImport } from './routes/videos.$videoId.media.$itag'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CurationRoute = CurationRouteImport.update({
+  id: '/curation',
+  path: '/curation',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LogoutRoute = LogoutRouteImport.update({
+  id: '/logout',
+  path: '/logout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WatchEventsRoute = WatchEventsRouteImport.update({
+  id: '/watch-events',
+  path: '/watch-events',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FeedDateRoute = FeedDateRouteImport.update({
+  id: '/feed/$date',
+  path: '/feed/$date',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WatchVideoIdRoute = WatchVideoIdRouteImport.update({
+  id: '/watch/$videoId',
+  path: '/watch/$videoId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VideosVideoIdManifestDotmpdRoute =
+  VideosVideoIdManifestDotmpdRouteImport.update({
+    id: '/videos/$videoId/manifest.mpd',
+    path: '/videos/$videoId/manifest.mpd',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const VideosVideoIdMediaItagRoute = VideosVideoIdMediaItagRouteImport.update({
+  id: '/videos/$videoId/media/$itag',
+  path: '/videos/$videoId/media/$itag',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/curation': typeof CurationRoute
+  '/login': typeof LoginRoute
+  '/logout': typeof LogoutRoute
+  '/watch-events': typeof WatchEventsRoute
+  '/feed/$date': typeof FeedDateRoute
+  '/watch/$videoId': typeof WatchVideoIdRoute
+  '/videos/$videoId/manifest.mpd': typeof VideosVideoIdManifestDotmpdRoute
+  '/videos/$videoId/media/$itag': typeof VideosVideoIdMediaItagRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/curation': typeof CurationRoute
+  '/login': typeof LoginRoute
+  '/logout': typeof LogoutRoute
+  '/watch-events': typeof WatchEventsRoute
+  '/feed/$date': typeof FeedDateRoute
+  '/watch/$videoId': typeof WatchVideoIdRoute
+  '/videos/$videoId/manifest.mpd': typeof VideosVideoIdManifestDotmpdRoute
+  '/videos/$videoId/media/$itag': typeof VideosVideoIdMediaItagRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/curation': typeof CurationRoute
+  '/login': typeof LoginRoute
+  '/logout': typeof LogoutRoute
+  '/watch-events': typeof WatchEventsRoute
+  '/feed/$date': typeof FeedDateRoute
+  '/watch/$videoId': typeof WatchVideoIdRoute
+  '/videos/$videoId/manifest.mpd': typeof VideosVideoIdManifestDotmpdRoute
+  '/videos/$videoId/media/$itag': typeof VideosVideoIdMediaItagRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/curation'
+    | '/login'
+    | '/logout'
+    | '/watch-events'
+    | '/feed/$date'
+    | '/watch/$videoId'
+    | '/videos/$videoId/manifest.mpd'
+    | '/videos/$videoId/media/$itag'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/curation'
+    | '/login'
+    | '/logout'
+    | '/watch-events'
+    | '/feed/$date'
+    | '/watch/$videoId'
+    | '/videos/$videoId/manifest.mpd'
+    | '/videos/$videoId/media/$itag'
+  id:
+    | '__root__'
+    | '/'
+    | '/curation'
+    | '/login'
+    | '/logout'
+    | '/watch-events'
+    | '/feed/$date'
+    | '/watch/$videoId'
+    | '/videos/$videoId/manifest.mpd'
+    | '/videos/$videoId/media/$itag'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CurationRoute: typeof CurationRoute
+  LoginRoute: typeof LoginRoute
+  LogoutRoute: typeof LogoutRoute
+  WatchEventsRoute: typeof WatchEventsRoute
+  FeedDateRoute: typeof FeedDateRoute
+  WatchVideoIdRoute: typeof WatchVideoIdRoute
+  VideosVideoIdManifestDotmpdRoute: typeof VideosVideoIdManifestDotmpdRoute
+  VideosVideoIdMediaItagRoute: typeof VideosVideoIdMediaItagRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,21 +157,86 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/curation': {
+      id: '/curation'
+      path: '/curation'
+      fullPath: '/curation'
+      preLoaderRoute: typeof CurationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/logout': {
+      id: '/logout'
+      path: '/logout'
+      fullPath: '/logout'
+      preLoaderRoute: typeof LogoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/watch-events': {
+      id: '/watch-events'
+      path: '/watch-events'
+      fullPath: '/watch-events'
+      preLoaderRoute: typeof WatchEventsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/feed/$date': {
+      id: '/feed/$date'
+      path: '/feed/$date'
+      fullPath: '/feed/$date'
+      preLoaderRoute: typeof FeedDateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/watch/$videoId': {
+      id: '/watch/$videoId'
+      path: '/watch/$videoId'
+      fullPath: '/watch/$videoId'
+      preLoaderRoute: typeof WatchVideoIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/videos/$videoId/manifest.mpd': {
+      id: '/videos/$videoId/manifest.mpd'
+      path: '/videos/$videoId/manifest.mpd'
+      fullPath: '/videos/$videoId/manifest.mpd'
+      preLoaderRoute: typeof VideosVideoIdManifestDotmpdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/videos/$videoId/media/$itag': {
+      id: '/videos/$videoId/media/$itag'
+      path: '/videos/$videoId/media/$itag'
+      fullPath: '/videos/$videoId/media/$itag'
+      preLoaderRoute: typeof VideosVideoIdMediaItagRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CurationRoute: CurationRoute,
+  LoginRoute: LoginRoute,
+  LogoutRoute: LogoutRoute,
+  WatchEventsRoute: WatchEventsRoute,
+  FeedDateRoute: FeedDateRoute,
+  WatchVideoIdRoute: WatchVideoIdRoute,
+  VideosVideoIdManifestDotmpdRoute: VideosVideoIdManifestDotmpdRoute,
+  VideosVideoIdMediaItagRoute: VideosVideoIdMediaItagRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
 
 import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
+import type { startInstance } from './start.ts'
 declare module '@tanstack/react-start' {
   interface Register {
     ssr: true
     router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
   }
 }
