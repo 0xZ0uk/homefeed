@@ -10,7 +10,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.util import undefined
 
-from homefeed_core import candidates, enricher, feeds, poller
+from homefeed_core import candidates, enricher, feeds, poller, trainer
 from homefeed_core.config import get_settings
 from homefeed_core.db import get_session_factory
 
@@ -76,20 +76,32 @@ def build_daily_feed() -> None:
     logger.info("Built the feed for %s with %d items", feed.date, len(feed.items))
 
 
+def train_model() -> None:
+    """Train a ranking model on the ratings so far and promote it unless it does worse
+    than the active one; skipped while there are too few ratings (see
+    homefeed_core.trainer, which logs the outcome)."""
+    trainer.run_nightly_training()
+
+
 def build_scheduler(
     poll: Callable[[], None] = poll_subscriptions,
     enrich: Callable[[], None] = enrich_candidates,
     build_feed: Callable[[], None] = build_daily_feed,
+    train: Callable[[], None] = train_model,
     *,
     feed_refresh_time: time | None = None,
+    model_training_time: time | None = None,
     build_feed_now: bool = False,
 ) -> BlockingScheduler:
     """Create the scheduler with all worker jobs registered.
 
-    The daily feed runs at `feed_refresh_time` (default `FEED_REFRESH_TIME`) in the
-    process's local time zone; `build_feed_now` also runs it right away.
+    The daily feed runs at `feed_refresh_time` (default `FEED_REFRESH_TIME`) and model
+    training at `model_training_time` (default `MODEL_TRAINING_TIME`), both in the
+    process's local time zone; `build_feed_now` also builds the feed right away.
     """
-    refresh = feed_refresh_time or get_settings().feed_refresh_time
+    settings = get_settings()
+    refresh = feed_refresh_time or settings.feed_refresh_time
+    training = model_training_time or settings.model_training_time
     scheduler = BlockingScheduler(timezone=UTC)
     scheduler.add_job(
         poll,
@@ -119,6 +131,15 @@ def build_scheduler(
         coalesce=True,
         misfire_grace_time=None,
         next_run_time=datetime.now(UTC) if build_feed_now else undefined,
+    )
+    scheduler.add_job(
+        train,
+        CronTrigger(hour=training.hour, minute=training.minute),  # local time zone
+        id="train_model",
+        name="Train the ranking model",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=None,
     )
     return scheduler
 

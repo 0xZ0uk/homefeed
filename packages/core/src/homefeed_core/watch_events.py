@@ -105,19 +105,25 @@ def abandoned_early(session: Session, video_id: str, *, threshold: float = ABAND
 
 
 def abandoned_early_video_ids(session: Session, *, threshold: float = ABANDON_SECONDS) -> set[str]:
-    """All videos played and left within `threshold` seconds (for the trainer's implicit
-    negatives). Same rule as `is_abandoned_early`."""
-    return set(
-        session.execute(
-            text(
-                """
-                SELECT video_id FROM watch_events
-                GROUP BY video_id
-                HAVING max(event_type = 'play') = 1
-                   AND max(event_type = 'ended') = 0
-                   AND max(position) < :threshold
-                """
-            ),
-            {"threshold": threshold},
-        ).scalars()
+    """All videos played and left within `threshold` seconds. Same rule as
+    `is_abandoned_early`."""
+    return set(abandoned_early_at(session, threshold=threshold))
+
+
+def abandoned_early_at(session: Session, *, threshold: float = ABANDON_SECONDS) -> dict[str, str]:
+    """Videos played and left within `threshold` seconds (the trainer's implicit
+    negatives), each with the time of its last event (ISO 8601 UTC). Same rule as
+    `is_abandoned_early`."""
+    rows = session.execute(
+        text(
+            """
+            SELECT video_id, max(at) FROM watch_events
+            GROUP BY video_id
+            HAVING max(event_type = 'play') = 1
+               AND max(event_type = 'ended') = 0
+               AND max(position) < :threshold
+            """
+        ),
+        {"threshold": threshold},
     )
+    return {video_id: at for video_id, at in rows}

@@ -1,5 +1,6 @@
 import json
 import math
+from collections.abc import Sequence
 from typing import Any
 
 import pytest
@@ -16,6 +17,7 @@ from homefeed_core.ranker import (
     FilterReason,
     History,
     KeywordMutes,
+    ModelCandidate,
     RankCandidate,
     RatedTiers,
     ScoreBreakdown,
@@ -203,7 +205,7 @@ def test_breakdown_sums_to_final_score() -> None:
     history = History(channel_ratings={CHANNEL: [0.2, -0.6, 1.0]}, n_ratings=30)
     videos = [candidate("a"), candidate("b", OTHER)]
 
-    for model in (None, lambda _c, _f: 0.7):
+    for model in (None, lambda items: [0.7] * len(items)):
         for item in rank(videos, curation=curation, history=history, model=model):
             b = item.breakdown
             parts = b.alpha * b.model + b.channel + b.similarity + sum(b.topics.values())
@@ -354,9 +356,9 @@ def test_similarity_shows_in_breakdown_dict() -> None:
 def test_model_gets_similarity_features() -> None:
     seen: dict[str, SimilarityFeatures | None] = {}
 
-    def model(c: RankCandidate, features: SimilarityFeatures | None) -> float:
-        seen[c.video_id] = features
-        return 0.0
+    def model(items: Sequence[ModelCandidate]) -> list[float]:
+        seen.update({item.candidate.video_id: item.similarity for item in items})
+        return [0.0] * len(items)
 
     rank(
         [candidate("a"), candidate("b")],
@@ -368,6 +370,63 @@ def test_model_gets_similarity_features() -> None:
     )
 
     assert seen == {"a": similarity_features(axis(0), TIERS), "b": None}
+
+
+def test_model_scores_unfiltered_candidates_in_one_batch() -> None:
+    calls: list[list[ModelCandidate]] = []
+
+    def model(items: Sequence[ModelCandidate]) -> list[float]:
+        calls.append(list(items))
+        return [0.9 if item.candidate.video_id == "b" else -0.5 for item in items]
+
+    curation = {CHANNEL: ChannelCuration(prior="like")}
+    scored = rank(
+        [candidate("a"), candidate("short", is_short=True), candidate("b", OTHER)],
+        curation=curation,
+        history=History(n_ratings=150),
+        embeddings={"a": axis(0)},
+        model=model,
+    )
+
+    [batch] = calls
+    assert [item.candidate.video_id for item in batch] == ["a", "b"]
+    assert batch[0].embedding == axis(0) and batch[1].embedding is None
+    assert batch[0].channel_score == pytest.approx(0.4) and batch[1].channel_score == 0.0
+    # alpha = 150 / 200; b's model score outweighs a's channel prior.
+    assert [item.candidate.video_id for item in scored] == ["b", "a"]
+    b, a = (item.breakdown for item in scored)
+    assert b.alpha == a.alpha == pytest.approx(0.75)
+    assert (b.model, a.model) == (0.9, -0.5)
+    assert b.final == pytest.approx(0.9 * 0.75)
+    assert a.final == pytest.approx(0.4 - 0.5 * 0.75)
+
+
+def test_model_weight_grows_with_ratings() -> None:
+    def model(items: Sequence[ModelCandidate]) -> list[float]:
+        return [1.0] * len(items)
+
+    for n, weight in [(0, 0.0), (50, 0.5), (150, 0.75)]:
+        [scored] = rank([candidate()], curation={}, history=History(n_ratings=n), model=model)
+        assert scored.breakdown.alpha == pytest.approx(weight)
+        assert scored.breakdown.model == 1.0
+        assert scored.score == pytest.approx(weight)
+
+
+def test_model_must_score_every_candidate() -> None:
+    with pytest.raises(ValueError, match="1 scores for 2 candidates"):
+        rank(
+            [candidate("a"), candidate("b")],
+            curation={},
+            history=NO_HISTORY,
+            model=lambda items: [0.0],
+        )
+
+
+def test_model_is_not_called_without_candidates() -> None:
+    def model(items: Sequence[ModelCandidate]) -> list[float]:
+        raise AssertionError("called")
+
+    assert rank([], curation={}, history=NO_HISTORY, model=model) == []
 
 
 def with_similarity(similarity: float) -> tuple[float, ...]:

@@ -1,0 +1,129 @@
+import {
+  useMutation,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
+import { createFileRoute } from "@tanstack/react-router";
+
+import { AppHeader } from "#/components/AppHeader";
+import { formatKind, formatMetric, formatTimestamp } from "#/lib/models";
+import {
+  activateModelVersion,
+  modelsQuery,
+  type ModelVersion,
+} from "#/server/models";
+
+export const Route = createFileRoute("/models")({
+  head: () => ({ meta: [{ title: "Models · Homefeed" }] }),
+  loader: ({ context }) => context.queryClient.ensureQueryData(modelsQuery),
+  component: Models,
+});
+
+function Models() {
+  const { data: versions } = useSuspenseQuery(modelsQuery);
+
+  return (
+    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
+      <AppHeader />
+      <div className="flex flex-col gap-2">
+        <h2 className="text-xl font-semibold">Ranking models</h2>
+        <p className="text-gray-600">
+          A new model is trained each night on your ratings and becomes active
+          only if it ranks the newest ratings about as well as the current one.
+          Activate an earlier version to roll back; the next feed is ranked with
+          it.
+        </p>
+      </div>
+      {versions.length === 0 ? (
+        <p className="rounded border border-dashed p-6 text-gray-600">
+          No models yet. The first is trained once you've rated enough videos;
+          until then the feed is ranked by your curation alone.
+        </p>
+      ) : (
+        <ul className="flex flex-col divide-y" aria-label="Model versions">
+          {versions.map((version) => (
+            <ModelRow key={version.id} version={version} />
+          ))}
+        </ul>
+      )}
+    </main>
+  );
+}
+
+function ModelRow({ version }: { version: ModelVersion }) {
+  const queryClient = useQueryClient();
+  const activate = useMutation({
+    mutationFn: () => activateModelVersion({ data: { id: version.id } }),
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: modelsQuery.queryKey }),
+  });
+  const failure = activate.isError
+    ? "Couldn't activate that model. Try again later."
+    : activate.data?.ok === false
+      ? activate.data.message
+      : null;
+  const holdout = version.holdout_size;
+
+  return (
+    <li className="flex flex-col gap-2 py-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+        <h3 className="flex items-baseline gap-2 font-medium">
+          Version {version.id}
+          <span className="text-sm font-normal text-gray-600">
+            {formatKind(version.kind)}
+          </span>
+          {version.active && (
+            <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+              Active
+            </span>
+          )}
+        </h3>
+        {!version.active &&
+          (version.compatible ? (
+            <button
+              type="button"
+              disabled={activate.isPending}
+              onClick={() => activate.mutate()}
+              aria-label={`Activate version ${version.id}`}
+              className="rounded border px-3 py-1 text-sm font-medium disabled:opacity-50"
+            >
+              {activate.isPending ? "Activating…" : "Activate"}
+            </button>
+          ) : (
+            <span className="text-sm text-gray-600">
+              Trained with older features; can't be activated
+            </span>
+          ))}
+      </div>
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
+        <Metric label="Spearman" value={formatMetric(version.spearman)} />
+        <Metric label="MAE" value={formatMetric(version.mae)} />
+        <Metric label="Trained" value={formatTimestamp(version.created_at)} />
+        <Metric
+          label="Activated"
+          value={formatTimestamp(version.activated_at)}
+        />
+      </dl>
+      {holdout !== null && (
+        <p className="text-xs text-gray-600">
+          Metrics on the newest {holdout} rating{holdout === 1 ? "" : "s"}, held
+          out from training.
+        </p>
+      )}
+      {failure && (
+        <p role="alert" className="text-sm text-red-600">
+          {failure}
+        </p>
+      )}
+    </li>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col">
+      <dt className="text-gray-600">{label}</dt>
+      <dd className="tabular-nums">{value}</dd>
+    </div>
+  );
+}

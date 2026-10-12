@@ -5,9 +5,11 @@ first. Each score comes with a breakdown whose parts sum to it:
 
     final = alpha * model + channel + similarity + sum(topics)
 
-Without a model (until Milestone 3) `alpha` and `model` are 0. The channel score is a
-Bayesian average of the channel's rating values shrunk toward its curation prior with
-weight `k = 5`.
+`alpha = n / (n + 50)` with `n` the number of explicit ratings, and `model` is the
+active trained model's prediction (see `Model`; all candidates are scored in one
+batch). Without a model, `alpha` and `model` are 0 and ranking is rules-only. The
+channel score is a Bayesian average of the channel's rating values shrunk toward its
+curation prior with weight `k = 5`.
 
 Similarity features compare a candidate's embedding with those of the videos rated top
 tier (A-- and up) and bottom tier (D++ and down): the max and mean cosine similarity to
@@ -260,9 +262,20 @@ class ScoredCandidate:
         return self.breakdown.final
 
 
-# Scores a candidate, given its similarity features (None without an embedding), in the
-# same [-1, 1] space as rating values (Milestone 3).
-Model = Callable[[RankCandidate, SimilarityFeatures | None], float]
+@dataclass(frozen=True)
+class ModelCandidate:
+    """What the model is given about a candidate that passed the hard filters."""
+
+    candidate: RankCandidate
+    similarity: SimilarityFeatures | None  # None without an embedding
+    embedding: Embedding | None
+    channel_score: float
+
+
+# Scores a batch of candidates at once, one score per candidate in the same order, in
+# the same [-1, 1] space as rating values. homefeed_core.ranking_models.ranker_model
+# wraps a trained `RankingModel` as one.
+Model = Callable[[Sequence[ModelCandidate]], Sequence[float]]
 
 
 def channel_score(prior: Prior, ratings: Sequence[float], k: int = CHANNEL_PRIOR_WEIGHT) -> float:
@@ -389,7 +402,7 @@ def rank(
     blend = alpha(history.n_ratings, has_model=model is not None)
     top_tier, bottom_tier = _normalized(rated_tiers.top), _normalized(rated_tiers.bottom)
     channel_scores: dict[str, float] = {}
-    scored: list[ScoredCandidate] = []
+    passed: list[ModelCandidate] = []
     for candidate in candidates:
         if filter_reason(
             candidate,
@@ -400,22 +413,45 @@ def rank(
         ):
             continue
         channel_id = candidate.channel_id
-        prior = curation.get(channel_id, ChannelCuration()).prior
-        ratings = history.channel_ratings.get(channel_id, ())
         if channel_id not in channel_scores:
-            channel_scores[channel_id] = channel_score(prior, ratings)
+            channel_scores[channel_id] = channel_score(
+                curation.get(channel_id, ChannelCuration()).prior,
+                history.channel_ratings.get(channel_id, ()),
+            )
         embedding = embeddings.get(candidate.video_id)
         features = (
             None if embedding is None else _similarity_features(embedding, top_tier, bottom_tier)
         )
+        passed.append(ModelCandidate(candidate, features, embedding, channel_scores[channel_id]))
+    model_scores = _model_scores(model, passed)
+    scored: list[ScoredCandidate] = []
+    for item, model_score in zip(passed, model_scores, strict=True):
+        candidate = item.candidate
         breakdown = ScoreBreakdown(
-            model=model(candidate, features) if model is not None else 0.0,
+            model=model_score,
             alpha=blend,
-            channel=channel_scores[channel_id],
-            similarity=similarity_score(features),
-            similarity_features=features,
-            topics=topic_boosts(embedding, topics) if topics else {},
+            channel=item.channel_score,
+            similarity=similarity_score(item.similarity),
+            similarity_features=item.similarity,
+            topics=topic_boosts(item.embedding, topics) if topics else {},
         )
-        scored.append(ScoredCandidate(candidate, breakdown, prior, len(ratings)))
+        scored.append(
+            ScoredCandidate(
+                candidate,
+                breakdown,
+                curation.get(candidate.channel_id, ChannelCuration()).prior,
+                len(history.channel_ratings.get(candidate.channel_id, ())),
+            )
+        )
     scored.sort(key=lambda item: item.score, reverse=True)
     return scored
+
+
+def _model_scores(model: Model | None, items: Sequence[ModelCandidate]) -> list[float]:
+    """The model's score for each item (one batch call), or 0s without a model."""
+    if model is None or not items:
+        return [0.0] * len(items)
+    scores = [float(score) for score in model(items)]
+    if len(scores) != len(items):
+        raise ValueError(f"The model returned {len(scores)} scores for {len(items)} candidates")
+    return scores

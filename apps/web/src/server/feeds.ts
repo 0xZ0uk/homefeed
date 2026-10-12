@@ -1,4 +1,5 @@
 import {
+  dismissFeedItem,
   getFeed,
   getTodayFeed,
   listFeeds,
@@ -59,6 +60,27 @@ export const rebuildFeed = createServerFn({ method: "POST" }).handler(
     return data;
   },
 );
+
+/** Dismiss a feed item, with an optional reason (blank means none). */
+export const dismissItem = createServerFn({ method: "POST" })
+  .inputValidator((data: { id: number; reason?: string | null }) => {
+    if (!Number.isInteger(data.id) || data.id < 1) {
+      throw new Error("id must be a positive integer");
+    }
+    if (data.reason != null && typeof data.reason !== "string") {
+      throw new Error("reason must be a string");
+    }
+    return { id: data.id, reason: data.reason?.trim() || null };
+  })
+  .handler(async ({ data }): Promise<FeedItem> => {
+    const { data: item } = await dismissFeedItem({
+      client: apiClient(),
+      path: { item_id: data.id },
+      body: { reason: data.reason },
+      throwOnError: true,
+    });
+    return item;
+  });
 
 export const todayFeedQuery = queryOptions({
   queryKey: ["feed", "today"],

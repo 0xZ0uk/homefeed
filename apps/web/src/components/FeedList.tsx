@@ -1,25 +1,41 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState, type RefObject } from "react";
 
+import { DismissMenu } from "#/components/DismissMenu";
 import { WhyThisPopover } from "#/components/WhyThisPopover";
+import { undismissedItems, withItemDismissal } from "#/lib/dismiss";
 import { showsThumbnails, type DisplayPrefs } from "#/lib/display";
 import { formatAge, formatDuration, formatViews } from "#/lib/format";
-import type { Feed, FeedItem } from "#/server/feeds";
+import {
+  dismissItem,
+  feedQuery,
+  todayFeedQuery,
+  type Feed,
+  type FeedItem,
+} from "#/server/feeds";
 
 /**
  * A feed as a fixed, numbered list. Every item links to its watch page and
  * says why it's there, expandable into its score breakdown. There is
  * deliberately no pagination or "load more": the feed is the whole list.
+ *
+ * With `dismissible`, each item can be dismissed (with an optional reason) and
+ * dismissed items are hidden; otherwise they're shown, marked dismissed.
  */
 export function FeedList({
   feed,
   display,
+  dismissible = false,
 }: {
   feed: Feed;
   display: DisplayPrefs;
+  dismissible?: boolean;
 }) {
   // One "now" per render pass keeps every item's age consistent.
   const [now] = useState(() => new Date());
+  const statusRef = useRef<HTMLParagraphElement>(null);
+  const { status, dismiss } = useDismiss(feed, statusRef);
 
   if (feed.items.length === 0) {
     return (
@@ -29,23 +45,110 @@ export function FeedList({
       </p>
     );
   }
+  const items = dismissible ? undismissedItems(feed.items) : feed.items;
   return (
-    <ol className="flex flex-col divide-y" aria-label="Feed">
-      {feed.items.map((item) => (
-        <FeedItemRow key={item.id} item={item} display={display} now={now} />
-      ))}
-    </ol>
+    <div className="flex flex-col gap-2">
+      {/* Focus moves here when a dismissed item disappears from the list. */}
+      <p
+        ref={statusRef}
+        role="status"
+        tabIndex={-1}
+        className="text-sm focus:outline-none"
+      >
+        {status && (
+          <span className={status.ok ? "text-gray-600" : "text-red-600"}>
+            {status.message}
+          </span>
+        )}
+      </p>
+      {items.length === 0 ? (
+        <p className="text-gray-600">
+          You've dismissed everything in this feed. Refresh it for new picks;
+          dismissed videos won't come back.
+        </p>
+      ) : (
+        <ol className="flex flex-col divide-y" aria-label="Feed">
+          {items.map((item) => (
+            <FeedItemRow
+              key={item.id}
+              item={item}
+              display={display}
+              now={now}
+              onDismiss={
+                dismissible ? (reason) => dismiss(item, reason) : undefined
+              }
+            />
+          ))}
+        </ol>
+      )}
+    </div>
   );
+}
+
+type DismissStatus = { ok: boolean; message: string };
+
+/**
+ * Dismissing an item: it's hidden at once and restored if the API call fails.
+ * Both outcomes are announced in a status message that takes focus, since the
+ * item (and the focused menu in it) is gone.
+ */
+function useDismiss(
+  feed: Feed,
+  statusRef: RefObject<HTMLParagraphElement | null>,
+) {
+  const queryClient = useQueryClient();
+  const [status, setStatus] = useState<DismissStatus | null>(null);
+
+  function update(
+    itemId: number,
+    dismissal: Pick<FeedItem, "dismissed_at" | "dismiss_reason">,
+  ) {
+    const apply = (old: Feed | null | undefined) =>
+      old ? withItemDismissal(old, itemId, dismissal) : old;
+    queryClient.setQueryData(todayFeedQuery.queryKey, apply);
+    queryClient.setQueryData(feedQuery(feed.date).queryKey, apply);
+  }
+
+  function announce(next: DismissStatus) {
+    setStatus(next);
+    statusRef.current?.focus();
+  }
+
+  const mutation = useMutation({
+    mutationFn: ({ item, reason }: { item: FeedItem; reason: string | null }) =>
+      dismissItem({ data: { id: item.id, reason } }),
+    onMutate: ({ item, reason }) => {
+      update(item.id, {
+        dismissed_at: new Date().toISOString(),
+        dismiss_reason: reason,
+      });
+      announce({ ok: true, message: `Dismissed “${item.title}”.` });
+    },
+    onSuccess: (saved) => update(saved.id, saved),
+    onError: (_error, { item }) => {
+      update(item.id, item);
+      announce({
+        ok: false,
+        message: `Couldn't dismiss “${item.title}”. Try again later.`,
+      });
+    },
+  });
+
+  const dismiss = (item: FeedItem, reason: string | null) =>
+    mutation.mutate({ item, reason });
+  return { status, dismiss };
 }
 
 function FeedItemRow({
   item,
   display,
   now,
+  onDismiss,
 }: {
   item: FeedItem;
   display: DisplayPrefs;
   now: Date;
+  onDismiss?: (reason: string | null) => void;
 }) {
   const duration = formatDuration(item.duration_seconds);
   const age = formatAge(item.published_at, now);
@@ -81,7 +184,7 @@ function FeedItemRow({
           )}
         </Link>
       )}
-      <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
         <h3 className="font-medium">
           <Link
             to="/watch/$videoId"
@@ -109,12 +212,20 @@ function FeedItemRow({
         <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
           {item.is_pinned && <Badge>Pinned</Badge>}
           {item.is_exploration && <Badge>Exploring</Badge>}
+          {item.dismissed_at && (
+            <Badge>
+              {item.dismiss_reason
+                ? `Dismissed: ${item.dismiss_reason}`
+                : "Dismissed"}
+            </Badge>
+          )}
           <WhyThisPopover
             explanation={item.explanation}
             breakdown={item.breakdown}
           />
         </div>
       </div>
+      {onDismiss && <DismissMenu title={item.title} onDismiss={onDismiss} />}
     </li>
   );
 }

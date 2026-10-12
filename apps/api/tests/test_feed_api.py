@@ -40,6 +40,8 @@ def client(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, poll: PollRecorder
 ) -> Iterator[TestClient]:
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "homefeed.sqlite"))
+    # A purely score-ordered feed; test_refresh_with_exploration_slots turns them on.
+    monkeypatch.setenv("FEED_EXPLORATION_SLOTS", "0")
     get_settings.cache_clear()
     get_session_factory.cache_clear()
     app.dependency_overrides[get_gateway] = FakeGateway
@@ -158,6 +160,25 @@ def test_refresh_polls_then_builds_todays_feed(client: TestClient, poll: PollRec
     assert durations["w0000000001"] is None  # RSS-only videos have no duration
 
 
+def test_refresh_with_exploration_slots(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FEED_EXPLORATION_SLOTS", "1")
+    get_settings.cache_clear()
+    seed()
+
+    response = client.post("/feed/refresh")
+
+    assert response.status_code == 200, response.text
+    items = response.json()["items"]
+    explored = [item for item in items if item["is_exploration"]]
+    assert len(explored) == 1
+    assert items[0] == explored[0]  # exploration comes before the top-scored items
+    assert 0.0 < explored[0]["selection_probability"] <= 1.0
+    assert explored[0]["explanation"].startswith("Exploring: new channel")
+    assert all(item["selection_probability"] is None for item in items[1:])
+
+
 def test_refresh_survives_a_failing_poll(client: TestClient, poll: PollRecorder) -> None:
     seed()
     poll.error = RuntimeError("network down")
@@ -240,3 +261,65 @@ def test_feeds_limit(client: TestClient) -> None:
 
     assert [f["date"] for f in body] == [YESTERDAY.isoformat()]
     assert client.get("/feeds", params={"limit": 0}).status_code == 422
+
+
+def test_dismiss_sets_dismissed_at_and_reason(client: TestClient) -> None:
+    seed()
+    item = client.post("/feed/refresh").json()["items"][1]
+
+    response = client.post(f"/feed-items/{item['id']}/dismiss", json={"reason": "Not interested"})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["dismissed_at"] is not None
+    assert body["dismiss_reason"] == "Not interested"
+    assert body == {
+        **item,
+        "dismissed_at": body["dismissed_at"],
+        "dismiss_reason": "Not interested",
+    }
+    today = client.get("/feed/today").json()["items"]
+    assert [i["dismissed_at"] is not None for i in today] == [False, True, False, False]
+
+
+def test_dismiss_without_a_reason(client: TestClient) -> None:
+    seed()
+    item = client.post("/feed/refresh").json()["items"][0]
+
+    no_body = client.post(f"/feed-items/{item['id']}/dismiss")
+    empty = client.post(f"/feed-items/{item['id']}/dismiss", json={})
+
+    assert no_body.status_code == empty.status_code == 200
+    assert no_body.json()["dismissed_at"] is not None
+    assert no_body.json()["dismiss_reason"] is None
+    assert empty.json() == no_body.json()
+
+
+def test_dismissed_videos_are_left_out_of_later_feeds(client: TestClient) -> None:
+    seed()
+    item = client.post("/feed/refresh").json()["items"][0]
+    client.post(f"/feed-items/{item['id']}/dismiss", json={"reason": "Seen it elsewhere"})
+
+    refreshed = client.post("/feed/refresh").json()
+
+    assert item["video_id"] not in {i["video_id"] for i in refreshed["items"]}
+    assert len(refreshed["items"]) == 3
+
+
+def test_dismiss_is_404_for_a_missing_item(client: TestClient) -> None:
+    response = client.post("/feed-items/999/dismiss", json={"reason": "x"})
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Feed item not found"}
+
+
+def test_dismiss_rejects_bad_input(client: TestClient) -> None:
+    seed()
+    item = client.post("/feed/refresh").json()["items"][0]
+
+    too_long = client.post(f"/feed-items/{item['id']}/dismiss", json={"reason": "x" * 201})
+
+    assert too_long.status_code == 422
+    assert client.post("/feed-items/0/dismiss").status_code == 422
+    assert client.post("/feed-items/abc/dismiss").status_code == 422
+    assert client.get("/feed/today").json()["items"][0]["dismissed_at"] is None

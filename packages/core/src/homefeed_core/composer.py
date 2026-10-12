@@ -1,9 +1,19 @@
 """Turning ranked candidates into a finite feed (PLAN.md section 7). Pure: no I/O; the
 only randomness comes from the injected `rng`.
 
-Order: pins first (candidates from pinned channels), then the top-scored rest, with at
-most `per_channel_cap` items per channel overall (pins included) and exactly `size`
-items when there are enough candidates. Exploration slots arrive in Milestone 3.
+Order: pins first (candidates from pinned channels), then exploration slots, then the
+top-scored rest, with at most `per_channel_cap` items per channel overall (pins and
+exploration included) and exactly `size` items when there are enough candidates.
+
+Exploration slots (`exploration_slots`, default 3) go to under-rated channels: those
+with fewer than `EXPLORATION_MAX_RATINGS` ratings, including never-rated channels from
+new sources. Each is picked by Thompson sampling: draw once from every eligible
+channel's `Beta(good + 1, not_good + 1)` posterior (good = B-- or higher; see
+`ChannelRatings`) and take the channels with the highest draws, one slot each, filled
+by the channel's best-ranked video. The chance an item gets its slot is estimated by
+Monte Carlo over `exploration_draws` such draws (the first of them is the one used) and
+stored as its `selection_probability`, so training can reweight exploration ratings by
+its inverse.
 
 Equal scores are common in a rules-only feed (every video of a channel shares its
 channel score), so ties go to the more recently published video, then to `rng`.
@@ -18,7 +28,7 @@ top-tier video of a similar one), so `compose` takes their titles and grades as
 import random
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 
 from homefeed_core.candidates import RELATED, SUBSCRIPTION
@@ -27,6 +37,11 @@ from homefeed_core.ranker import ChannelCuration, Curation, ScoredCandidate
 
 DEFAULT_FEED_SIZE = 15
 DEFAULT_PER_CHANNEL_CAP = 2
+DEFAULT_EXPLORATION_SLOTS = 3
+# Monte Carlo draws to estimate exploration selection probabilities.
+DEFAULT_EXPLORATION_DRAWS = 500
+# Channels with fewer ratings than this are eligible for exploration slots.
+EXPLORATION_MAX_RATINGS = 5
 
 _PRIOR_PHRASES = {
     "love": "channel you love",
@@ -50,9 +65,28 @@ NO_VIDEO_REFS: VideoRefs = MappingProxyType({})
 
 
 @dataclass(frozen=True)
+class ChannelRatings:
+    """How a channel's videos were rated: good (B-- or higher) and not good."""
+
+    good: int = 0
+    not_good: int = 0
+
+    @property
+    def total(self) -> int:
+        return self.good + self.not_good
+
+
+# Rating counts by channel id; channels missing are never rated.
+ChannelRatingCounts = Mapping[str, ChannelRatings]
+NO_CHANNEL_RATINGS: ChannelRatingCounts = MappingProxyType({})
+
+
+@dataclass(frozen=True)
 class ComposeSettings:
     size: int = DEFAULT_FEED_SIZE
     per_channel_cap: int = DEFAULT_PER_CHANNEL_CAP
+    exploration_slots: int = DEFAULT_EXPLORATION_SLOTS
+    exploration_draws: int = DEFAULT_EXPLORATION_DRAWS
 
 
 @dataclass(frozen=True)
@@ -62,7 +96,8 @@ class FeedSlot:
     explanation: str
     is_pinned: bool = False
     is_exploration: bool = False
-    selection_probability: float | None = None  # exploration items only (Milestone 3)
+    # The estimated chance an exploration item got its slot; None for other items.
+    selection_probability: float | None = None
 
 
 def compose(
@@ -72,34 +107,109 @@ def compose(
     rng: random.Random,
     *,
     videos: VideoRefs = NO_VIDEO_REFS,
+    channel_ratings: ChannelRatingCounts = NO_CHANNEL_RATINGS,
 ) -> list[FeedSlot]:
     """Pick and order up to `settings.size` items from `scored`. `videos` holds the
-    videos explanations may name (see `referenced_video_ids`)."""
+    videos explanations may name (see `referenced_video_ids`); `channel_ratings` the
+    rating counts that decide exploration (channels missing are never rated)."""
     ordered = _order(scored, rng)
     pinned = [item for item in ordered if _curation(curation, item).pinned]
     rest = [item for item in ordered if not _curation(curation, item).pinned]
 
     per_channel: Counter[str] = Counter()
-    chosen: list[tuple[ScoredCandidate, bool]] = []
-    for group, is_pinned in ((pinned, True), (rest, False)):
-        for item in group:
-            if len(chosen) >= settings.size:
-                break
-            channel_id = item.candidate.channel_id
-            if per_channel[channel_id] >= settings.per_channel_cap:
-                continue
-            per_channel[channel_id] += 1
-            chosen.append((item, is_pinned))
+    chosen: list[FeedSlot] = []
+
+    def take(
+        item: ScoredCandidate,
+        *,
+        is_pinned: bool = False,
+        is_exploration: bool = False,
+        selection_probability: float | None = None,
+    ) -> bool:
+        channel_id = item.candidate.channel_id
+        if len(chosen) >= settings.size or per_channel[channel_id] >= settings.per_channel_cap:
+            return False
+        per_channel[channel_id] += 1
+        chosen.append(
+            FeedSlot(
+                item=item,
+                position=len(chosen),
+                explanation="",  # filled in below
+                is_pinned=is_pinned,
+                is_exploration=is_exploration,
+                selection_probability=selection_probability,
+            )
+        )
+        return True
+
+    for item in pinned:
+        take(item, is_pinned=True)
+
+    slots = min(settings.exploration_slots, settings.size - len(chosen))
+    explored: set[str] = set()
+    for item, probability in _explore(rest, channel_ratings, slots, settings, rng):
+        if take(item, is_exploration=True, selection_probability=probability):
+            explored.add(item.candidate.video_id)
+
+    for item in rest:
+        if item.candidate.video_id not in explored:
+            take(item)
 
     return [
-        FeedSlot(
-            item=item,
-            position=position,
-            explanation=explain(item, pinned=is_pinned, videos=videos),
-            is_pinned=is_pinned,
+        replace(
+            slot,
+            explanation=explain(
+                slot.item,
+                pinned=slot.is_pinned,
+                exploration=(
+                    channel_ratings.get(slot.item.candidate.channel_id, ChannelRatings())
+                    if slot.is_exploration
+                    else None
+                ),
+                videos=videos,
+            ),
         )
-        for position, (item, is_pinned) in enumerate(chosen)
+        for slot in chosen
     ]
+
+
+def _explore(
+    ordered: Sequence[ScoredCandidate],
+    channel_ratings: ChannelRatingCounts,
+    slots: int,
+    settings: ComposeSettings,
+    rng: random.Random,
+) -> list[tuple[ScoredCandidate, float]]:
+    """Up to `slots` exploration items from `ordered` (best first), one per channel,
+    each with its estimated selection probability. See the module docstring."""
+    # The best-ranked video of each eligible channel, in `ordered` order.
+    best: dict[str, ScoredCandidate] = {}
+    for item in ordered:
+        channel_id = item.candidate.channel_id
+        counts = channel_ratings.get(channel_id, ChannelRatings())
+        if channel_id not in best and counts.total < EXPLORATION_MAX_RATINGS:
+            best[channel_id] = item
+    if slots <= 0 or not best:
+        return []
+
+    channels = list(best)
+    if len(channels) <= slots:  # every eligible channel gets a slot
+        return [(item, 1.0) for item in best.values()]
+    posteriors = [
+        (counts.good + 1, counts.not_good + 1)
+        for counts in (channel_ratings.get(c, ChannelRatings()) for c in channels)
+    ]
+    draws = max(1, settings.exploration_draws)
+    wins: Counter[str] = Counter()
+    picked: list[str] = []
+    for draw in range(draws):
+        samples = [rng.betavariate(a, b) for a, b in posteriors]
+        top = sorted(range(len(channels)), key=lambda i: samples[i], reverse=True)[:slots]
+        winners = [channels[i] for i in top]
+        wins.update(winners)
+        if draw == 0:
+            picked = winners
+    return [(best[channel_id], wins[channel_id] / draws) for channel_id in picked]
 
 
 def referenced_video_ids(scored: Iterable[ScoredCandidate]) -> set[str]:
@@ -116,16 +226,31 @@ def referenced_video_ids(scored: Iterable[ScoredCandidate]) -> set[str]:
 
 
 def explain(
-    item: ScoredCandidate, *, pinned: bool = False, videos: VideoRefs = NO_VIDEO_REFS
+    item: ScoredCandidate,
+    *,
+    pinned: bool = False,
+    exploration: ChannelRatings | None = None,
+    videos: VideoRefs = NO_VIDEO_REFS,
 ) -> str:
     """One line on why the item is in the feed: its source, then the largest positive
     term of its score breakdown (if any), e.g. "Related to X (A+) · channel you love".
+    An exploration item (`exploration` holds its channel's rating counts) says so
+    first, e.g. "Exploring: new channel · related to X (A+)".
 
     A term that would only repeat the source (similarity to the very video a related
     video came from) gives way to the next largest one."""
     source, source_video_id = _source_phrase(item, pinned=pinned, videos=videos)
+    if exploration is not None:
+        return f"{_exploration_phrase(exploration)} · {source[:1].lower()}{source[1:]}"
     reason = _reason_phrase(item, videos=videos, skip_video_id=source_video_id)
     return f"{source} · {reason}" if reason else source
+
+
+def _exploration_phrase(counts: ChannelRatings) -> str:
+    if not counts.total:
+        return "Exploring: new channel"
+    plural = "rating" if counts.total == 1 else "ratings"
+    return f"Exploring: channel with {counts.total} {plural}"
 
 
 def _source_phrase(

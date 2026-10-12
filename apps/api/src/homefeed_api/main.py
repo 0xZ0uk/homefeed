@@ -10,7 +10,17 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from homefeed_core import curation, feeds, playback, poller, ratings, videos, watch_events
+from homefeed_core import (
+    curation,
+    feeds,
+    insights,
+    playback,
+    poller,
+    ranking_models,
+    ratings,
+    videos,
+    watch_events,
+)
 from homefeed_core.db import get_session_factory
 from homefeed_core.embeddings import EmbeddingProvider, get_embedding_provider
 from homefeed_core.gateway import (
@@ -21,7 +31,7 @@ from homefeed_core.gateway import (
     create_gateway,
 )
 from homefeed_core.gateway.events import format_timestamp
-from homefeed_core.grades import Grade
+from homefeed_core.grades import GOOD_THRESHOLD, Grade
 
 
 def operation_id(route: APIRoute) -> str:
@@ -546,16 +556,12 @@ def _feed_out(feed: feeds.Feed) -> FeedOut:
         date=feed.date,
         created_at=feed.created_at,
         model_version=feed.model_version,
-        items=[
-            FeedItemOut.model_validate(
-                {
-                    **vars(item),
-                    "breakdown": item.breakdown.to_dict(),
-                }
-            )
-            for item in feed.items
-        ],
+        items=[_feed_item_out(item) for item in feed.items],
     )
+
+
+def _feed_item_out(item: feeds.FeedItem) -> FeedItemOut:
+    return FeedItemOut.model_validate({**vars(item), "breakdown": item.breakdown.to_dict()})
 
 
 FEED_NOT_FOUND: dict[int | str, dict[str, Any]] = {
@@ -595,6 +601,39 @@ def list_feeds(
     ]
 
 
+class DismissInput(BaseModel):
+    reason: str | None = Field(
+        default=None,
+        max_length=feeds.DISMISS_REASON_MAX_LENGTH,
+        description='Why the item was dismissed, e.g. "Not interested"; blank means none',
+    )
+
+
+FEED_ITEM_NOT_FOUND: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorDetail, "description": "No such feed item"}
+}
+FeedItemId = Annotated[int, Path(ge=1, description="Feed item id")]
+
+
+@app.post("/feed-items/{item_id}/dismiss", tags=["feed"], responses=FEED_ITEM_NOT_FOUND)
+def dismiss_feed_item(
+    item_id: FeedItemId, session: SessionDep, body: DismissInput | None = None
+) -> FeedItemOut:
+    """Dismiss a feed item, with an optional reason.
+
+    The video is left out of every feed built afterwards and counts as a weak negative
+    signal. Dismissing again keeps the first `dismissed_at`; a new reason replaces the
+    old one.
+    """
+    try:
+        item = feeds.dismiss_feed_item(session, item_id, body.reason if body else None)
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Feed item not found")
+    return _feed_item_out(item)
+
+
 @app.post("/feed/refresh", tags=["feed"])
 def refresh_feed(poll: FeedPollDep) -> FeedOut:
     """Poll due subscriptions, then build and store a new feed for today.
@@ -602,6 +641,71 @@ def refresh_feed(poll: FeedPollDep) -> FeedOut:
     A failed poll doesn't fail the refresh; the feed is built from stored candidates.
     """
     return _feed_out(feeds.refresh_feed(poll=poll))
+
+
+class TierCountOut(BaseModel):
+    tier: Literal["S", "A", "B", "C", "D", "F"]
+    count: int
+
+
+class ScoreShareOut(BaseModel):
+    """Where shown items' scores came from: shares of the summed absolute size of each
+    kind of score term. They sum to 1."""
+
+    model: float = Field(description="`alpha * model`, the trained model's blended prediction")
+    curation: float = Field(description="`channel` and `topics`: your channel priors and topics")
+    similarity: float = Field(
+        description="Closeness to top- and bottom-tier rated videos (rules-based, learned "
+        "from ratings rather than set by you)"
+    )
+
+
+class WeekInsightsOut(BaseModel):
+    week_start: dt.date = Field(description="Monday of the week (local date)")
+    rated_count: int = Field(description="Videos first rated this week")
+    good_count: int = Field(description="Of those, how many are rated B-- or higher")
+    good_tier_rate: float | None = Field(
+        description="good_count / rated_count; null when nothing was rated"
+    )
+    tier_counts: list[TierCountOut] = Field(
+        description="Ratings of the week per tier, best (S) first"
+    )
+    shown_count: int = Field(
+        description="Distinct videos in the week's feeds (the latest feed of each date)"
+    )
+    shown_rated_count: int = Field(description="Of those, how many have been rated")
+    rating_rate: float | None = Field(
+        description="shown_rated_count / shown_count; null when no feed was built"
+    )
+    feed_count: int = Field(description="Dates in the week with a feed")
+    model_feed_count: int = Field(description="Of those, feeds the trained model contributed to")
+    score_share: ScoreShareOut | None = Field(
+        description="Model vs curation share of the shown items' scores; null when "
+        "nothing was shown"
+    )
+
+
+class WeeklyInsightsOut(BaseModel):
+    good_threshold: Grade = Field(description="The lowest grade counted as good")
+    weeks: list[WeekInsightsOut] = Field(description="Oldest first, ending with this week")
+
+
+@app.get("/insights/weekly", tags=["insights"])
+def get_weekly_insights(
+    session: SessionDep,
+    weeks: Annotated[
+        int, Query(ge=1, le=insights.MAX_WEEKS, description="How many weeks, up to this one")
+    ] = insights.DEFAULT_WEEKS,
+) -> WeeklyInsightsOut:
+    """Whether the feed is working, week by week: the good-tier rate (the success
+    metric), tier distribution, rating rate and model vs curation share."""
+    return WeeklyInsightsOut(
+        good_threshold=GOOD_THRESHOLD,
+        weeks=[
+            WeekInsightsOut.model_validate(week, from_attributes=True)
+            for week in insights.weekly_insights(session, weeks=weeks)
+        ],
+    )
 
 
 class ChapterOut(BaseModel):
@@ -741,3 +845,71 @@ def get_media(
     return StreamingResponse(
         media.body, status_code=media.status, media_type=media.content_type, headers=headers
     )
+
+
+class ModelVersionOut(BaseModel):
+    id: int
+    kind: ranking_models.ModelKind = Field(
+        description="lightgbm once there are enough ratings, else the ridge fallback"
+    )
+    feature_version: int
+    compatible: bool = Field(
+        description="Trained with the current features; only compatible versions can be activated"
+    )
+    spearman: float | None = Field(
+        description="Spearman correlation on the holdout ratings; null when undefined"
+    )
+    mae: float = Field(description="Mean absolute error on the holdout ratings")
+    metrics: dict[str, Any] = Field(description="The full training report")
+    created_at: str = Field(description="When it was trained, ISO 8601 UTC")
+    active: bool = Field(description="Whether it ranks the next feed")
+    activated_at: str | None = Field(description="When it was last activated, ISO 8601 UTC")
+
+
+def _model_version_out(version: ranking_models.ModelVersion) -> ModelVersionOut:
+    return ModelVersionOut(
+        id=version.id,
+        kind=version.kind,
+        feature_version=version.feature_version,
+        compatible=version.compatible,
+        spearman=version.spearman,
+        mae=version.mae,
+        metrics=version.metrics,
+        created_at=version.created_at,
+        active=version.active,
+        activated_at=version.activated_at,
+    )
+
+
+ModelVersionId = Annotated[int, Path(ge=1, description="Model version id")]
+
+
+@app.get("/models", tags=["models"])
+def list_models(session: SessionDep) -> list[ModelVersionOut]:
+    """The stored ranking model versions (the last 10 trained), newest first."""
+    return [_model_version_out(v) for v in ranking_models.list_model_versions(session)]
+
+
+@app.post(
+    "/models/{version_id}/activate",
+    tags=["models"],
+    responses={
+        404: {"model": ErrorDetail, "description": "No such model version"},
+        409: {
+            "model": ErrorDetail,
+            "description": "The version was trained with other features than the current ones",
+        },
+    },
+)
+def activate_model(version_id: ModelVersionId, session: SessionDep) -> ModelVersionOut:
+    """Make a model version the active one, e.g. to roll back to an earlier version.
+
+    The next feed built is ranked with it; feeds already built keep their order.
+    """
+    try:
+        version = ranking_models.activate(session, version_id)
+    except ranking_models.IncompatibleModelError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+    if version is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Model version not found")
+    return _model_version_out(version)

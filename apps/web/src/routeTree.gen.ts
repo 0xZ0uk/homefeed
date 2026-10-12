@@ -11,8 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CurationRouteImport } from './routes/curation'
+import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LogoutRouteImport } from './routes/logout'
+import { Route as ModelsRouteImport } from './routes/models'
 import { Route as WatchEventsRouteImport } from './routes/watch-events'
 import { Route as FeedDateRouteImport } from './routes/feed.$date'
 import { Route as WatchVideoIdRouteImport } from './routes/watch.$videoId'
@@ -29,6 +31,11 @@ const CurationRoute = CurationRouteImport.update({
   path: '/curation',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InsightsRoute = InsightsRouteImport.update({
+  id: '/insights',
+  path: '/insights',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -37,6 +44,11 @@ const LoginRoute = LoginRouteImport.update({
 const LogoutRoute = LogoutRouteImport.update({
   id: '/logout',
   path: '/logout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ModelsRoute = ModelsRouteImport.update({
+  id: '/models',
+  path: '/models',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WatchEventsRoute = WatchEventsRouteImport.update({
@@ -69,8 +81,10 @@ const VideosVideoIdMediaItagRoute = VideosVideoIdMediaItagRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/curation': typeof CurationRoute
+  '/insights': typeof InsightsRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
+  '/models': typeof ModelsRoute
   '/watch-events': typeof WatchEventsRoute
   '/feed/$date': typeof FeedDateRoute
   '/watch/$videoId': typeof WatchVideoIdRoute
@@ -80,8 +94,10 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/curation': typeof CurationRoute
+  '/insights': typeof InsightsRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
+  '/models': typeof ModelsRoute
   '/watch-events': typeof WatchEventsRoute
   '/feed/$date': typeof FeedDateRoute
   '/watch/$videoId': typeof WatchVideoIdRoute
@@ -92,8 +108,10 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/curation': typeof CurationRoute
+  '/insights': typeof InsightsRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
+  '/models': typeof ModelsRoute
   '/watch-events': typeof WatchEventsRoute
   '/feed/$date': typeof FeedDateRoute
   '/watch/$videoId': typeof WatchVideoIdRoute
@@ -105,8 +123,10 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/curation'
+    | '/insights'
     | '/login'
     | '/logout'
+    | '/models'
     | '/watch-events'
     | '/feed/$date'
     | '/watch/$videoId'
@@ -116,8 +136,10 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/curation'
+    | '/insights'
     | '/login'
     | '/logout'
+    | '/models'
     | '/watch-events'
     | '/feed/$date'
     | '/watch/$videoId'
@@ -127,8 +149,10 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/curation'
+    | '/insights'
     | '/login'
     | '/logout'
+    | '/models'
     | '/watch-events'
     | '/feed/$date'
     | '/watch/$videoId'
@@ -139,8 +163,10 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CurationRoute: typeof CurationRoute
+  InsightsRoute: typeof InsightsRoute
   LoginRoute: typeof LoginRoute
   LogoutRoute: typeof LogoutRoute
+  ModelsRoute: typeof ModelsRoute
   WatchEventsRoute: typeof WatchEventsRoute
   FeedDateRoute: typeof FeedDateRoute
   WatchVideoIdRoute: typeof WatchVideoIdRoute
@@ -164,6 +190,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CurationRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/insights': {
+      id: '/insights'
+      path: '/insights'
+      fullPath: '/insights'
+      preLoaderRoute: typeof InsightsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -176,6 +209,13 @@ declare module '@tanstack/react-router' {
       path: '/logout'
       fullPath: '/logout'
       preLoaderRoute: typeof LogoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/models': {
+      id: '/models'
+      path: '/models'
+      fullPath: '/models'
+      preLoaderRoute: typeof ModelsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/watch-events': {
@@ -219,8 +259,10 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CurationRoute: CurationRoute,
+  InsightsRoute: InsightsRoute,
   LoginRoute: LoginRoute,
   LogoutRoute: LogoutRoute,
+  ModelsRoute: ModelsRoute,
   WatchEventsRoute: WatchEventsRoute,
   FeedDateRoute: FeedDateRoute,
   WatchVideoIdRoute: WatchVideoIdRoute,
