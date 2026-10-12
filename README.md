@@ -16,6 +16,10 @@ nub run test   # run tests across packages
 nub run lint   # lint across packages
 ```
 
+## Database
+
+API and worker share one SQLite file (`DATABASE_PATH`), opened through `homefeed_core.db.get_session_factory()`, which applies pending migrations on startup. To change the schema, add the next numbered file to `packages/core/src/homefeed_core/db/migrations/` (e.g. `0002_ratings.sql`); never edit an applied one.
+
 ## Layout
 
 - `apps/api`: FastAPI app (`homefeed_api`), http://localhost:8000 in dev

@@ -1,0 +1,149 @@
+{
+ "request": {
+  "url": "https://www.youtube.com/user/1veritasium/videos",
+  "flat": true,
+  "limit": 1
+ },
+ "response": {
+  "id": "UCHnyfMqiRRG1u-2MsSQLbXA",
+  "channel": "Veritasium",
+  "channel_id": "UCHnyfMqiRRG1u-2MsSQLbXA",
+  "title": "Veritasium - Videos",
+  "availability": "public",
+  "channel_follower_count": 21400000,
+  "description": "An element of truth - videos about science, education, and anything else we find interesting.",
+  "tags": [
+   "science videos",
+   "science",
+   "science education",
+   "science literacy",
+   "veritasium",
+   "misconceptions",
+   "physics",
+   "education",
+   "astronomy",
+   "chemistry",
+   "biology",
+   "teaching",
+   "learning",
+   "math"
+  ],
+  "thumbnails": [
+   {
+    "url": "https://yt3.googleusercontent.com/sDCGwJYqtOxT-odxPiErdlwfq3jlzXh0TsYFXtSSD6rld0Be51ZUNcoE17di2u1OiCjQunbcqA=w1060-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj",
+    "height": 175,
+    "width": 1060,
+    "preference": -10,
+    "id": "0",
+    "resolution": "1060x175"
+   },
+   {
+    "url": "https://yt3.googleusercontent.com/sDCGwJYqtOxT-odxPiErdlwfq3jlzXh0TsYFXtSSD6rld0Be51ZUNcoE17di2u1OiCjQunbcqA=w1138-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj",
+    "height": 188,
+    "width": 1138,
+    "preference": -10,
+    "id": "1",
+    "resolution": "1138x188"
+   },
+   {
+    "url": "https://yt3.googleusercontent.com/sDCGwJYqtOxT-odxPiErdlwfq3jlzXh0TsYFXtSSD6rld0Be51ZUNcoE17di2u1OiCjQunbcqA=w1707-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj",
+    "height": 283,
+    "width": 1707,
+    "preference": -10,
+    "id": "2",
+    "resolution": "1707x283"
+   },
+   {
+    "url": "https://yt3.googleusercontent.com/sDCGwJYqtOxT-odxPiErdlwfq3jlzXh0TsYFXtSSD6rld0Be51ZUNcoE17di2u1OiCjQunbcqA=w2120-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj",
+    "height": 351,
+    "width": 2120,
+    "preference": -10,
+    "id": "3",
+    "resolution": "2120x351"
+   },
+   {
+    "url": "https://yt3.googleusercontent.com/sDCGwJYqtOxT-odxPiErdlwfq3jlzXh0TsYFXtSSD6rld0Be51ZUNcoE17di2u1OiCjQunbcqA=w2276-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj",
+    "height": 377,
+    "width": 2276,
+    "preference": -10,
+    "id": "4",
+    "resolution": "2276x377"
+   },
+   {
+    "url": "https://yt3.googleusercontent.com/sDCGwJYqtOxT-odxPiErdlwfq3jlzXh0TsYFXtSSD6rld0Be51ZUNcoE17di2u1OiCjQunbcqA=w2560-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj",
+    "height": 424,
+    "width": 2560,
+    "preference": -10,
+    "id": "5",
+    "resolution": "2560x424"
+   },
+   {
+    "url": "https://yt3.googleusercontent.com/sDCGwJYqtOxT-odxPiErdlwfq3jlzXh0TsYFXtSSD6rld0Be51ZUNcoE17di2u1OiCjQunbcqA=s0",
+    "id": "banner_uncropped",
+    "preference": -5
+   },
+   {
+    "url": "https://yt3.googleusercontent.com/7vCbvtCqtjQ3YLgsJt7Y952MQV1sBvhllSCSxHP8_sVZdcPCBrITfhkN2RdyCuwPnsByq-1GoA=s900-c-k-c0x00ffffff-no-rj",
+    "height": 900,
+    "width": 900,
+    "id": "7",
+    "resolution": "900x900"
+   },
+   {
+    "url": "https://yt3.googleusercontent.com/7vCbvtCqtjQ3YLgsJt7Y952MQV1sBvhllSCSxHP8_sVZdcPCBrITfhkN2RdyCuwPnsByq-1GoA=s0",
+    "id": "avatar_uncropped",
+    "preference": 1
+   }
+  ],
+  "uploader_id": "@veritasium",
+  "uploader_url": "https://www.youtube.com/@veritasium",
+  "channel_is_verified": true,
+  "modified_date": null,
+  "view_count": null,
+  "playlist_count": null,
+  "uploader": "Veritasium",
+  "channel_url": "https://www.youtube.com/channel/UCHnyfMqiRRG1u-2MsSQLbXA",
+  "_type": "playlist",
+  "entries": [
+   {
+    "title": "How We Trapped Light and Built the Internet",
+    "thumbnails": [
+     {
+      "url": "https://i.ytimg.com/vi/NiCgcUTL9_Q/hq720_custom_2.jpg?sqp=CISltdYG-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLD6lLR_MGZLahs1AZidcHn07C08pw",
+      "height": 202,
+      "width": 360
+     },
+     {
+      "url": "https://i.ytimg.com/vi/NiCgcUTL9_Q/hq720_custom_2.jpg?sqp=CISltdYG-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLBnl1_omWMjoXnpHianb8Xgxn7WMA",
+      "height": 404,
+      "width": 720
+     }
+    ],
+    "duration": 2072,
+    "view_count": 719000,
+    "timestamp": null,
+    "live_status": null,
+    "availability": null,
+    "channel_url": null,
+    "uploader_url": null,
+    "creators": null,
+    "ie_key": "Youtube",
+    "id": "NiCgcUTL9_Q",
+    "_type": "url",
+    "url": "https://www.youtube.com/watch?v=NiCgcUTL9_Q",
+    "__x_forwarded_for_ip": null
+   }
+  ],
+  "extractor_key": "YoutubeTab",
+  "extractor": "youtube:tab",
+  "webpage_url": "https://www.youtube.com/user/1veritasium/videos",
+  "original_url": "https://www.youtube.com/user/1veritasium/videos",
+  "webpage_url_basename": "videos",
+  "webpage_url_domain": "youtube.com",
+  "release_year": null,
+  "requested_entries": [
+   1
+  ],
+  "epoch": 1791841055
+ }
+}

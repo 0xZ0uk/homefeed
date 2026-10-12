@@ -1,0 +1,8 @@
+{
+ "request": {
+  "url": "https://www.youtube.com/watch?v=xxxxxxxxxxx",
+  "flat": false,
+  "limit": null
+ },
+ "error": "[youtube] xxxxxxxxxxx: This video is unavailable"
+}

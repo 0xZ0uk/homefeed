@@ -7,7 +7,14 @@ line-length = 100
 src = ["apps/*/src", "packages/*/src"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+select = ["E", "F", "I", "UP", "B", "TID251"]
+
+# PLAN.md ground rule 1: only the Gateway talks to YouTube.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"yt_dlp".msg = "Only homefeed_core.gateway may use yt-dlp; go through the Gateway."
+
+[tool.ruff.lint.per-file-ignores]
+"packages/core/src/homefeed_core/gateway/**" = ["TID251"]
 
 [tool.pyright]
 pythonVersion = "3.12"

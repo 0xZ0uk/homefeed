@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+ <link rel="self" href="http://www.youtube.com/feeds/videos.xml?channel_id=UC4QobU6STFB0P71PMvOGN5A"/>
+ <id>yt:channel:4QobU6STFB0P71PMvOGN5A</id>
+ <yt:channelId>4QobU6STFB0P71PMvOGN5A</yt:channelId>
+ <title>jawed</title>
+ <link rel="alternate" href="https://www.youtube.com/channel/UC4QobU6STFB0P71PMvOGN5A"/>
+ <author>
+  <name>jawed</name>
+  <uri>https://www.youtube.com/channel/UC4QobU6STFB0P71PMvOGN5A</uri>
+ </author>
+ <published>2005-04-24T03:20:54+00:00</published>
+ <entry>
+  <id>yt:video:jNQXAC9IVRw</id>
+  <yt:videoId>jNQXAC9IVRw</yt:videoId>
+  <yt:channelId>UC4QobU6STFB0P71PMvOGN5A</yt:channelId>
+  <title>Me at the zoo</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=jNQXAC9IVRw"/>
+  <author>
+   <name>jawed</name>
+   <uri>https://www.youtube.com/channel/UC4QobU6STFB0P71PMvOGN5A</uri>
+  </author>
+  <published>2005-04-24T03:31:52+00:00</published>
+  <updated>2026-10-12T13:10:24+00:00</updated>
+  <media:group>
+   <media:title>Me at the zoo</media:title>
+   <media:content url="https://www.youtube.com/v/jNQXAC9IVRw?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i3.ytimg.com/vi/jNQXAC9IVRw/hqdefault.jpg" width="480" height="360"/>
+   <media:description>Microplastics are accumulating in human brains at an alarming rate
+https://www.youtube.com/watch?v=0PT5c1z3LL8
+
+“Nanoplastics and Human Health” with Matthew J Campen, PhD, MSPH
+https://www.youtube.com/watch?v=RRBN_4L09Mg
+
+00:00 Intro
+00:05 The cool thing
+00:17 End</media:description>
+   <media:community>
+    <media:starRating count="20067072" average="5.00" min="1" max="5"/>
+    <media:statistics views="443531576"/>
+   </media:community>
+  </media:group>
+ </entry>
+</feed>
