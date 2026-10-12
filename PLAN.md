@@ -23,7 +23,7 @@ Success metric: the **weekly good-tier rate**, meaning the share of rated videos
 2. **Prefer yt-dlp for everything first** (metadata, streams, captions, related videos, search via `ytsearchN:`, channel tabs). Add a direct InnerTube client only where yt-dlp can't do the job, and keep it behind the Gateway interface.
 3. **Deep modules, small interfaces.** Each module in section 5 has a narrow public interface. Tests target that interface only.
 4. **Pure where possible.** The Ranker and Feed Composer are pure functions of their inputs (plus an injected random generator). No I/O inside them.
-5. **Check current docs** for TanStack Start, Turborepo, uv, yt-dlp, and sqlite-vec before scaffolding; their CLIs and APIs change. Pin versions in lockfiles.
+5. **Check current docs** for TanStack Start, Turborepo, nub, uv, yt-dlp, and sqlite-vec before scaffolding; their CLIs and APIs change. Pin versions in lockfiles. The JS package manager is **nub** (`nub install`, `nub add`, `nub run`); there is no pnpm. Workspace dependencies use `"*"` versions, as in the create-turbo template.
 6. **Ask before deviating** from a decision in this file. Record any agreed change back into this file.
 
 ## 3. Rating scale
@@ -44,7 +44,7 @@ Rating UX: when a video ends or the player is closed, show the tier buttons (one
 
 ### Stack
 
-- **Monorepo:** Turborepo + pnpm workspaces for orchestration; **uv workspace** for Python.
+- **Monorepo:** Turborepo + nub workspaces (the `workspaces` field in the root `package.json`) for orchestration; **uv workspace** for Python.
 - **Backend:** Python 3.12+, FastAPI (API process), APScheduler (worker process).
 - **Storage:** SQLite (WAL mode) + sqlite-vec for embedding similarity. One database file shared by API and worker.
 - **YouTube:** yt-dlp as a library; channel RSS feeds (`https://www.youtube.com/feeds/videos.xml?channel_id=…`) for subscriptions.
@@ -71,7 +71,7 @@ packages/
 pyproject.toml    # uv workspace root
 uv.lock
 turbo.json
-pnpm-workspace.yaml
+nub.lock
 docker-compose.yml
 .env.example
 PLAN.md
@@ -81,7 +81,7 @@ Python packages: `homefeed_core` (in `packages/core`), `homefeed_api` (in `apps/
 
 ## 5. Milestone 0: monorepo setup
 
-Goal: `pnpm dev` starts web, api, and worker; `pnpm test` and `pnpm lint` run across all packages; the frontend imports a generated, typed API client.
+Goal: `nub run dev` starts web, api, and worker; `nub run test` and `nub run lint` run across all packages; the frontend imports a generated, typed API client.
 
 ### Tasks
 
@@ -107,7 +107,7 @@ Goal: `pnpm dev` starts web, api, and worker; `pnpm test` and `pnpm lint` run ac
        "lint": "uv run ruff check . && uv run ruff format --check . && uv run pyright",
        "openapi": "uv run python -m homefeed_api.export_openapi"
      },
-     "dependencies": { "@homefeed/core": "workspace:*" }
+     "dependencies": { "@homefeed/core": "*" }
    }
    ```
 
@@ -135,8 +135,8 @@ Goal: `pnpm dev` starts web, api, and worker; `pnpm test` and `pnpm lint` run ac
 
 ### Acceptance
 
-- `pnpm dev` runs all three processes; editing a Pydantic response model and re-running `generate` produces a TypeScript error where the frontend uses the changed field.
-- `pnpm test` and `pnpm lint` pass from the root.
+- `nub run dev` runs all three processes; editing a Pydantic response model and re-running `generate` produces a TypeScript error where the frontend uses the changed field.
+- `nub run test` and `nub run lint` pass from the root.
 
 ## 6. Architecture
 
