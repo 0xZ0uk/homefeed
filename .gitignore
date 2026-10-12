@@ -18,15 +18,11 @@ coverage
 # Turbo
 .turbo
 
-# Vercel
-.vercel
-
 # Build Outputs
-.next/
+.output/
 out/
 build
 dist
-
 
 # Debug
 npm-debug.log*
@@ -36,3 +32,14 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# App data
+data/
+*.sqlite*
