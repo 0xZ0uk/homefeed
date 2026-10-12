@@ -21,6 +21,7 @@ nub run lint   # lint across packages
 - `apps/api`: FastAPI app (`homefeed_api`), http://localhost:8000 in dev
 - `apps/worker`: APScheduler worker (`homefeed_worker`)
 - `apps/web`: TanStack Start frontend (`@homefeed/web`), served on http://localhost:3000 in dev
+- `packages/api-client`: TypeScript client generated from the API's OpenAPI schema (`@homefeed/api-client`)
 - `packages/core`: Python domain logic (`homefeed_core`)
 - `packages/typescript-config`: shared `tsconfig.json` bases
 - `packages/eslint-config`: shared ESLint configurations

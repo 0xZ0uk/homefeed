@@ -1,0 +1,16 @@
+{
+  "name": "@homefeed/api-client",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "openapi-ts -i ../../apps/api/openapi.json -o src/generated"
+  },
+  "devDependencies": {
+    "@homefeed/api": "*",
+    "@hey-api/openapi-ts": "0.99.0",
+    "typescript": "6.0.3"
+  }
+}

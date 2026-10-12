@@ -112,19 +112,21 @@ Goal: `nub run dev` starts web, api, and worker; `nub run test` and `nub run lin
    ```
 
    Same pattern for `@homefeed/worker` (`dev`: `uv run python -m homefeed_worker`) and `@homefeed/core` (`test`, `lint` only).
-5. **Generated API client.** `packages/api-client` runs `@hey-api/openapi-ts` (or `openapi-typescript`) on `apps/api/openapi.json` and outputs to `src/generated/`. It lists `@homefeed/api` as a devDependency so Turbo knows the edge. `apps/web` depends on `@homefeed/api-client`.
-6. **turbo.json:**
+5. **Generated API client.** `packages/api-client` runs `@hey-api/openapi-ts` (or `openapi-typescript`) on `apps/api/openapi.json` and outputs to `src/generated/`. It lists `@homefeed/api` as a devDependency so Turbo knows the edge. `apps/web` depends on `@homefeed/api-client` Both `openapi.json` and `src/generated/` are gitignored build outputs. FastAPI uses the handler name as the operation id, so the client exposes e.g. `health()`. `api-client` pins its own TypeScript 6 because openapi-ts uses the TypeScript compiler API, which TypeScript 7 doesn't provide.
+6. **turbo.json:** (as built; inputs outside a package use `$TURBO_ROOT$`, and `API_URL` is declared because Turbo runs in strict env mode)
 
    ```json
    {
-     "$schema": "https://turborepo.com/schema.json",
+     "$schema": "https://turborepo.dev/schema.json",
+     "globalDependencies": ["pyproject.toml", "uv.lock"],
      "tasks": {
-       "openapi": { "inputs": ["src/**", "../../packages/core/src/**"], "outputs": ["openapi.json"] },
+       "openapi": { "inputs": ["src/**", "$TURBO_ROOT$/packages/core/src/**"], "outputs": ["openapi.json"] },
        "generate": { "dependsOn": ["@homefeed/api#openapi"], "outputs": ["src/generated/**"] },
-       "build": { "dependsOn": ["^build", "^generate"], "outputs": [".output/**", "dist/**"] },
-       "dev": { "dependsOn": ["^generate"], "persistent": true, "cache": false },
+       "build": { "dependsOn": ["^build", "^generate"], "outputs": [".output/**", "dist/**"], "env": ["API_URL"] },
+       "dev": { "dependsOn": ["^generate"], "env": ["API_URL"], "persistent": true, "cache": false },
        "test": { "dependsOn": ["^generate"] },
-       "lint": { "dependsOn": ["^generate"] }
+       "lint": { "dependsOn": ["^generate"] },
+       "check-types": { "dependsOn": ["^generate"] }
      }
    }
    ```

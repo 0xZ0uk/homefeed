@@ -3,21 +3,34 @@
   "ui": "tui",
   "globalDependencies": ["pyproject.toml", "uv.lock"],
   "tasks": {
-    "build": {
-      "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".output/**", "dist/**"]
+    "openapi": {
+      "inputs": ["src/**", "$TURBO_ROOT$/packages/core/src/**"],
+      "outputs": ["openapi.json"]
     },
-    "test": {},
+    "generate": {
+      "dependsOn": ["@homefeed/api#openapi"],
+      "outputs": ["src/generated/**"]
+    },
+    "build": {
+      "dependsOn": ["^build", "^generate"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": [".output/**", "dist/**"],
+      "env": ["API_URL"]
+    },
+    "test": {
+      "dependsOn": ["^generate"]
+    },
     "lint": {
-      "dependsOn": ["^lint"]
+      "dependsOn": ["^generate"]
     },
     "check-types": {
-      "dependsOn": ["^check-types"]
+      "dependsOn": ["^generate"]
     },
     "dev": {
-      "cache": false,
-      "persistent": true
+      "dependsOn": ["^generate"],
+      "env": ["API_URL"],
+      "persistent": true,
+      "cache": false
     }
   }
 }

@@ -13,6 +13,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@homefeed/api-client": "*",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-devtools": "0.10.13",
     "@tanstack/react-query": "5.104.2",
