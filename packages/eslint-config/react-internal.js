@@ -1,9 +1,12 @@
+import { createRequire } from "node:module";
 import pluginReactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 import { config as baseConfig } from "./base.js";
 
+const require = createRequire(import.meta.url);
+
 /**
- * A custom ESLint configuration for libraries that use React.
+ * A custom ESLint configuration for libraries and apps that use React.
  *
  * @type {import("eslint").Linter.Config[]} */
 export const config = [
@@ -13,6 +16,17 @@ export const config = [
       globals: {
         ...globals.serviceworker,
         ...globals.browser,
+      },
+    },
+  },
+  {
+    // Babel 8's TypeScript preset no longer enables JSX for .tsx files on its own.
+    files: ["**/*.{jsx,tsx}"],
+    languageOptions: {
+      parserOptions: {
+        babelOptions: {
+          plugins: [require.resolve("@babel/plugin-syntax-jsx")],
+        },
       },
     },
   },

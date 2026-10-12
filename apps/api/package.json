@@ -1,0 +1,13 @@
+{
+  "name": "@homefeed/api",
+  "private": true,
+  "scripts": {
+    "dev": "uv run fastapi dev src/homefeed_api/main.py --port 8000",
+    "test": "uv run pytest",
+    "lint": "uv run ruff check . && uv run ruff format --check . && uv run pyright",
+    "openapi": "uv run python -m homefeed_api.export_openapi"
+  },
+  "dependencies": {
+    "@homefeed/core": "*"
+  }
+}

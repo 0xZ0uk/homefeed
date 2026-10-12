@@ -6,8 +6,11 @@ A self-hosted, single-user YouTube client with a finite daily home feed ranked b
 
 The JS package manager is nub; Python packages are managed with [uv](https://docs.astral.sh/uv/). Turborepo orchestrates both.
 
+Copy `.env.example` to `.env` and adjust.
+
 ```sh
 nub install
+uv sync --all-packages
 nub run dev    # start all apps
 nub run test   # run tests across packages
 nub run lint   # lint across packages
@@ -15,5 +18,9 @@ nub run lint   # lint across packages
 
 ## Layout
 
+- `apps/api`: FastAPI app (`homefeed_api`), http://localhost:8000 in dev
+- `apps/worker`: APScheduler worker (`homefeed_worker`)
+- `apps/web`: TanStack Start frontend (`@homefeed/web`), served on http://localhost:3000 in dev
+- `packages/core`: Python domain logic (`homefeed_core`)
 - `packages/typescript-config`: shared `tsconfig.json` bases
 - `packages/eslint-config`: shared ESLint configurations

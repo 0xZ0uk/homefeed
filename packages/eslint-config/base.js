@@ -10,6 +10,10 @@ import onlyWarn from "eslint-plugin-only-warn";
  * @type {import("eslint").Linter.Config[]}
  * */
 export const config = [
+  {
+    // ESLint only lints *.js/*.mjs/*.cjs by default; opt TypeScript and JSX in.
+    files: ["**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}"],
+  },
   js.configs.recommended,
   eslintConfigPrettier,
   {
@@ -27,6 +31,16 @@ export const config = [
     },
     rules: {
       "turbo/no-undeclared-env-vars": "warn",
+    },
+  },
+  {
+    // The Babel parser's scope analysis doesn't see type-only names or JSX
+    // references, so these rules misfire on TypeScript. The compiler covers
+    // them instead (`strict`, plus `noUnusedLocals`/`noUnusedParameters`).
+    files: ["**/*.{ts,mts,cts,tsx}"],
+    rules: {
+      "no-undef": "off",
+      "no-unused-vars": "off",
     },
   },
   {

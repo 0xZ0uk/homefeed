@@ -1,0 +1,12 @@
+{
+  "name": "@homefeed/worker",
+  "private": true,
+  "scripts": {
+    "dev": "uv run python -m homefeed_worker",
+    "test": "uv run pytest",
+    "lint": "uv run ruff check . && uv run ruff format --check . && uv run pyright"
+  },
+  "dependencies": {
+    "@homefeed/core": "*"
+  }
+}
