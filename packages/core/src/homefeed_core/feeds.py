@@ -2,7 +2,8 @@
 
 `build_feed` gathers recent candidates, curation and the user's history from the
 database, runs the pure ranker and composer, and stores the result as a new feed for
-the date. `refresh_feed` polls subscriptions first; the worker runs it daily at
+the date. `refresh_feed` polls subscriptions first (and, in the worker, enriches the
+candidates: see homefeed_core.enricher); the worker runs it daily at
 `FEED_REFRESH_TIME` and `POST /feed/refresh` can run it on demand. `get_feed` and
 `list_feeds` read feeds back with their items joined to video and channel info.
 
@@ -20,7 +21,7 @@ import json
 import logging
 import random
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -28,19 +29,31 @@ from typing import Any
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from homefeed_core import curation as curation_prefs
 from homefeed_core import poller, watch_events
 from homefeed_core.candidates import SUBSCRIPTION, list_candidates
-from homefeed_core.composer import ComposeSettings, FeedSlot, compose
+from homefeed_core.composer import (
+    ComposeSettings,
+    FeedSlot,
+    VideoRef,
+    compose,
+    referenced_video_ids,
+)
 from homefeed_core.config import Settings, get_settings
 from homefeed_core.db import get_session_factory
+from homefeed_core.embeddings import get_embeddings
+from homefeed_core.grades import is_bottom_tier, is_top_tier
 from homefeed_core.ranker import (
     ChannelCuration,
     DurationBounds,
     History,
+    KeywordMutes,
     RankCandidate,
+    RatedTiers,
     ScoreBreakdown,
     rank,
 )
+from homefeed_core.ratings import list_ratings
 
 logger = logging.getLogger(__name__)
 
@@ -99,13 +112,15 @@ def refresh_feed(
     *,
     sessions: sessionmaker[Session] | None = None,
     poll: Callable[[], object] | None = poller.poll_due_channels,
+    enrich: Callable[[], object] | None = None,
     settings: Settings | None = None,
     rng: random.Random | None = None,
     now: datetime | None = None,
 ) -> Feed:
-    """Poll due subscriptions (unless `poll` is None), then build today's feed.
+    """Poll due subscriptions (unless `poll` is None), enrich candidates (if `enrich` is
+    given), then build today's feed.
 
-    A failing poll is logged and the feed is built from the candidates already stored.
+    A failing poll or enrichment is logged and the feed is built from what is stored.
     """
     sessions = sessions or get_session_factory()
     if poll is not None:
@@ -113,6 +128,11 @@ def refresh_feed(
             poll()
         except Exception:
             logger.exception("Polling before the feed build failed; using stored candidates")
+    if enrich is not None:
+        try:
+            enrich()
+        except Exception:
+            logger.exception("Enriching before the feed build failed; using stored features")
     with sessions.begin() as session:
         return build_feed(session, settings=settings, rng=rng, now=now)
 
@@ -134,6 +154,7 @@ def build_feed(
     pool = load_rank_candidates(session, since=now - timedelta(days=settings.feed_candidate_days))
     # Uploads of channels unsubscribed since they were polled no longer belong.
     pool = [c for c in pool if c.source != SUBSCRIPTION or c.channel_id in curation]
+    topics = curation_prefs.topic_vectors(session, now=now)
     scored = rank(
         pool,
         curation=curation,
@@ -141,9 +162,17 @@ def build_feed(
         bounds=DurationBounds(
             settings.feed_min_duration_seconds, settings.feed_max_duration_seconds
         ),
+        keyword_mutes=KeywordMutes(curation_prefs.muted_keywords(session)),
+        topics=topics,
+        embeddings=get_embeddings(session, [c.video_id for c in pool]),
+        rated_tiers=load_rated_tiers(session),
     )
     slots = compose(
-        scored, curation, ComposeSettings(size=settings.feed_size), rng or random.Random()
+        scored,
+        curation,
+        ComposeSettings(size=settings.feed_size),
+        rng or random.Random(),
+        videos=load_video_refs(session, referenced_video_ids(scored)),
     )
     feed_id = _store(session, feed_date, slots)
     feed = _get_feed_by_id(session, feed_id)
@@ -239,6 +268,41 @@ def load_history(session: Session) -> History:
     )
 
 
+def load_rated_tiers(session: Session) -> RatedTiers:
+    """Embeddings of the top-tier and bottom-tier rated videos (those enriched)."""
+    ratings = list_ratings(session)
+    embeddings = get_embeddings(session, (rating.video_id for rating in ratings))
+    return RatedTiers(
+        top={
+            r.video_id: embeddings[r.video_id]
+            for r in ratings
+            if is_top_tier(r.grade) and r.video_id in embeddings
+        },
+        bottom={
+            r.video_id: embeddings[r.video_id]
+            for r in ratings
+            if is_bottom_tier(r.grade) and r.video_id in embeddings
+        },
+    )
+
+
+def load_video_refs(session: Session, video_ids: Collection[str]) -> dict[str, VideoRef]:
+    """Titles and grades (if rated) of stored videos, for explanations."""
+    if not video_ids:
+        return {}
+    rows = session.execute(
+        text(
+            """
+            SELECT v.id, v.title, r.grade
+            FROM videos AS v LEFT JOIN ratings AS r ON r.video_id = v.id
+            WHERE v.id IN :ids
+            """
+        ).bindparams(bindparam("ids", expanding=True)),
+        {"ids": list(video_ids)},
+    )
+    return {video_id: VideoRef(title, grade) for video_id, title, grade in rows}
+
+
 def load_rank_candidates(session: Session, *, since: datetime | None = None) -> list[RankCandidate]:
     """Candidates first seen at or after `since`, with their video metadata."""
     pool = list_candidates(session, since=since)
@@ -249,8 +313,8 @@ def load_rank_candidates(session: Session, *, since: datetime | None = None) -> 
         for row in session.execute(
             text(
                 """
-                SELECT id, channel_id, title, duration_seconds, live_status, is_short,
-                       published_at
+                SELECT id, channel_id, title, description, duration_seconds, live_status,
+                       is_short, published_at
                 FROM videos WHERE id IN :ids
                 """
             ).bindparams(bindparam("ids", expanding=True)),
@@ -259,7 +323,7 @@ def load_rank_candidates(session: Session, *, since: datetime | None = None) -> 
     }
     result: list[RankCandidate] = []
     for candidate in pool:
-        _, channel_id, title, duration, live_status, is_short, published_at = videos[
+        _, channel_id, title, description, duration, live_status, is_short, published_at = videos[
             candidate.video_id
         ]
         result.append(
@@ -269,6 +333,7 @@ def load_rank_candidates(session: Session, *, since: datetime | None = None) -> 
                 source=candidate.source,
                 source_detail=candidate.source_detail,
                 title=title,
+                description=description,
                 duration_seconds=duration,
                 live_status=live_status,
                 is_short=bool(is_short),
@@ -351,15 +416,9 @@ def _get_feed_by_id(session: Session, feed_id: int) -> Feed | None:
 
 
 def _item(row: Sequence[Any]) -> FeedItem:
-    breakdown = json.loads(row[16])
     return FeedItem(
         *row[:16],
-        breakdown=ScoreBreakdown(
-            model=breakdown["model"],
-            alpha=breakdown["alpha"],
-            channel=breakdown["channel"],
-            topics=breakdown["topics"],
-        ),
+        breakdown=ScoreBreakdown.from_dict(json.loads(row[16])),
         explanation=row[17],
         is_pinned=bool(row[18]),
         is_exploration=bool(row[19]),

@@ -16,6 +16,7 @@ from homefeed_core.grades import (
     is_bottom_tier,
     is_good,
     is_top_tier,
+    nearest_grade,
 )
 
 EXPECTED_ORDER = [
@@ -76,3 +77,15 @@ def test_threshold_boundaries() -> None:
     assert not is_good("C++") and is_good("B--")
     assert not is_top_tier("B++") and is_top_tier("A--")
     assert is_bottom_tier("D++") and not is_bottom_tier("C--")
+
+
+@pytest.mark.parametrize("grade", GRADES)
+def test_nearest_grade_inverts_grade_value(grade: Grade) -> None:
+    assert nearest_grade(grade_value(grade)) == grade
+
+
+def test_nearest_grade_rounds_and_clamps() -> None:
+    assert nearest_grade(0.0) == "C++"  # between C++ and B--, index 14.5 rounds to even
+    assert nearest_grade(grade_value("B+") + 0.01) == "B+"
+    assert nearest_grade(-5.0) == "F--"
+    assert nearest_grade(5.0) == "S++"

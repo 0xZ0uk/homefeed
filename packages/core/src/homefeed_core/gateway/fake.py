@@ -3,6 +3,7 @@
 gateway = FakeGateway()
 channel = make_channel("UC" + "a" * 22, title="Woodworking", handle="@wood")
 gateway.add_channel(channel, [make_video("aaaaaaaaaaa", channel=channel)])
+gateway.add_related("aaaaaaaaaaa", [make_video("ccccccccccc", channel=channel)])
 gateway.fail("get_video", "bbbbbbbbbbb", UnavailableError("removed"))
 
 gateway.resolve_url("https://www.youtube.com/@wood")  # -> ResolvedChannel(channel)
@@ -18,13 +19,16 @@ from typing import Any
 
 from homefeed_core.gateway.dash import DashRanges, probe_dash_ranges
 from homefeed_core.gateway.errors import GatewayError, RangeNotSatisfiableError, UnavailableError
-from homefeed_core.gateway.interface import DEFAULT_UPLOADS_LIMIT
+from homefeed_core.gateway.interface import DEFAULT_RELATED_LIMIT, DEFAULT_UPLOADS_LIMIT
 from homefeed_core.gateway.media import MediaStream, check_range
 from homefeed_core.gateway.models import (
     ByteRange,
+    Captions,
+    CaptionSegment,
     Channel,
     ChannelUploads,
     Format,
+    RelatedVideo,
     ResolvedChannel,
     ResolvedUrl,
     UploadSummary,
@@ -39,8 +43,10 @@ class FakeGateway:
     def __init__(self) -> None:
         self.videos: dict[str, Video] = {}
         self.formats: dict[str, list[Format]] = {}
+        self.captions: dict[str, Captions] = {}
         self.channels: dict[str, Channel] = {}
         self.uploads: dict[str, list[UploadSummary]] = {}
+        self.related: dict[str, list[RelatedVideo]] = {}
         self.urls: dict[str, ResolvedUrl] = {}
         self.failures: dict[tuple[str, str], GatewayError] = {}
         self.media: dict[str, bytes] = {}
@@ -53,6 +59,17 @@ class FakeGateway:
         self.videos[video.id] = video
         if formats is not None:
             self.formats[video.id] = list(formats)
+
+    def add_captions(self, captions: Captions) -> None:
+        """Serve `captions` for its video (add the video too); other videos have none."""
+        self.captions[captions.video_id] = captions
+
+    def add_related(self, video_id: str, videos: Iterable[Video]) -> None:
+        """Make `videos` (added too) the related list of `video_id`, which must be added."""
+        self.related[video_id] = []
+        for video in videos:
+            self.add_video(video)
+            self.related[video_id].append(_related(video))
 
     def add_channel(self, channel: Channel, videos: Iterable[Video] = ()) -> None:
         """Add a channel whose uploads are `videos`, newest first (and add the videos)."""
@@ -87,6 +104,20 @@ class FakeGateway:
         if video_id not in self.videos:
             raise UnavailableError(f"Video unavailable: {video_id}")
         return list(self.formats.get(video_id, []))
+
+    def get_captions(self, video_id: str) -> Captions | None:
+        self._call("get_captions", video_id)
+        if video_id not in self.videos:
+            raise UnavailableError(f"Video unavailable: {video_id}")
+        return self.captions.get(video_id)
+
+    def get_related(
+        self, video_id: str, *, limit: int = DEFAULT_RELATED_LIMIT
+    ) -> list[RelatedVideo]:
+        self._call("get_related", video_id)
+        if video_id not in self.videos:
+            raise UnavailableError(f"Video unavailable: {video_id}")
+        return self.related.get(video_id, [])[:limit]
 
     def get_channel_uploads(
         self, channel_id: str, *, limit: int = DEFAULT_UPLOADS_LIMIT
@@ -171,10 +202,40 @@ def make_format(itag: str = "140", **fields: Any) -> Format:
     return Format(itag=itag, **(defaults | fields))
 
 
+def make_captions(
+    video_id: str = "dQw4w9WgXcQ",
+    lines: Iterable[str] = ("Hello and welcome.",),
+    *,
+    seconds_per_line: float = 5.0,
+    **fields: Any,
+) -> Captions:
+    """Captions with one segment per line, `seconds_per_line` apart."""
+    segments = tuple(
+        CaptionSegment(i * seconds_per_line, (i + 1) * seconds_per_line, line)
+        for i, line in enumerate(lines)
+    )
+    defaults: dict[str, Any] = {"language": "en", "is_automatic": False}
+    return Captions(video_id=video_id, segments=segments, **(defaults | fields))
+
+
 def _summary(video: Video) -> UploadSummary:
     return UploadSummary(
         id=video.id,
         title=video.title,
+        duration_seconds=video.duration_seconds,
+        view_count=video.view_count,
+        thumbnail_url=video.thumbnail_url,
+        live_status=video.live_status,
+    )
+
+
+def _related(video: Video) -> RelatedVideo:
+    return RelatedVideo(
+        id=video.id,
+        title=video.title,
+        channel_id=video.channel_id,
+        channel_title=video.channel_title,
+        channel_handle=video.channel_handle,
         duration_seconds=video.duration_seconds,
         view_count=video.view_count,
         thumbnail_url=video.thumbnail_url,

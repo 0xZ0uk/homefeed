@@ -55,3 +55,10 @@ def is_top_tier(grade: Grade) -> bool:
 
 def is_bottom_tier(grade: Grade) -> bool:
     return grade_index(grade) <= _INDEX[BOTTOM_TIER_THRESHOLD]
+
+
+def nearest_grade(value: float) -> Grade:
+    """The grade whose value is closest to `value` (clamped to [-1, 1]), e.g. to show a
+    predicted rating value as a grade."""
+    clamped = min(1.0, max(-1.0, value))
+    return GRADES[round((clamped + 1) * (len(GRADES) - 1) / 2)]

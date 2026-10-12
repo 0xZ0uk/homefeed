@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from homefeed_core import curation, feeds, playback, poller, ratings, videos, watch_events
 from homefeed_core.db import get_session_factory
+from homefeed_core.embeddings import EmbeddingProvider, get_embedding_provider
 from homefeed_core.gateway import (
     Gateway,
     GatewayError,
@@ -61,6 +62,15 @@ def get_playback() -> playback.Playback:
     return playback.Playback(get_gateway())
 
 
+def get_embedder() -> EmbeddingProvider:
+    """The process-wide embedding provider, for topic descriptions.
+
+    The model loads on first use, so the API only loads it once a topic is saved. Tests
+    override this dependency with a `StubEmbeddingProvider`.
+    """
+    return get_embedding_provider()
+
+
 def get_feed_poll() -> Callable[[], object] | None:
     """What `POST /feed/refresh` runs to poll subscriptions before building the feed.
 
@@ -72,6 +82,7 @@ def get_feed_poll() -> Callable[[], object] | None:
 SessionDep = Annotated[Session, Depends(get_session)]
 GatewayDep = Annotated[Gateway, Depends(get_gateway)]
 PlaybackDep = Annotated[playback.Playback, Depends(get_playback)]
+EmbedderDep = Annotated[EmbeddingProvider, Depends(get_embedder)]
 FeedPollDep = Annotated[Callable[[], object] | None, Depends(get_feed_poll)]
 VideoId = Annotated[str, Path(pattern=r"^[A-Za-z0-9_-]{11}$", description="YouTube video id")]
 FormatId = Annotated[
@@ -240,14 +251,251 @@ def unsubscribe_channel(channel_id: ChannelId, session: SessionDep) -> Response:
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+class KeywordMuteInput(BaseModel):
+    keyword: str = Field(
+        min_length=1,
+        max_length=curation.KEYWORD_MAX_LENGTH,
+        description="A word or phrase; videos whose title or description contain it "
+        "(ignoring case) are left out of the feed",
+    )
+
+
+KEYWORD_MUTE_NOT_FOUND: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorDetail, "description": "No such keyword mute"}
+}
+KeywordMuteId = Annotated[int, Path(ge=1, description="Keyword mute id")]
+
+
+@app.get("/keyword-mutes", tags=["keyword-mutes"])
+def list_keyword_mutes(session: SessionDep) -> list[curation.KeywordMute]:
+    """All muted keywords, alphabetically."""
+    return curation.list_keyword_mutes(session)
+
+
+@app.post(
+    "/keyword-mutes",
+    tags=["keyword-mutes"],
+    status_code=status.HTTP_201_CREATED,
+    responses={200: {"model": curation.KeywordMute, "description": "Already muted"}},
+)
+def add_keyword_mute(
+    body: KeywordMuteInput, session: SessionDep, response: Response
+) -> curation.KeywordMute:
+    """Mute a keyword.
+
+    Muting a keyword again (in any case) returns 200 with the existing mute. A blank
+    keyword is a 422 with a string `detail`.
+    """
+    try:
+        mute, created = curation.add_keyword_mute(session, body.keyword)
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return mute
+
+
+@app.patch(
+    "/keyword-mutes/{mute_id}",
+    tags=["keyword-mutes"],
+    responses={
+        **KEYWORD_MUTE_NOT_FOUND,
+        409: {"model": ErrorDetail, "description": "Another mute has this keyword"},
+    },
+)
+def update_keyword_mute(
+    mute_id: KeywordMuteId, body: KeywordMuteInput, session: SessionDep
+) -> curation.KeywordMute:
+    """Change a muted keyword."""
+    try:
+        mute = curation.update_keyword_mute(session, mute_id, body.keyword)
+    except curation.DuplicateKeywordMuteError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    if mute is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Keyword mute not found")
+    return mute
+
+
+@app.delete(
+    "/keyword-mutes/{mute_id}",
+    tags=["keyword-mutes"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=KEYWORD_MUTE_NOT_FOUND,
+)
+def delete_keyword_mute(mute_id: KeywordMuteId, session: SessionDep) -> Response:
+    """Unmute a keyword."""
+    if not curation.delete_keyword_mute(session, mute_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Keyword mute not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class TierSimilarityOut(BaseModel):
+    max: float = Field(description="Cosine similarity to the most similar video of the set")
+    mean: float = Field(description="Mean cosine similarity to the videos of the set")
+    nearest_video_id: str = Field(description="The video `max` is the similarity to")
+
+
+class SimilarityFeaturesOut(BaseModel):
+    """Similarity to the videos rated top tier (A-- and up) and bottom tier (D++ and
+    down); a side is null when no video of that set has an embedding yet."""
+
+    top_tier: TierSimilarityOut | None
+    bottom_tier: TierSimilarityOut | None
+
+
+TopicName = Annotated[
+    str,
+    Field(
+        min_length=1,
+        max_length=curation.TOPIC_NAME_MAX_LENGTH,
+        description="A short label, unique ignoring case; it names the topic's boost "
+        "in score breakdowns",
+    ),
+]
+TopicDescription = Annotated[
+    str,
+    Field(
+        min_length=1,
+        max_length=curation.TOPIC_DESCRIPTION_MAX_LENGTH,
+        description="What the topic is about, in plain language; videos similar to it "
+        "are boosted (or suppressed)",
+    ),
+]
+TopicWeight = Annotated[
+    float,
+    Field(
+        ge=-1,
+        le=1,
+        description="-1 (suppress) to 1 (boost); a fully matching video gets this much "
+        "added to its score",
+    ),
+]
+
+
+class TopicInput(BaseModel):
+    name: TopicName
+    description: TopicDescription
+    weight: TopicWeight
+    decay: bool = Field(
+        default=False,
+        description=f"Halve the weight every {curation.TOPIC_HALF_LIFE_DAYS} days "
+        "unless reaffirmed",
+    )
+
+
+class TopicUpdateInput(BaseModel):
+    """Fields to change; omitted fields keep their current value."""
+
+    name: TopicName | None = None
+    description: TopicDescription | None = None
+    weight: TopicWeight | None = None
+    decay: bool | None = None
+
+
+TOPIC_NOT_FOUND: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorDetail, "description": "No such topic"}
+}
+TOPIC_NAME_TAKEN: dict[int | str, dict[str, Any]] = {
+    409: {"model": ErrorDetail, "description": "Another topic has this name"}
+}
+TopicId = Annotated[int, Path(ge=1, description="Topic id")]
+
+
+@app.get("/topics", tags=["topics"])
+def list_topics(session: SessionDep) -> list[curation.Topic]:
+    """All topics, alphabetically, with their current (decayed) weights."""
+    return curation.list_topics(session)
+
+
+@app.post(
+    "/topics", tags=["topics"], status_code=status.HTTP_201_CREATED, responses=TOPIC_NAME_TAKEN
+)
+def add_topic(body: TopicInput, session: SessionDep, embedder: EmbedderDep) -> curation.Topic:
+    """Create a topic; its description is embedded right away.
+
+    A blank name or description is a 422 with a string `detail`.
+    """
+    try:
+        return curation.add_topic(
+            session,
+            embedder,
+            name=body.name,
+            description=body.description,
+            weight=body.weight,
+            decay=body.decay,
+        )
+    except curation.DuplicateTopicError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+
+
+@app.patch("/topics/{topic_id}", tags=["topics"], responses={**TOPIC_NOT_FOUND, **TOPIC_NAME_TAKEN})
+def update_topic(
+    topic_id: TopicId, body: TopicUpdateInput, session: SessionDep, embedder: EmbedderDep
+) -> curation.Topic:
+    """Change a topic. A new description is embedded again; setting the weight or turning
+    decay on reaffirms the topic."""
+    try:
+        topic = curation.update_topic(
+            session,
+            embedder,
+            topic_id,
+            name=body.name,
+            description=body.description,
+            weight=body.weight,
+            decay=body.decay,
+        )
+    except curation.DuplicateTopicError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    if topic is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Topic not found")
+    return topic
+
+
+@app.post("/topics/{topic_id}/reaffirm", tags=["topics"], responses=TOPIC_NOT_FOUND)
+def reaffirm_topic(topic_id: TopicId, session: SessionDep) -> curation.Topic:
+    """Restart a decaying topic's decay, so its full weight applies again."""
+    topic = curation.reaffirm_topic(session, topic_id)
+    if topic is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Topic not found")
+    return topic
+
+
+@app.delete(
+    "/topics/{topic_id}",
+    tags=["topics"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=TOPIC_NOT_FOUND,
+)
+def delete_topic(topic_id: TopicId, session: SessionDep) -> Response:
+    """Remove a topic."""
+    if not curation.delete_topic(session, topic_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Topic not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 class ScoreBreakdownOut(BaseModel):
-    """How an item's score was made: `alpha * model + channel + sum(topics) = final`."""
+    """How an item's score was made:
+    `alpha * model + channel + similarity + sum(topics) = final`."""
 
     model: float
     alpha: float
     channel: float
-    topics: dict[str, float]
+    similarity: float = Field(
+        description="Closeness to top-tier rated videos minus closeness to bottom-tier ones"
+    )
+    topics: dict[str, float] = Field(
+        description="Boost (or suppression) per topic name; only topics that matched"
+    )
     final: float
+    similarity_features: SimilarityFeaturesOut | None = Field(
+        description="What `similarity` was computed from; null for unenriched videos"
+    )
 
 
 class FeedItemOut(BaseModel):
@@ -302,13 +550,7 @@ def _feed_out(feed: feeds.Feed) -> FeedOut:
             FeedItemOut.model_validate(
                 {
                     **vars(item),
-                    "breakdown": ScoreBreakdownOut(
-                        model=item.breakdown.model,
-                        alpha=item.breakdown.alpha,
-                        channel=item.breakdown.channel,
-                        topics=dict(item.breakdown.topics),
-                        final=item.breakdown.final,
-                    ),
+                    "breakdown": item.breakdown.to_dict(),
                 }
             )
             for item in feed.items

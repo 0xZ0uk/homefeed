@@ -1,13 +1,22 @@
 import random
 from collections import Counter
 
-from homefeed_core.composer import ComposeSettings, FeedSlot, compose, explain
+from homefeed_core.composer import (
+    ComposeSettings,
+    FeedSlot,
+    VideoRef,
+    compose,
+    explain,
+    referenced_video_ids,
+)
 from homefeed_core.curation import Prior
 from homefeed_core.ranker import (
     ChannelCuration,
     RankCandidate,
     ScoreBreakdown,
     ScoredCandidate,
+    SimilarityFeatures,
+    TierSimilarity,
 )
 
 
@@ -23,15 +32,19 @@ def scored(
     published_at: str | None = None,
     prior: Prior = "neutral",
     rating_count: int = 0,
+    source: str = "subscription",
+    source_detail: str | None = None,
+    breakdown: ScoreBreakdown | None = None,
 ) -> ScoredCandidate:
     return ScoredCandidate(
         candidate=RankCandidate(
             video_id=video_id,
             channel_id=channel_id,
-            source="subscription",
+            source=source,
+            source_detail=source_detail,
             published_at=published_at,
         ),
-        breakdown=ScoreBreakdown(channel=score),
+        breakdown=breakdown or ScoreBreakdown(channel=score),
         channel_prior=prior,
         channel_rating_count=rating_count,
     )
@@ -143,3 +156,105 @@ def test_explanations() -> None:
     assert explain(rated) == "New from your subscriptions · channel score +0.25 from 3 ratings"
     assert explain(neutral) == "New from your subscriptions"
     assert explain(neutral, pinned=True) == "New from a pinned channel"
+
+
+RATED = {
+    "seed": VideoRef("How to sharpen a chisel", "A+"),
+    "near": VideoRef("Dovetails by hand", "S-"),
+    "unrated": VideoRef("Some video"),
+}
+
+
+def similar_to(video_id: str, similarity: float, *, channel: float = 0.0) -> ScoreBreakdown:
+    """A breakdown whose nearest top-tier video is `video_id`."""
+    features = SimilarityFeatures(top_tier=TierSimilarity(0.9, 0.5, video_id))
+    return ScoreBreakdown(channel=channel, similarity=similarity, similarity_features=features)
+
+
+def test_explanations_name_the_largest_positive_term() -> None:
+    similar = scored(
+        "a", channel(1), 0, prior="love", breakdown=similar_to("near", 0.4, channel=0.3)
+    )
+    loved = scored("b", channel(1), 0, prior="love", breakdown=similar_to("near", 0.2, channel=0.8))
+    disliked = scored("c", channel(1), 0, breakdown=similar_to("near", -0.3))
+
+    assert explain(similar, videos=RATED) == (
+        "New from your subscriptions · similar to Dovetails by hand (S-)"
+    )
+    assert explain(loved, videos=RATED) == "New from your subscriptions · channel you love"
+    assert explain(disliked, videos=RATED) == "New from your subscriptions"
+
+
+def test_explanations_for_topic_terms() -> None:
+    topics = {"woodworking": 0.6, "metalwork": 0.2, "drama": -0.9}
+    item = scored(
+        "a", channel(1), 0, prior="like", breakdown=ScoreBreakdown(channel=0.4, topics=topics)
+    )
+
+    assert explain(item) == "New from your subscriptions · matches your topic 'woodworking'"
+
+
+def test_explanations_for_the_model_term() -> None:
+    item = scored("a", channel(1), 0, breakdown=ScoreBreakdown(model=0.3, alpha=0.5, channel=0.1))
+
+    assert explain(item) == "New from your subscriptions · the model predicts B++"
+
+
+def test_explanations_for_related_videos() -> None:
+    def related(seed: str, breakdown: ScoreBreakdown) -> ScoredCandidate:
+        return scored(
+            "r",
+            channel(1),
+            0,
+            prior="love",
+            source="related",
+            source_detail=seed,
+            breakdown=breakdown,
+        )
+
+    loved = related("seed", ScoreBreakdown(channel=0.8))
+    similar = related("seed", similar_to("near", 0.4))
+    # Similar to its own seed: the next largest term explains it instead.
+    own_seed = related("seed", similar_to("seed", 0.4, channel=0.3))
+    only_own_seed = related("seed", similar_to("seed", 0.4))
+
+    assert explain(loved, videos=RATED) == (
+        "Related to How to sharpen a chisel (A+) · channel you love"
+    )
+    assert explain(similar, videos=RATED) == (
+        "Related to How to sharpen a chisel (A+) · similar to Dovetails by hand (S-)"
+    )
+    assert explain(own_seed, videos=RATED) == (
+        "Related to How to sharpen a chisel (A+) · channel you love"
+    )
+    assert explain(only_own_seed, videos=RATED) == "Related to How to sharpen a chisel (A+)"
+
+
+def test_explanations_without_titles_or_grades() -> None:
+    long_title = {"seed": VideoRef("x" * 100, "A")}
+    unknown = scored("a", channel(1), 0, source="related", source_detail="gone")
+    unrated = scored("b", channel(1), 0, source="related", source_detail="unrated")
+    long = scored("c", channel(1), 0, source="related", source_detail="seed")
+    other = scored("d", channel(1), 0, source="saved_search")
+
+    assert explain(unknown, videos=RATED) == "Related to a video you rated highly"
+    assert explain(unrated, videos=RATED) == "Related to Some video"
+    assert explain(long, videos=long_title) == f"Related to {'x' * 59}… (A)"
+    assert explain(other) == "Found via saved search"
+
+
+def test_compose_explains_with_the_given_videos() -> None:
+    items = [
+        scored("a", channel(1), 0, source="related", source_detail="seed"),
+        scored("b", channel(2), 0, breakdown=similar_to("near", 0.5)),
+        scored("c", channel(3), 0),
+    ]
+
+    slots = compose(items, {}, ComposeSettings(size=15), random.Random(1), videos=RATED)
+
+    assert referenced_video_ids(items) == {"seed", "near"}
+    assert {slot.item.candidate.video_id: slot.explanation for slot in slots} == {
+        "a": "Related to How to sharpen a chisel (A+)",
+        "b": "New from your subscriptions · similar to Dovetails by hand (S-)",
+        "c": "New from your subscriptions",
+    }

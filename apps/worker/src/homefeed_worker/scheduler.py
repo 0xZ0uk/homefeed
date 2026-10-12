@@ -10,7 +10,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.util import undefined
 
-from homefeed_core import feeds, poller
+from homefeed_core import candidates, enricher, feeds, poller
 from homefeed_core.config import get_settings
 from homefeed_core.db import get_session_factory
 
@@ -20,10 +20,15 @@ logger = logging.getLogger(__name__)
 # channel has its own schedule and backoff (see homefeed_core.poller); this only bounds
 # how late a due channel is picked up.
 POLL_CHECK_MINUTES = 10
+# How often new candidates are enriched, so the daily feed build finds most of them
+# already done. The feed build enriches whatever is left before ranking.
+ENRICH_CHECK_MINUTES = 30
 
 
 # The feed job polls too; this keeps it and the poll job from polling at the same time.
 _poll_lock = threading.Lock()
+# Likewise for the feed job's and the enrich job's enrichment.
+_enrich_lock = threading.Lock()
 
 
 def poll_subscriptions() -> None:
@@ -33,15 +38,47 @@ def poll_subscriptions() -> None:
     logger.info("Subscription poll found %d new candidates", len(new))
 
 
+def generate_candidates() -> None:
+    """Run the candidate sources other than subscriptions (related videos of top-tier
+    ratings); a failing source is logged and skipped."""
+    report = candidates.generate()
+    for source, video_ids in report.new.items():
+        logger.info("Candidate source %r found %d new candidates", source, len(video_ids))
+    for source, error in report.failed.items():
+        logger.warning("Candidate source %r failed: %s", source, error)
+
+
+def gather_candidates() -> None:
+    """Poll due subscriptions, then run the other candidate sources."""
+    try:
+        poll_subscriptions()
+    except Exception:
+        logger.exception("Polling subscriptions failed; running the other sources anyway")
+    generate_candidates()
+
+
+def enrich_candidates() -> None:
+    """Compute features (metadata, transcript excerpt, embedding) for new candidates."""
+    with _enrich_lock:
+        report = enricher.enrich_candidates()
+    logger.info(
+        "Enriched %d candidates (%d up to date, %d failed)",
+        len(report.enriched),
+        len(report.cached),
+        len(report.failed),
+    )
+
+
 def build_daily_feed() -> None:
-    """Poll due subscriptions, then rank and compose today's feed (poll → candidates →
-    rank → compose)."""
-    feed = feeds.refresh_feed(poll=poll_subscriptions)
+    """Gather candidates (subscriptions, related videos), enrich them, then rank and
+    compose today's feed (poll → candidates → enrich → rank → compose)."""
+    feed = feeds.refresh_feed(poll=gather_candidates, enrich=enrich_candidates)
     logger.info("Built the feed for %s with %d items", feed.date, len(feed.items))
 
 
 def build_scheduler(
     poll: Callable[[], None] = poll_subscriptions,
+    enrich: Callable[[], None] = enrich_candidates,
     build_feed: Callable[[], None] = build_daily_feed,
     *,
     feed_refresh_time: time | None = None,
@@ -60,6 +97,15 @@ def build_scheduler(
         id="poll_subscriptions",
         name="Poll subscriptions",
         next_run_time=datetime.now(UTC),  # also poll right away on startup
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=None,
+    )
+    scheduler.add_job(
+        enrich,
+        IntervalTrigger(minutes=ENRICH_CHECK_MINUTES, timezone=UTC),
+        id="enrich_candidates",
+        name="Enrich candidates",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=None,

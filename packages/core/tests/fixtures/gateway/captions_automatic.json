@@ -1,0 +1,1242 @@
+{
+ "request": {
+  "url": "https://www.youtube.com/watch?v=j9p3Sn8ROL4",
+  "flat": false,
+  "limit": null,
+  "captions": true
+ },
+ "response": {
+  "id": "j9p3Sn8ROL4",
+  "captions": {
+   "language": "en-orig",
+   "automatic": true,
+   "events": [
+    {
+     "tStartMs": 0,
+     "dDurationMs": 71720
+    },
+    {
+     "tStartMs": 0,
+     "dDurationMs": 3274,
+     "segs": [
+      {
+       "utf8": "Okay,"
+      },
+      {
+       "utf8": " so"
+      },
+      {
+       "utf8": " you"
+      },
+      {
+       "utf8": " can"
+      },
+      {
+       "utf8": " see"
+      },
+      {
+       "utf8": " we're"
+      },
+      {
+       "utf8": " getting"
+      },
+      {
+       "utf8": " a"
+      }
+     ]
+    },
+    {
+     "tStartMs": 1230,
+     "dDurationMs": 2044,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 1240,
+     "dDurationMs": 2120,
+     "segs": [
+      {
+       "utf8": "bunch"
+      },
+      {
+       "utf8": " of"
+      },
+      {
+       "utf8": " tiny"
+      },
+      {
+       "utf8": " little"
+      },
+      {
+       "utf8": " bubbles"
+      },
+      {
+       "utf8": " and"
+      }
+     ]
+    },
+    {
+     "tStartMs": 3264,
+     "dDurationMs": 96,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 3274,
+     "dDurationMs": 1766,
+     "segs": [
+      {
+       "utf8": ">> [music]"
+      }
+     ]
+    },
+    {
+     "tStartMs": 3350,
+     "dDurationMs": 1690,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 3360,
+     "dDurationMs": 3520,
+     "segs": [
+      {
+       "utf8": ">> just"
+      },
+      {
+       "utf8": " naturally"
+      },
+      {
+       "utf8": " they're"
+      },
+      {
+       "utf8": " packing"
+      },
+      {
+       "utf8": " into"
+      },
+      {
+       "utf8": " this"
+      }
+     ]
+    },
+    {
+     "tStartMs": 5030,
+     "dDurationMs": 1850,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 5040,
+     "dDurationMs": 3120,
+     "segs": [
+      {
+       "utf8": "hexagonal"
+      },
+      {
+       "utf8": " arrangement."
+      },
+      {
+       "utf8": " And"
+      },
+      {
+       "utf8": " there"
+      },
+      {
+       "utf8": " are"
+      }
+     ]
+    },
+    {
+     "tStartMs": 6870,
+     "dDurationMs": 1290,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 6880,
+     "dDurationMs": 3520,
+     "segs": [
+      {
+       "utf8": "actually"
+      },
+      {
+       "utf8": " a"
+      },
+      {
+       "utf8": " lot"
+      },
+      {
+       "utf8": " of"
+      },
+      {
+       "utf8": " materials"
+      },
+      {
+       "utf8": " that"
+      },
+      {
+       "utf8": " have"
+      }
+     ]
+    },
+    {
+     "tStartMs": 8150,
+     "dDurationMs": 2250,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 8160,
+     "dDurationMs": 4640,
+     "segs": [
+      {
+       "utf8": "atomic"
+      },
+      {
+       "utf8": " structures"
+      },
+      {
+       "utf8": " just"
+      },
+      {
+       "utf8": " like"
+      },
+      {
+       "utf8": " this."
+      },
+      {
+       "utf8": " But"
+      }
+     ]
+    },
+    {
+     "tStartMs": 10390,
+     "dDurationMs": 2410,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 10400,
+     "dDurationMs": 4840,
+     "segs": [
+      {
+       "utf8": "you"
+      },
+      {
+       "utf8": " can"
+      },
+      {
+       "utf8": " see"
+      },
+      {
+       "utf8": " it's"
+      },
+      {
+       "utf8": " not"
+      },
+      {
+       "utf8": " perfect."
+      },
+      {
+       "utf8": " Like"
+      },
+      {
+       "utf8": " right"
+      }
+     ]
+    },
+    {
+     "tStartMs": 12790,
+     "dDurationMs": 2450,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 12800,
+     "dDurationMs": 4040,
+     "segs": [
+      {
+       "utf8": "here"
+      },
+      {
+       "utf8": " you"
+      },
+      {
+       "utf8": " can"
+      },
+      {
+       "utf8": " see"
+      },
+      {
+       "utf8": " there's"
+      },
+      {
+       "utf8": " an"
+      },
+      {
+       "utf8": " extra"
+      },
+      {
+       "utf8": " half"
+      }
+     ]
+    },
+    {
+     "tStartMs": 15230,
+     "dDurationMs": 1610,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 15240,
+     "dDurationMs": 3120,
+     "segs": [
+      {
+       "utf8": "plane"
+      },
+      {
+       "utf8": " of"
+      },
+      {
+       "utf8": " atoms."
+      },
+      {
+       "utf8": " Well,"
+      },
+      {
+       "utf8": " in"
+      },
+      {
+       "utf8": " this"
+      },
+      {
+       "utf8": " case"
+      }
+     ]
+    },
+    {
+     "tStartMs": 16830,
+     "dDurationMs": 1530,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 16840,
+     "dDurationMs": 3360,
+     "segs": [
+      {
+       "utf8": "bubbles,"
+      },
+      {
+       "utf8": " this"
+      },
+      {
+       "utf8": " is"
+      },
+      {
+       "utf8": " called"
+      },
+      {
+       "utf8": " an"
+      },
+      {
+       "utf8": " edge"
+      }
+     ]
+    },
+    {
+     "tStartMs": 18350,
+     "dDurationMs": 1850,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 18360,
+     "dDurationMs": 4600,
+     "segs": [
+      {
+       "utf8": "dislocation."
+      },
+      {
+       "utf8": " It"
+      },
+      {
+       "utf8": " becomes"
+      },
+      {
+       "utf8": " really"
+      }
+     ]
+    },
+    {
+     "tStartMs": 20190,
+     "dDurationMs": 2770,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 20200,
+     "dDurationMs": 4840,
+     "segs": [
+      {
+       "utf8": "interesting"
+      },
+      {
+       "utf8": " when"
+      },
+      {
+       "utf8": " I"
+      },
+      {
+       "utf8": " try"
+      },
+      {
+       "utf8": " to"
+      },
+      {
+       "utf8": " pull"
+      },
+      {
+       "utf8": " this"
+      },
+      {
+       "utf8": " raft"
+      }
+     ]
+    },
+    {
+     "tStartMs": 22950,
+     "dDurationMs": 2090,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 22960,
+     "dDurationMs": 4640,
+     "segs": [
+      {
+       "utf8": "apart."
+      },
+      {
+       "utf8": " You"
+      },
+      {
+       "utf8": " can"
+      },
+      {
+       "utf8": " see"
+      },
+      {
+       "utf8": " these"
+      },
+      {
+       "utf8": " little"
+      },
+      {
+       "utf8": " dark"
+      }
+     ]
+    },
+    {
+     "tStartMs": 25030,
+     "dDurationMs": 2570,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 25040,
+     "dDurationMs": 4000,
+     "segs": [
+      {
+       "utf8": "lines"
+      },
+      {
+       "utf8": " that"
+      },
+      {
+       "utf8": " zip"
+      },
+      {
+       "utf8": " back"
+      },
+      {
+       "utf8": " and"
+      },
+      {
+       "utf8": " forth."
+      },
+      {
+       "utf8": " Those"
+      },
+      {
+       "utf8": " are"
+      }
+     ]
+    },
+    {
+     "tStartMs": 27590,
+     "dDurationMs": 1450,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 27600,
+     "dDurationMs": 3520,
+     "segs": [
+      {
+       "utf8": "dislocations"
+      },
+      {
+       "utf8": " and"
+      },
+      {
+       "utf8": " they"
+      },
+      {
+       "utf8": " move"
+      },
+      {
+       "utf8": " [music]"
+      }
+     ]
+    },
+    {
+     "tStartMs": 29030,
+     "dDurationMs": 2090,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 29040,
+     "dDurationMs": 4360,
+     "segs": [
+      {
+       "utf8": "through"
+      },
+      {
+       "utf8": " the"
+      },
+      {
+       "utf8": " lattice."
+      },
+      {
+       "utf8": " As"
+      },
+      {
+       "utf8": " the"
+      },
+      {
+       "utf8": " dislocation"
+      }
+     ]
+    },
+    {
+     "tStartMs": 31110,
+     "dDurationMs": 2290,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 31120,
+     "dDurationMs": 4160,
+     "segs": [
+      {
+       "utf8": "moves"
+      },
+      {
+       "utf8": " it'll"
+      },
+      {
+       "utf8": " cause"
+      },
+      {
+       "utf8": " one"
+      },
+      {
+       "utf8": " plane"
+      },
+      {
+       "utf8": " of"
+      },
+      {
+       "utf8": " bubbles"
+      }
+     ]
+    },
+    {
+     "tStartMs": 33390,
+     "dDurationMs": 1890,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 33400,
+     "dDurationMs": 3480,
+     "segs": [
+      {
+       "utf8": "to"
+      },
+      {
+       "utf8": " shear"
+      },
+      {
+       "utf8": " past"
+      },
+      {
+       "utf8": " the"
+      },
+      {
+       "utf8": " other"
+      },
+      {
+       "utf8": " one,"
+      },
+      {
+       "utf8": " which"
+      }
+     ]
+    },
+    {
+     "tStartMs": 35270,
+     "dDurationMs": 1610,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 35280,
+     "dDurationMs": 3760,
+     "segs": [
+      {
+       "utf8": "shifts"
+      },
+      {
+       "utf8": " the"
+      },
+      {
+       "utf8": " structure"
+      },
+      {
+       "utf8": " by"
+      },
+      {
+       "utf8": " exactly"
+      },
+      {
+       "utf8": " one"
+      }
+     ]
+    },
+    {
+     "tStartMs": 36870,
+     "dDurationMs": 2170,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 36880,
+     "dDurationMs": 4200,
+     "segs": [
+      {
+       "utf8": "spacing."
+      },
+      {
+       "utf8": " But"
+      },
+      {
+       "utf8": " there"
+      },
+      {
+       "utf8": " isn't"
+      },
+      {
+       "utf8": " just"
+      },
+      {
+       "utf8": " one"
+      }
+     ]
+    },
+    {
+     "tStartMs": 39030,
+     "dDurationMs": 2050,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 39040,
+     "dDurationMs": 3920,
+     "segs": [
+      {
+       "utf8": "dislocation."
+      },
+      {
+       "utf8": " There"
+      },
+      {
+       "utf8": " are"
+      },
+      {
+       "utf8": " plenty"
+      },
+      {
+       "utf8": " of"
+      },
+      {
+       "utf8": " them"
+      }
+     ]
+    },
+    {
+     "tStartMs": 41070,
+     "dDurationMs": 1890,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 41080,
+     "dDurationMs": 4280,
+     "segs": [
+      {
+       "utf8": "and"
+      },
+      {
+       "utf8": " all"
+      },
+      {
+       "utf8": " together"
+      },
+      {
+       "utf8": " their"
+      },
+      {
+       "utf8": " movement"
+      },
+      {
+       "utf8": " produces"
+      }
+     ]
+    },
+    {
+     "tStartMs": 42950,
+     "dDurationMs": 2410,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 42960,
+     "dDurationMs": 4160,
+     "segs": [
+      {
+       "utf8": "dramatic"
+      },
+      {
+       "utf8": " changes"
+      },
+      {
+       "utf8": " in"
+      },
+      {
+       "utf8": " the"
+      },
+      {
+       "utf8": " overall"
+      },
+      {
+       "utf8": " shape."
+      }
+     ]
+    },
+    {
+     "tStartMs": 45350,
+     "dDurationMs": 1770,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 45360,
+     "dDurationMs": 3680,
+     "segs": [
+      {
+       "utf8": "And"
+      },
+      {
+       "utf8": " this"
+      },
+      {
+       "utf8": " is"
+      },
+      {
+       "utf8": " how"
+      },
+      {
+       "utf8": " many"
+      },
+      {
+       "utf8": " metals"
+      },
+      {
+       "utf8": " actually"
+      }
+     ]
+    },
+    {
+     "tStartMs": 47110,
+     "dDurationMs": 1930,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 47120,
+     "dDurationMs": 3920,
+     "segs": [
+      {
+       "utf8": "deform."
+      },
+      {
+       "utf8": " Everywhere"
+      },
+      {
+       "utf8": " that"
+      },
+      {
+       "utf8": " stress"
+      },
+      {
+       "utf8": " is"
+      },
+      {
+       "utf8": " high"
+      }
+     ]
+    },
+    {
+     "tStartMs": 49030,
+     "dDurationMs": 2010,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 49040,
+     "dDurationMs": 4680,
+     "segs": [
+      {
+       "utf8": "enough"
+      },
+      {
+       "utf8": " billions"
+      },
+      {
+       "utf8": " of"
+      },
+      {
+       "utf8": " dislocations"
+      },
+      {
+       "utf8": " start"
+      }
+     ]
+    },
+    {
+     "tStartMs": 51030,
+     "dDurationMs": 2690,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 51040,
+     "dDurationMs": 4240,
+     "segs": [
+      {
+       "utf8": "moving"
+      },
+      {
+       "utf8": " and"
+      },
+      {
+       "utf8": " interacting."
+      },
+      {
+       "utf8": " It"
+      },
+      {
+       "utf8": " takes"
+      },
+      {
+       "utf8": " energy"
+      }
+     ]
+    },
+    {
+     "tStartMs": 53710,
+     "dDurationMs": 1570,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 53720,
+     "dDurationMs": 3480,
+     "segs": [
+      {
+       "utf8": "to"
+      },
+      {
+       "utf8": " break"
+      },
+      {
+       "utf8": " the"
+      },
+      {
+       "utf8": " atomic"
+      },
+      {
+       "utf8": " bonds"
+      },
+      {
+       "utf8": " as"
+      },
+      {
+       "utf8": " a"
+      }
+     ]
+    },
+    {
+     "tStartMs": 55270,
+     "dDurationMs": 1930,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 55280,
+     "dDurationMs": 3960,
+     "segs": [
+      {
+       "utf8": "dislocation"
+      },
+      {
+       "utf8": " travels"
+      },
+      {
+       "utf8": " through"
+      },
+      {
+       "utf8": " the"
+      },
+      {
+       "utf8": " lattice."
+      }
+     ]
+    },
+    {
+     "tStartMs": 57190,
+     "dDurationMs": 2050,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 57200,
+     "dDurationMs": 4160,
+     "segs": [
+      {
+       "utf8": "So"
+      },
+      {
+       "utf8": " as"
+      },
+      {
+       "utf8": " we"
+      },
+      {
+       "utf8": " ramp"
+      },
+      {
+       "utf8": " up"
+      },
+      {
+       "utf8": " the"
+      },
+      {
+       "utf8": " temperature"
+      },
+      {
+       "utf8": " and"
+      },
+      {
+       "utf8": " all"
+      }
+     ]
+    },
+    {
+     "tStartMs": 59230,
+     "dDurationMs": 2130,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 59240,
+     "dDurationMs": 4200,
+     "segs": [
+      {
+       "utf8": "the"
+      },
+      {
+       "utf8": " atoms"
+      },
+      {
+       "utf8": " get"
+      },
+      {
+       "utf8": " more"
+      },
+      {
+       "utf8": " thermal"
+      },
+      {
+       "utf8": " energy,"
+      },
+      {
+       "utf8": " it"
+      },
+      {
+       "utf8": " no"
+      }
+     ]
+    },
+    {
+     "tStartMs": 61350,
+     "dDurationMs": 2090,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 61360,
+     "dDurationMs": 4040,
+     "segs": [
+      {
+       "utf8": "longer"
+      },
+      {
+       "utf8": " requires"
+      },
+      {
+       "utf8": " as"
+      },
+      {
+       "utf8": " much"
+      },
+      {
+       "utf8": " stress"
+      },
+      {
+       "utf8": " to"
+      },
+      {
+       "utf8": " break"
+      }
+     ]
+    },
+    {
+     "tStartMs": 63430,
+     "dDurationMs": 1970,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 63440,
+     "dDurationMs": 3920,
+     "segs": [
+      {
+       "utf8": "these"
+      },
+      {
+       "utf8": " bonds."
+      },
+      {
+       "utf8": " It"
+      },
+      {
+       "utf8": " becomes"
+      },
+      {
+       "utf8": " much"
+      },
+      {
+       "utf8": " easier"
+      },
+      {
+       "utf8": " for"
+      }
+     ]
+    },
+    {
+     "tStartMs": 65390,
+     "dDurationMs": 1970,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 65400,
+     "dDurationMs": 6320,
+     "segs": [
+      {
+       "utf8": "the"
+      },
+      {
+       "utf8": " dislocations"
+      },
+      {
+       "utf8": " to"
+      },
+      {
+       "utf8": " move"
+      },
+      {
+       "utf8": " and"
+      },
+      {
+       "utf8": " that's"
+      },
+      {
+       "utf8": " why"
+      }
+     ]
+    },
+    {
+     "tStartMs": 67350,
+     "dDurationMs": 4370,
+     "segs": [
+      {
+       "utf8": "\n"
+      }
+     ]
+    },
+    {
+     "tStartMs": 67360,
+     "dDurationMs": 4360,
+     "segs": [
+      {
+       "utf8": "metals"
+      },
+      {
+       "utf8": " get"
+      },
+      {
+       "utf8": " softer"
+      },
+      {
+       "utf8": " at"
+      },
+      {
+       "utf8": " high"
+      },
+      {
+       "utf8": " temperatures."
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

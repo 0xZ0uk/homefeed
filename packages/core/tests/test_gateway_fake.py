@@ -10,7 +10,13 @@ from homefeed_core.gateway import (
     UnavailableError,
     UnsupportedUrlError,
 )
-from homefeed_core.gateway.fake import FakeGateway, make_channel, make_format, make_video
+from homefeed_core.gateway.fake import (
+    FakeGateway,
+    make_captions,
+    make_channel,
+    make_format,
+    make_video,
+)
 
 CHANNEL = make_channel("UC" + "a" * 22, title="Woodworking", handle="@wood")
 
@@ -31,6 +37,19 @@ def test_is_a_gateway(gateway: FakeGateway) -> None:
     assert typed is gateway
 
 
+def test_serves_added_captions(gateway: FakeGateway) -> None:
+    captions = make_captions("aaaaaaaaaaa", ["Hello.", "Today: dovetails."])
+    gateway.add_captions(captions)
+
+    assert gateway.get_captions("aaaaaaaaaaa") == captions
+    assert captions.text() == "Hello. Today: dovetails."
+    assert captions.text(until_seconds=5) == "Hello."
+    assert gateway.get_captions("bbbbbbbbbbb") is None
+    with pytest.raises(UnavailableError):
+        gateway.get_captions("zzzzzzzzzzz")
+    assert ("get_captions", "aaaaaaaaaaa") in gateway.calls
+
+
 def test_serves_added_videos_and_formats(gateway: FakeGateway) -> None:
     assert gateway.get_video("aaaaaaaaaaa").channel_id == CHANNEL.id
     assert [f.itag for f in gateway.get_formats("ccccccccccc")] == ["140", "251"]
@@ -39,6 +58,25 @@ def test_serves_added_videos_and_formats(gateway: FakeGateway) -> None:
         gateway.get_video("zzzzzzzzzzz")
     with pytest.raises(UnavailableError):
         gateway.get_formats("zzzzzzzzzzz")
+
+
+def test_serves_added_related_videos(gateway: FakeGateway) -> None:
+    other = make_channel("UC" + "o" * 22, title="Other", handle="@other")
+    gateway.add_related(
+        "aaaaaaaaaaa",
+        [make_video("ddddddddddd", channel=other), make_video("eeeeeeeeeee", channel=other)],
+    )
+
+    related = gateway.get_related("aaaaaaaaaaa")
+    assert [(v.id, v.channel_id, v.channel_handle) for v in related] == [
+        ("ddddddddddd", other.id, "@other"),
+        ("eeeeeeeeeee", other.id, "@other"),
+    ]
+    assert [v.id for v in gateway.get_related("aaaaaaaaaaa", limit=1)] == ["ddddddddddd"]
+    assert gateway.get_video("ddddddddddd").channel_id == other.id
+    assert gateway.get_related("bbbbbbbbbbb") == []
+    with pytest.raises(UnavailableError):
+        gateway.get_related("zzzzzzzzzzz")
 
 
 def test_channel_uploads_in_order_with_limit(gateway: FakeGateway) -> None:

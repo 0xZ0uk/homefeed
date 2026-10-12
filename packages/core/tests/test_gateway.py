@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from homefeed_core.db import open_database
 from homefeed_core.gateway import (
+    CaptionSegment,
     Chapter,
     ExtractionError,
     Gateway,
@@ -28,6 +29,7 @@ from homefeed_core.gateway import (
     YtDlpGateway,
     create_gateway,
 )
+from homefeed_core.gateway.normalize import pick_caption_track, related_from_info
 from homefeed_core.gateway.ytdlp import ExtractRequest, classify_error
 
 VERITASIUM = "UCHnyfMqiRRG1u-2MsSQLbXA"
@@ -124,6 +126,139 @@ def test_get_video_rejects_malformed_id_without_extracting(
     assert replay.requests == []
 
 
+# get_captions
+
+
+def test_get_captions_uploaded_track(harness: Harness, replay: Replay) -> None:
+    captions = harness.gateway.get_captions("jNQXAC9IVRw")
+
+    assert replay.requests == [
+        ExtractRequest("https://www.youtube.com/watch?v=jNQXAC9IVRw", captions=True)
+    ]
+    assert captions is not None
+    assert (captions.video_id, captions.language, captions.is_automatic) == (
+        "jNQXAC9IVRw",
+        "en",
+        False,
+    )
+    assert captions.segments[0] == CaptionSegment(
+        1.2, 3.36, "All right, so here we are, in front of the elephants"
+    )
+    assert captions.text().endswith("and that's pretty much all there is to say")
+    [event] = harness.recorder.events
+    assert (event.operation, event.target, event.success) == ("get_captions", "jNQXAC9IVRw", True)
+
+
+def test_get_captions_text_can_stop_early(harness: Harness) -> None:
+    captions = harness.gateway.get_captions("NiCgcUTL9_Q")
+
+    assert captions is not None
+    assert captions.text().startswith("- In 1887, a young physics teacher attached a thin glass")
+    excerpt = captions.text(until_seconds=60)
+    assert len(excerpt) < len(captions.text(until_seconds=300)) < len(captions.text())
+    starts = [segment.start_seconds for segment in captions.segments]
+    assert starts == sorted(starts)
+
+
+def test_get_captions_joins_automatic_word_pieces(harness: Harness) -> None:
+    captions = harness.gateway.get_captions("j9p3Sn8ROL4")
+
+    assert captions is not None
+    assert (captions.language, captions.is_automatic) == ("en-orig", True)
+    assert captions.segments[0].text == "Okay, so you can see we're getting a"
+    # Newline-only and styling events are dropped.
+    assert all(segment.text.strip() for segment in captions.segments)
+
+
+def test_get_captions_none_when_the_video_has_none(harness: Harness) -> None:
+    assert harness.gateway.get_captions("hY7m5jjJ9mM") is None
+    assert harness.recorder.events[0].success is True
+
+
+def test_get_captions_unavailable_video(harness: Harness) -> None:
+    with pytest.raises(UnavailableError):
+        harness.gateway.get_captions("xxxxxxxxxxx")
+
+    [event] = harness.recorder.events
+    assert (event.operation, event.success, event.error_kind) == (
+        "get_captions",
+        False,
+        "unavailable",
+    )
+
+
+def test_get_captions_rejects_malformed_id_without_extracting(
+    harness: Harness, replay: Replay
+) -> None:
+    with pytest.raises(UnavailableError):
+        harness.gateway.get_captions("not an id")
+    assert replay.requests == []
+
+
+def tracks(*languages: str) -> dict[str, list[dict[str, str]]]:
+    return {
+        lang: [
+            {"ext": "srv1", "url": f"https://example.invalid/{lang}.srv1"},
+            {"ext": "json3", "url": f"https://example.invalid/{lang}.json3"},
+        ]
+        for lang in languages
+    }
+
+
+@pytest.mark.parametrize(
+    ("info", "expected"),
+    [
+        # Uploaded English beats everything; exact "en" beats regional variants.
+        (
+            {"subtitles": tracks("de", "en-GB", "en"), "automatic_captions": tracks("en-orig")},
+            ("en", False),
+        ),
+        ({"subtitles": tracks("en-US"), "automatic_captions": tracks("en-orig")}, ("en-US", False)),
+        # Then automatic English: original speech before translation.
+        (
+            {"subtitles": tracks("de"), "automatic_captions": tracks("en", "en-orig")},
+            ("en-orig", True),
+        ),
+        (
+            {
+                "language": "de",
+                "subtitles": tracks("fr", "de"),
+                "automatic_captions": tracks("en", "de-orig"),
+            },
+            ("en", True),
+        ),
+        # Then uploaded captions, in the video's language first.
+        (
+            {
+                "language": "de",
+                "subtitles": tracks("fr", "de-DE"),
+                "automatic_captions": tracks("de-orig"),
+            },
+            ("de-DE", False),
+        ),
+        ({"subtitles": tracks("fr"), "automatic_captions": tracks("de-orig")}, ("fr", False)),
+        ({"automatic_captions": tracks("ko", "ko-orig")}, ("ko-orig", True)),
+        # Live chat replays and tracks without json3 don't count.
+        (
+            {
+                "subtitles": {
+                    "live_chat": [{"ext": "json3", "url": "x"}],
+                    "en": [{"ext": "vtt", "url": "y"}],
+                }
+            },
+            None,
+        ),
+        ({}, None),
+    ],
+)
+def test_pick_caption_track(info: dict[str, Any], expected: tuple[str, bool] | None) -> None:
+    track = pick_caption_track(info)
+
+    assert (track and (track.language, track.is_automatic)) == expected
+    if track is not None:
+        assert track.url.endswith(".json3")
+
+
 # get_formats
 
 
@@ -170,6 +305,87 @@ def test_fixtures_do_not_contain_the_recording_ip(harness: Harness) -> None:
     for fmt in harness.gateway.get_formats("NiCgcUTL9_Q"):
         if "ip=" in fmt.url:
             assert "ip=203.0.113.1" in fmt.url
+
+
+# get_related
+
+
+def test_get_related(harness: Harness, replay: Replay) -> None:
+    related = harness.gateway.get_related("NiCgcUTL9_Q")
+
+    assert replay.requests == [
+        ExtractRequest("https://www.youtube.com/watch?v=NiCgcUTL9_Q", related=True)
+    ]
+    first = related[0]
+    assert (first.id, first.title) == (
+        "cKnwkxItL2M",
+        "Inside America's Only Internet Sea Cable Maker",
+    )
+    assert (first.channel_id, first.channel_title, first.channel_handle) == (
+        "UCcyq283he07B7_KUX07mmtA",
+        "Business Insider",
+        "@BusinessInsider",
+    )
+    assert (first.duration_seconds, first.view_count) == (900, 2_800_000)
+    assert first.thumbnail_url is not None and "cKnwkxItL2M" in first.thumbnail_url
+    # One of the 20 suggestions came without a channel id and is left out.
+    assert len(related) == 19
+    assert "GTUjzePurZ0" not in {video.id for video in related}
+    assert all(video.channel_id.startswith("UC") for video in related)
+    assert len({video.id for video in related}) == 19
+    [event] = harness.recorder.events
+    assert (event.operation, event.target, event.success) == ("get_related", "NiCgcUTL9_Q", True)
+
+
+def test_get_related_limit(harness: Harness) -> None:
+    related = harness.gateway.get_related("jNQXAC9IVRw", limit=3)
+
+    assert [video.id for video in related] == [
+        video.id for video in harness.gateway.get_related("jNQXAC9IVRw")[:3]
+    ]
+
+
+def test_get_related_unavailable_video(harness: Harness) -> None:
+    with pytest.raises(UnavailableError, match="isn't available"):
+        harness.gateway.get_related("xxxxxxxxxxx")
+
+    [event] = harness.recorder.events
+    assert (event.operation, event.success, event.error_kind) == (
+        "get_related",
+        False,
+        "unavailable",
+    )
+
+
+def test_get_related_rejects_bad_input(harness: Harness, replay: Replay) -> None:
+    with pytest.raises(UnavailableError):
+        harness.gateway.get_related("not an id")
+    with pytest.raises(ValueError):
+        harness.gateway.get_related("jNQXAC9IVRw", limit=0)
+    assert replay.requests == []
+
+
+def test_related_from_info_skips_the_seed_duplicates_and_incomplete_entries() -> None:
+    entry = {"id": "aaaaaaaaaaa", "title": "A", "channel_id": VERITASIUM, "channel": "V"}
+    related = related_from_info(
+        {
+            "id": "sssssssssss",
+            "entries": [
+                {**entry, "id": "sssssssssss"},
+                entry,
+                entry,
+                {**entry, "id": "bbbbbbbbbbb", "channel_id": None},
+                {**entry, "id": "ccccccccccc", "title": None},
+                "junk",
+                {**entry, "id": "ddddddddddd", "live_status": "is_live"},
+            ],
+        }
+    )
+
+    assert [(video.id, video.live_status) for video in related] == [
+        ("aaaaaaaaaaa", None),
+        ("ddddddddddd", "is_live"),
+    ]
 
 
 # get_channel_uploads
@@ -489,5 +705,8 @@ def test_live_smoke() -> None:
     assert gateway.get_video("jNQXAC9IVRw").title == "Me at the zoo"
     assert any(f.kind == "audio" for f in gateway.get_formats("jNQXAC9IVRw"))
     assert gateway.get_channel_uploads(VERITASIUM, limit=3).videos
+    captions = gateway.get_captions("jNQXAC9IVRw")
+    assert captions is not None and "elephants" in captions.text()
+    assert gateway.get_related("jNQXAC9IVRw", limit=5)
     resolved = gateway.resolve_url("https://www.youtube.com/@veritasium")
     assert isinstance(resolved, ResolvedChannel) and resolved.channel.id == VERITASIUM
