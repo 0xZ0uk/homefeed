@@ -16,6 +16,7 @@ from homefeed_worker.scheduler import (
     enrich_candidates,
     gather_candidates,
     poll_subscriptions,
+    train_model,
 )
 
 
@@ -56,6 +57,26 @@ def test_build_scheduler_registers_the_daily_feed_at_refresh_time() -> None:
     assert job.coalesce is True
 
 
+def test_build_scheduler_registers_nightly_training_at_training_time() -> None:
+    job = jobs_by_id(model_training_time=time(2, 45))["train_model"]
+
+    assert job.func is train_model
+    assert isinstance(job.trigger, CronTrigger)
+    fields = {field.name: str(field) for field in job.trigger.fields}
+    assert (fields["hour"], fields["minute"]) == ("2", "45")
+    assert job.max_instances == 1
+    assert job.coalesce is True
+
+
+def test_training_runs_the_nightly_trainer(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(scheduler.trainer, "run_nightly_training", lambda: calls.append("train"))
+
+    train_model()
+
+    assert calls == ["train"]
+
+
 def test_daily_feed_waits_for_refresh_time_unless_asked_to_build_now() -> None:
     later = jobs_by_id(feed_refresh_time=time(6, 0))["daily_feed"]
     now = jobs_by_id(feed_refresh_time=time(6, 0), build_feed_now=True)["daily_feed"]
@@ -71,13 +92,15 @@ def test_jobs_run_the_given_functions() -> None:
         poll=lambda: calls.append("poll"),
         enrich=lambda: calls.append("enrich"),
         build_feed=lambda: calls.append("feed"),
+        train=lambda: calls.append("train"),
     )
 
     jobs["poll_subscriptions"].func()
     jobs["enrich_candidates"].func()
     jobs["daily_feed"].func()
+    jobs["train_model"].func()
 
-    assert calls == ["poll", "enrich", "feed"]
+    assert calls == ["poll", "enrich", "feed", "train"]
 
 
 def test_daily_feed_gathers_and_enriches_before_ranking(monkeypatch: pytest.MonkeyPatch) -> None:

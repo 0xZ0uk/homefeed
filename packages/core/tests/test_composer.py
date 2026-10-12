@@ -2,6 +2,8 @@ import random
 from collections import Counter
 
 from homefeed_core.composer import (
+    EXPLORATION_MAX_RATINGS,
+    ChannelRatings,
     ComposeSettings,
     FeedSlot,
     VideoRef,
@@ -59,6 +61,10 @@ def pool(channels: int, per_channel: int) -> list[ScoredCandidate]:
     ]
 
 
+# Settings without exploration, for tests of the rest of the composition.
+NO_EXPLORATION = ComposeSettings(exploration_slots=0)
+
+
 def video_ids(slots: list[FeedSlot]) -> list[str]:
     return [slot.item.candidate.video_id for slot in slots]
 
@@ -77,7 +83,7 @@ def test_short_pool_gives_every_eligible_item() -> None:
 
 
 def test_top_scored_first() -> None:
-    slots = compose(pool(20, 1), {}, ComposeSettings(size=5), random.Random(1))
+    slots = compose(pool(20, 1), {}, ComposeSettings(size=5, exploration_slots=0), random.Random(1))
 
     assert video_ids(slots) == ["c19v0", "c18v0", "c17v0", "c16v0", "c15v0"]
 
@@ -140,11 +146,141 @@ def test_deterministic_with_seeded_rng() -> None:
     assert len(others) > 1
 
 
-def test_no_exploration_yet() -> None:
-    slots = compose(pool(20, 1), {}, ComposeSettings(size=15), random.Random(1))
+def exploration(slots: list[FeedSlot]) -> list[FeedSlot]:
+    return [slot for slot in slots if slot.is_exploration]
 
-    assert not any(slot.is_exploration for slot in slots)
-    assert all(slot.selection_probability is None for slot in slots)
+
+def rated(good: int, not_good: int = 0) -> ChannelRatings:
+    return ChannelRatings(good=good, not_good=not_good)
+
+
+def test_exploration_slot_count() -> None:
+    slots = compose(pool(20, 1), {}, ComposeSettings(size=15), random.Random(1))
+    none = compose(pool(20, 1), {}, NO_EXPLORATION, random.Random(1))
+    five = compose(pool(20, 1), {}, ComposeSettings(size=15, exploration_slots=5), random.Random(1))
+
+    assert len(slots) == 15
+    assert [slot.is_exploration for slot in slots[:3]] == [True, True, True]
+    assert not any(slot.is_exploration for slot in slots[3:])
+    assert exploration(none) == []
+    assert len(exploration(five)) == 5
+
+
+def test_exploration_comes_after_pins() -> None:
+    curation = {channel(0): ChannelCuration(pinned=True)}
+
+    slots = compose(pool(20, 2), curation, ComposeSettings(size=15), random.Random(1))
+
+    assert [(slot.is_pinned, slot.is_exploration) for slot in slots[:6]] == [
+        (True, False),
+        (True, False),
+        (False, True),
+        (False, True),
+        (False, True),
+        (False, False),
+    ]
+    # Pinned channels are pins, never exploration.
+    assert all(slot.item.candidate.channel_id != channel(0) for slot in exploration(slots))
+
+
+def test_exploration_fits_in_the_feed_size() -> None:
+    curation = {channel(c): ChannelCuration(pinned=True) for c in range(2)}
+
+    full = compose(pool(10, 3), curation, ComposeSettings(size=4), random.Random(1))
+    room_for_one = compose(pool(10, 3), curation, ComposeSettings(size=5), random.Random(1))
+
+    assert exploration(full) == []
+    assert len(exploration(room_for_one)) == 1
+    assert len(room_for_one) == 5
+
+
+def test_exploration_only_for_under_rated_channels() -> None:
+    items = pool(10, 1)
+    # Every channel but 3 and 7 has enough ratings to be left out of exploration.
+    ratings = {channel(c): rated(EXPLORATION_MAX_RATINGS) for c in range(10) if c not in (3, 7)}
+    ratings[channel(3)] = rated(2, EXPLORATION_MAX_RATINGS - 3)  # one short of the limit
+
+    slots = compose(items, {}, ComposeSettings(), random.Random(1), channel_ratings=ratings)
+
+    explored = exploration(slots)
+    assert {slot.item.candidate.channel_id for slot in explored} == {channel(3), channel(7)}
+    # Only two eligible channels for three slots: both are certain to be picked.
+    assert [slot.selection_probability for slot in explored] == [1.0, 1.0]
+
+
+def test_exploration_picks_one_video_per_channel_and_respects_the_cap() -> None:
+    items = pool(2, 4)  # two channels, both eligible, four videos each
+
+    slots = compose(items, {}, ComposeSettings(size=15), random.Random(1))
+
+    explored = exploration(slots)
+    assert len(explored) == 2
+    assert len({slot.item.candidate.channel_id for slot in explored}) == 2
+    # The channel's best-ranked (newest) video takes the slot; the cap still applies.
+    assert {slot.item.candidate.video_id for slot in explored} == {"c0v3", "c1v3"}
+    assert len(slots) == 4
+    assert len(set(video_ids(slots))) == 4
+
+
+def test_exploration_probabilities_recorded() -> None:
+    items = pool(10, 1)
+
+    slots = compose(items, {}, ComposeSettings(), random.Random(1))
+
+    explored = exploration(slots)
+    assert len(explored) == 3
+    for slot in explored:
+        assert slot.selection_probability is not None
+        # Ten channels with the same posterior share three slots: about 0.3 each.
+        assert 0.2 < slot.selection_probability < 0.4
+    assert all(slot.selection_probability is None for slot in slots if not slot.is_exploration)
+
+
+def test_exploration_favours_promising_channels() -> None:
+    items = pool(10, 1)
+    ratings = {channel(c): rated(0, 4) for c in range(10)}
+    ratings[channel(0)] = rated(4)  # 4 good ratings: Beta(5, 1) against Beta(1, 5)
+
+    slots = compose(
+        items,
+        {},
+        ComposeSettings(exploration_slots=1),
+        random.Random(1),
+        channel_ratings=ratings,
+    )
+
+    [explored] = exploration(slots)
+    assert explored.item.candidate.channel_id == channel(0)
+    assert explored.selection_probability is not None
+    assert explored.selection_probability > 0.9
+
+
+def test_exploration_deterministic_with_seeded_rng() -> None:
+    items = pool(30, 2)
+
+    def run(seed: int) -> list[tuple[str, float | None]]:
+        slots = compose(items, {}, ComposeSettings(), random.Random(seed))
+        return [(s.item.candidate.video_id, s.selection_probability) for s in exploration(slots)]
+
+    assert run(7) == run(7)
+    assert len({tuple(run(seed)) for seed in range(5)}) > 1
+
+
+def test_exploration_explanations() -> None:
+    items = [
+        scored("a", channel(1), 0.5, source="related", source_detail="seed"),
+        scored("b", channel(2), 0.4),
+    ]
+    ratings = {channel(2): rated(1, 1)}
+
+    slots = compose(
+        items, {}, ComposeSettings(), random.Random(1), videos=RATED, channel_ratings=ratings
+    )
+
+    assert {slot.item.candidate.video_id: slot.explanation for slot in slots} == {
+        "a": "Exploring: new channel · related to How to sharpen a chisel (A+)",
+        "b": "Exploring: channel with 2 ratings · new from your subscriptions",
+    }
 
 
 def test_explanations() -> None:
@@ -250,7 +386,7 @@ def test_compose_explains_with_the_given_videos() -> None:
         scored("c", channel(3), 0),
     ]
 
-    slots = compose(items, {}, ComposeSettings(size=15), random.Random(1), videos=RATED)
+    slots = compose(items, {}, NO_EXPLORATION, random.Random(1), videos=RATED)
 
     assert referenced_video_ids(items) == {"seed", "near"}
     assert {slot.item.candidate.video_id: slot.explanation for slot in slots} == {

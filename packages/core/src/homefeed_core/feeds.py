@@ -2,10 +2,15 @@
 
 `build_feed` gathers recent candidates, curation and the user's history from the
 database, runs the pure ranker and composer, and stores the result as a new feed for
-the date. `refresh_feed` polls subscriptions first (and, in the worker, enriches the
-candidates: see homefeed_core.enricher); the worker runs it daily at
-`FEED_REFRESH_TIME` and `POST /feed/refresh` can run it on demand. `get_feed` and
-`list_feeds` read feeds back with their items joined to video and channel info.
+the date. Ranking uses the active trained model, if one loads (see
+homefeed_core.ranking_models), blended in by `alpha`; the feed records its version in
+`model_version` (None when ranking was rules-only). `refresh_feed` polls subscriptions
+first (and, in the worker, enriches the candidates: see homefeed_core.enricher); the
+worker runs it daily at `FEED_REFRESH_TIME` and `POST /feed/refresh` can run it on
+demand. `get_feed` and `list_feeds` read feeds back with their items joined to video
+and channel info.
+`dismiss_feed_item` hides an item from the user with an optional reason; the video is
+then left out of every later feed and counts as a weak negative for training.
 
 A date can have several feeds (each refresh adds one, so dismissals and what was shown
 stay on record); the feed for a date is the latest one built for it. Dates are local
@@ -20,7 +25,7 @@ Subscription candidates from channels no longer subscribed are left out.
 import json
 import logging
 import random
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -33,6 +38,7 @@ from homefeed_core import curation as curation_prefs
 from homefeed_core import poller, watch_events
 from homefeed_core.candidates import SUBSCRIPTION, list_candidates
 from homefeed_core.composer import (
+    ChannelRatings,
     ComposeSettings,
     FeedSlot,
     VideoRef,
@@ -42,7 +48,8 @@ from homefeed_core.composer import (
 from homefeed_core.config import Settings, get_settings
 from homefeed_core.db import get_session_factory
 from homefeed_core.embeddings import get_embeddings
-from homefeed_core.grades import is_bottom_tier, is_top_tier
+from homefeed_core.gateway.events import format_timestamp
+from homefeed_core.grades import is_bottom_tier, is_good, is_top_tier
 from homefeed_core.ranker import (
     ChannelCuration,
     DurationBounds,
@@ -53,9 +60,12 @@ from homefeed_core.ranker import (
     ScoreBreakdown,
     rank,
 )
+from homefeed_core.ranking_models import load_active_model, ranker_model
 from homefeed_core.ratings import list_ratings
 
 logger = logging.getLogger(__name__)
+
+DISMISS_REASON_MAX_LENGTH = 200
 
 
 @dataclass(frozen=True)
@@ -155,6 +165,7 @@ def build_feed(
     # Uploads of channels unsubscribed since they were polled no longer belong.
     pool = [c for c in pool if c.source != SUBSCRIPTION or c.channel_id in curation]
     topics = curation_prefs.topic_vectors(session, now=now)
+    active = load_active_model(session, data_dir=settings.data_dir)
     scored = rank(
         pool,
         curation=curation,
@@ -166,18 +177,27 @@ def build_feed(
         topics=topics,
         embeddings=get_embeddings(session, [c.video_id for c in pool]),
         rated_tiers=load_rated_tiers(session),
+        model=None if active is None else ranker_model(active.model, now=now),
     )
     slots = compose(
         scored,
         curation,
-        ComposeSettings(size=settings.feed_size),
+        ComposeSettings(size=settings.feed_size, exploration_slots=settings.feed_exploration_slots),
         rng or random.Random(),
         videos=load_video_refs(session, referenced_video_ids(scored)),
+        channel_ratings=load_channel_ratings(session),
     )
-    feed_id = _store(session, feed_date, slots)
+    model_version = None if active is None else str(active.version.id)
+    feed_id = _store(session, feed_date, slots, model_version=model_version)
     feed = _get_feed_by_id(session, feed_id)
     assert feed is not None
-    logger.info("Built feed for %s: %d items from %d", feed_date, len(slots), len(scored))
+    logger.info(
+        "Built feed for %s: %d items from %d, model version %s",
+        feed_date,
+        len(slots),
+        len(scored),
+        model_version or "none (rules-only)",
+    )
     return feed
 
 
@@ -216,6 +236,49 @@ def list_feeds(session: Session, *, limit: int = 30) -> list[FeedSummary]:
         FeedSummary(id, date.fromisoformat(day), created, model, count)
         for id, day, created, model, count in rows
     ]
+
+
+def get_feed_item(session: Session, item_id: int) -> FeedItem | None:
+    """A feed item by id, or None."""
+    row = session.execute(text(f"{_ITEM_SELECT} WHERE i.id = :id"), {"id": item_id}).one_or_none()
+    return None if row is None else _item(row)
+
+
+def normalize_dismiss_reason(reason: str | None) -> str | None:
+    """`reason` with surrounding whitespace removed; None when blank.
+
+    Raises ValueError when the result is longer than `DISMISS_REASON_MAX_LENGTH`."""
+    normalized = (reason or "").strip()
+    if len(normalized) > DISMISS_REASON_MAX_LENGTH:
+        raise ValueError(f"A dismiss reason is at most {DISMISS_REASON_MAX_LENGTH} characters")
+    return normalized or None
+
+
+def dismiss_feed_item(
+    session: Session, item_id: int, reason: str | None = None, *, now: datetime | None = None
+) -> FeedItem | None:
+    """Dismiss a feed item, or return None if there is no such item.
+
+    Sets `dismissed_at` (kept from the first dismissal if dismissed again) and
+    `dismiss_reason` (a later reason replaces an earlier one; no reason keeps it). The
+    video is left out of every feed built afterwards. Raises ValueError for a reason
+    that is too long."""
+    reason = normalize_dismiss_reason(reason)
+    updated = session.execute(
+        text(
+            """
+            UPDATE feed_items
+            SET dismissed_at = coalesce(dismissed_at, :at),
+                dismiss_reason = coalesce(:reason, dismiss_reason)
+            WHERE id = :id
+            RETURNING id
+            """
+        ),
+        {"id": item_id, "at": format_timestamp(now or datetime.now(UTC)), "reason": reason},
+    ).first()
+    if updated is None:
+        return None
+    return get_feed_item(session, item_id)
 
 
 def load_curation(session: Session) -> dict[str, ChannelCuration]:
@@ -266,6 +329,21 @@ def load_history(session: Session) -> History:
         channel_ratings=dict(channel_ratings),
         n_ratings=n_ratings,
     )
+
+
+def load_channel_ratings(session: Session) -> dict[str, ChannelRatings]:
+    """Good (B-- or higher) and not-good rating counts per channel, for exploration."""
+    rows = session.execute(
+        text("SELECT v.channel_id, r.grade FROM ratings AS r JOIN videos AS v ON v.id = r.video_id")
+    )
+    good: Counter[str] = Counter()
+    not_good: Counter[str] = Counter()
+    for channel_id, grade in rows:
+        (good if is_good(grade) else not_good)[channel_id] += 1
+    return {
+        channel_id: ChannelRatings(good=good[channel_id], not_good=not_good[channel_id])
+        for channel_id in good.keys() | not_good.keys()
+    }
 
 
 def load_rated_tiers(session: Session) -> RatedTiers:
@@ -344,10 +422,12 @@ def load_rank_candidates(session: Session, *, since: datetime | None = None) -> 
     return result
 
 
-def _store(session: Session, feed_date: date, slots: Sequence[FeedSlot]) -> int:
+def _store(
+    session: Session, feed_date: date, slots: Sequence[FeedSlot], *, model_version: str | None
+) -> int:
     feed_id = session.execute(
-        text("INSERT INTO feeds (date, model_version) VALUES (:date, NULL) RETURNING id"),
-        {"date": feed_date.isoformat()},
+        text("INSERT INTO feeds (date, model_version) VALUES (:date, :model) RETURNING id"),
+        {"date": feed_date.isoformat(), "model": model_version},
     ).scalar_one()
     if slots:
         session.execute(
@@ -381,6 +461,19 @@ def _store(session: Session, feed_date: date, slots: Sequence[FeedSlot]) -> int:
     return feed_id
 
 
+_ITEM_SELECT = """
+    SELECT i.id, i.position, v.id, v.title, v.description, v.duration_seconds,
+           v.published_at, v.thumbnail_url, v.view_count,
+           c.id, c.title, c.handle, c.thumbnail_url,
+           i.source, i.source_detail, i.score, i.breakdown, i.explanation,
+           i.is_pinned, i.is_exploration, i.selection_probability,
+           i.dismissed_at, i.dismiss_reason
+    FROM feed_items AS i
+    JOIN videos AS v ON v.id = i.video_id
+    JOIN channels AS c ON c.id = v.channel_id
+"""
+
+
 def _get_feed_by_id(session: Session, feed_id: int) -> Feed | None:
     row = session.execute(
         text("SELECT id, date, created_at, model_version FROM feeds WHERE id = :id"),
@@ -389,22 +482,7 @@ def _get_feed_by_id(session: Session, feed_id: int) -> Feed | None:
     if row is None:
         return None
     items = session.execute(
-        text(
-            """
-            SELECT i.id, i.position, v.id, v.title, v.description, v.duration_seconds,
-                   v.published_at, v.thumbnail_url, v.view_count,
-                   c.id, c.title, c.handle, c.thumbnail_url,
-                   i.source, i.source_detail, i.score, i.breakdown, i.explanation,
-                   i.is_pinned, i.is_exploration, i.selection_probability,
-                   i.dismissed_at, i.dismiss_reason
-            FROM feed_items AS i
-            JOIN videos AS v ON v.id = i.video_id
-            JOIN channels AS c ON c.id = v.channel_id
-            WHERE i.feed_id = :id
-            ORDER BY i.position
-            """
-        ),
-        {"id": feed_id},
+        text(f"{_ITEM_SELECT} WHERE i.feed_id = :id ORDER BY i.position"), {"id": feed_id}
     )
     return Feed(
         id=row[0],

@@ -1,22 +1,29 @@
 import json
+import math
 import random
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import numpy as np
 import pytest
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from homefeed_core import feeds
 from homefeed_core.candidates import SUBSCRIPTION, record
+from homefeed_core.composer import ChannelRatings
 from homefeed_core.config import Settings
 from homefeed_core.curation import add_keyword_mute, add_topic
 from homefeed_core.db import open_database
 from homefeed_core.embeddings import EMBEDDING_DIMENSIONS, StubEmbeddingProvider, store_embedding
 from homefeed_core.enricher import Enricher, enrich_candidates, get_features
 from homefeed_core.gateway.fake import FakeGateway, make_channel, make_video
+from homefeed_core.grades import Grade
+from homefeed_core.model_features import FEATURE_NAMES
 from homefeed_core.ranker import SIMILARITY_WEIGHT
+from homefeed_core.ranking_models import RidgeModel, activate, record_version, save_model
 from homefeed_core.ratings import set_rating
 from homefeed_core.watch_events import record_watch_event
 
@@ -27,7 +34,8 @@ PLAIN = "UC" + "p" * 22
 MUTED = "UC" + "m" * 22
 PINNED = "UC" + "x" * 22
 GONE = "UC" + "g" * 22  # unsubscribed
-SETTINGS = Settings(feed_size=15)
+# Exploration has tests of its own; the rest expect a purely score-ordered feed.
+SETTINGS = Settings(feed_size=15, feed_exploration_slots=0)
 
 
 def vid(channel_id: str, n: int) -> str:
@@ -135,6 +143,36 @@ def test_build_feed_ranks_composes_and_stores(sessions: sessionmaker[Session]) -
         assert feeds.get_feed(session, TODAY) == feed
 
 
+def test_build_feed_stores_exploration_slots(sessions: sessionmaker[Session]) -> None:
+    with sessions.begin() as session:
+        add_videos(session, LOVED, range(4, 10))
+        grades: list[Grade] = ["A", "B--", "C", "S", "F"]  # 5 ratings: not explored
+        for n, grade in enumerate(grades):
+            set_rating(session, vid(LOVED, n), grade)
+        set_rating(session, vid(PLAIN, 0), "D")
+        assert feeds.load_channel_ratings(session) == {
+            LOVED: ChannelRatings(good=3, not_good=2),
+            PLAIN: ChannelRatings(good=0, not_good=1),
+        }
+
+    feed = build(sessions, settings=Settings(feed_size=15, feed_exploration_slots=3))
+
+    explored = [item for item in feed.items if item.is_exploration]
+    # PLAIN is the only non-pinned channel with fewer than 5 ratings (LOVED has 5).
+    assert [(item.position, item.channel_id) for item in explored] == [(2, PLAIN)]
+    assert explored[0].selection_probability == 1.0
+    assert explored[0].explanation.startswith("Exploring: channel with 1 rating")
+    with sessions() as session:
+        stored = session.execute(
+            text(
+                "SELECT video_id, selection_probability FROM feed_items "
+                "WHERE feed_id = :id AND is_exploration = 1"
+            ),
+            {"id": feed.id},
+        ).all()
+    assert stored == [(explored[0].video_id, 1.0)]
+
+
 def test_feed_size_is_exact_with_enough_candidates(sessions: sessionmaker[Session]) -> None:
     feed = build(sessions, settings=Settings(feed_size=3))
 
@@ -160,6 +198,80 @@ def test_watched_and_dismissed_are_left_out(sessions: sessionmaker[Session]) -> 
     assert {vid(LOVED, 1), vid(LOVED, 0)} <= shown
 
 
+def test_dismissing_an_item_records_when_and_why(sessions: sessionmaker[Session]) -> None:
+    item = build(sessions).items[2]
+
+    with sessions.begin() as session:
+        dismissed = feeds.dismiss_feed_item(session, item.id, "  Not in the mood  ", now=NOW)
+
+    assert dismissed is not None
+    assert dismissed.dismissed_at == "2026-10-12T06:00:00.000Z"
+    assert dismissed.dismiss_reason == "Not in the mood"
+    assert dismissed == replace(
+        item, dismissed_at=dismissed.dismissed_at, dismiss_reason="Not in the mood"
+    )
+    with sessions() as session:
+        assert feeds.get_feed_item(session, item.id) == dismissed
+
+
+def test_dismissing_without_a_reason(sessions: sessionmaker[Session]) -> None:
+    item = build(sessions).items[0]
+
+    with sessions.begin() as session:
+        dismissed = feeds.dismiss_feed_item(session, item.id, "   ", now=NOW)
+
+    assert dismissed is not None
+    assert dismissed.dismissed_at is not None
+    assert dismissed.dismiss_reason is None
+
+
+def test_dismissing_again_keeps_the_first_time_and_updates_the_reason(
+    sessions: sessionmaker[Session],
+) -> None:
+    item = build(sessions).items[0]
+    with sessions.begin() as session:
+        feeds.dismiss_feed_item(session, item.id, "Clickbait", now=NOW)
+
+    with sessions.begin() as session:
+        later = NOW + timedelta(minutes=5)
+        renamed = feeds.dismiss_feed_item(session, item.id, "Too long", now=later)
+        kept = feeds.dismiss_feed_item(session, item.id, None, now=later)
+
+    assert renamed is not None and kept is not None
+    assert renamed.dismissed_at == kept.dismissed_at == "2026-10-12T06:00:00.000Z"
+    assert renamed.dismiss_reason == kept.dismiss_reason == "Too long"
+
+
+def test_dismissing_a_missing_item_returns_none(sessions: sessionmaker[Session]) -> None:
+    with sessions.begin() as session:
+        assert feeds.dismiss_feed_item(session, 12345) is None
+        assert feeds.get_feed_item(session, 12345) is None
+
+
+def test_dismiss_reason_length_is_limited(sessions: sessionmaker[Session]) -> None:
+    item = build(sessions).items[0]
+
+    with sessions.begin() as session, pytest.raises(ValueError, match="at most"):
+        feeds.dismiss_feed_item(session, item.id, "x" * (feeds.DISMISS_REASON_MAX_LENGTH + 1))
+    with sessions() as session:
+        assert feeds.get_feed_item(session, item.id) == item
+
+
+def test_dismissed_videos_are_left_out_of_later_feeds(sessions: sessionmaker[Session]) -> None:
+    first = build(sessions)
+    dismissed = first.items[2].video_id
+    with sessions.begin() as session:
+        feeds.dismiss_feed_item(session, first.items[2].id, "Not interested")
+
+    second = build(sessions)
+
+    assert dismissed not in {item.video_id for item in second.items}
+    with sessions() as session:
+        # The earlier feed keeps the item on record, marked dismissed.
+        kept = feeds.get_feed_item(session, first.items[2].id)
+        assert kept is not None and kept.dismiss_reason == "Not interested"
+
+
 def test_played_videos_are_left_out(sessions: sessionmaker[Session]) -> None:
     with sessions.begin() as session:
         record_watch_event(session, vid(LOVED, 3), "play", 0.0, 600.0)
@@ -171,6 +283,68 @@ def test_played_videos_are_left_out(sessions: sessionmaker[Session]) -> None:
 
     assert vid(LOVED, 3) not in shown
     assert vid(LOVED, 2) in shown
+
+
+def channel_score_model() -> RidgeModel:
+    """Predicts `0.5 * channel_score + 0.1`, ignoring every other feature."""
+    coef = np.zeros(len(FEATURE_NAMES))
+    coef[FEATURE_NAMES.index("channel_score")] = 0.5
+    return RidgeModel(
+        mean=np.zeros(len(FEATURE_NAMES)),
+        scale=np.ones(len(FEATURE_NAMES)),
+        coef=coef,
+        intercept=0.1,
+    )
+
+
+def install_model(session: Session, data_dir: Path, *, path: str | None = None) -> int:
+    """Store and activate `channel_score_model`; `path` overrides the file it points to."""
+    stored = save_model(channel_score_model(), data_dir)
+    version = record_version(
+        session, path=path or stored, kind="ridge", spearman=0.5, mae=0.2, metrics={}
+    )
+    activate(session, version.id, now=NOW)
+    return version.id
+
+
+def test_active_model_is_blended_in_by_rating_count(
+    sessions: sessionmaker[Session], tmp_path: Path
+) -> None:
+    with sessions.begin() as session:
+        add_videos(session, PLAIN, range(10, 15))
+        for n in range(10, 15):
+            set_rating(session, vid(PLAIN, n), "B")
+        version_id = install_model(session, tmp_path)
+
+    feed = build(sessions, settings=SETTINGS.model_copy(update={"data_dir": tmp_path}))
+
+    assert feed.model_version == str(version_id)
+    assert feed.items
+    for item in feed.items:
+        b = item.breakdown
+        assert b.alpha == pytest.approx(5 / 55)
+        assert b.model == pytest.approx(0.5 * b.channel + 0.1)
+        parts = b.alpha * b.model + b.channel + b.similarity + sum(b.topics.values())
+        assert math.isclose(item.score, parts) and item.score == b.final
+    with sessions() as session:
+        assert feeds.get_feed(session, TODAY) == feed
+        [summary] = feeds.list_feeds(session)
+        assert summary.model_version == str(version_id)
+        stored = session.execute(text("SELECT breakdown FROM feed_items LIMIT 1")).scalar_one()
+        assert json.loads(stored)["alpha"] == pytest.approx(5 / 55)
+
+
+def test_unloadable_active_model_ranks_rules_only(
+    sessions: sessionmaker[Session], tmp_path: Path
+) -> None:
+    with sessions.begin() as session:
+        set_rating(session, vid(PLAIN, 0), "B")
+        install_model(session, tmp_path, path="ranking_models/missing.json")
+
+    feed = build(sessions, settings=SETTINGS.model_copy(update={"data_dir": tmp_path}))
+
+    assert feed.model_version is None
+    assert all(item.breakdown.alpha == 0 and item.breakdown.model == 0 for item in feed.items)
 
 
 def test_ratings_shape_channel_score(sessions: sessionmaker[Session]) -> None:

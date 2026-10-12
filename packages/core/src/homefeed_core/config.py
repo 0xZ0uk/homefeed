@@ -14,8 +14,12 @@ class Settings(BaseSettings):
     data_dir: Path = Path("data")
     database_path: Path = Path("data/homefeed.sqlite")
     feed_size: int = 15
+    # Feed slots reserved for exploring under-rated channels (Thompson sampling).
+    feed_exploration_slots: int = 3
     # Local time (the process's TZ) when the worker builds the day's feed.
     feed_refresh_time: time = time(6, 0)
+    # Local time when the worker trains the ranking model (before the day's feed).
+    model_training_time: time = time(3, 0)
     # Hard duration bounds for feed videos, in seconds; unset means no bound.
     feed_min_duration_seconds: int | None = None
     feed_max_duration_seconds: int | None = None

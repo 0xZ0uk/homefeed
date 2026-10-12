@@ -37,7 +37,7 @@ function Home() {
       </div>
       {feed ? (
         <>
-          <FeedList feed={feed} display={display} />
+          <FeedList feed={feed} display={display} dismissible />
           <RefreshFeedButton />
         </>
       ) : (
