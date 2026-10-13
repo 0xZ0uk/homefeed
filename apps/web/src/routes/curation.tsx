@@ -1,7 +1,7 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 
+import { AppShell } from "#/components/AppShell";
 import { ChannelsTab } from "#/components/ChannelsTab";
-import { LogoutButton } from "#/components/LogoutButton";
 import { MutesTab } from "#/components/MutesTab";
 import { SavedSearchesTab } from "#/components/SavedSearchesTab";
 import { SourcesTab } from "#/components/SourcesTab";
@@ -58,24 +58,19 @@ function Curation() {
   const { tab = "channels" } = Route.useSearch();
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
-      <header className="flex items-baseline justify-between gap-4">
-        <h1 className="text-3xl font-bold">Curation</h1>
-        <nav className="flex items-baseline gap-4">
-          <Link to="/" className="underline">
-            Home
-          </Link>
-          <LogoutButton />
-        </nav>
-      </header>
-      <nav aria-label="Curation sections" className="mt-6 flex gap-2 border-b">
+    <AppShell className="max-w-4xl">
+      <h2 className="text-2xl font-bold">Curation</h2>
+      <nav
+        aria-label="Curation sections"
+        className="mt-4 flex gap-2 overflow-x-auto border-b"
+      >
         {TABS.map((t) => (
           <Link
             key={t.id}
             to="/curation"
             search={{ tab: t.id }}
             aria-current={t.id === tab ? "page" : undefined}
-            className="-mb-px border-b-2 border-transparent px-3 py-2 aria-[current=page]:border-black aria-[current=page]:font-medium"
+            className="-mb-px shrink-0 border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground aria-[current=page]:border-foreground aria-[current=page]:text-foreground"
           >
             {t.label}
           </Link>
@@ -88,6 +83,6 @@ function Curation() {
         {tab === "searches" && <SavedSearchesTab />}
         {tab === "sources" && <SourcesTab />}
       </section>
-    </main>
+    </AppShell>
   );
 }

@@ -35,7 +35,7 @@ export function ChannelsTab() {
     <div className="flex flex-col gap-6">
       <SubscribeForm />
       {channels.length === 0 ? (
-        <p className="text-gray-600">
+        <p className="text-muted-foreground">
           No subscriptions yet. Paste a channel link above to add one.
         </p>
       ) : (
@@ -94,24 +94,24 @@ function SubscribeForm() {
           required
           aria-invalid={result?.ok === false}
           aria-describedby="subscribe-status"
-          className="min-w-0 flex-1 rounded border px-3 py-2"
+          className="min-w-0 flex-1 rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
         />
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="rounded bg-black px-3 py-2 font-medium text-white disabled:opacity-50"
+          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85 disabled:opacity-50"
         >
           {mutation.isPending ? "Subscribing…" : "Subscribe"}
         </button>
       </div>
       <p id="subscribe-status" role="status" className="min-h-6">
         {mutation.isError && (
-          <span className="text-red-600">
+          <span className="text-destructive">
             Couldn't subscribe. Try again later.
           </span>
         )}
         {result?.ok === false && (
-          <span className="text-red-600">{result.message}</span>
+          <span className="text-destructive">{result.message}</span>
         )}
         {result?.ok === true &&
           (result.created
@@ -157,7 +157,9 @@ function ChannelRow({
         <div className="min-w-0">
           <p className="truncate font-medium">{channel.title}</p>
           {channel.handle && (
-            <p className="truncate text-sm text-gray-600">{channel.handle}</p>
+            <p className="truncate text-sm text-muted-foreground">
+              {channel.handle}
+            </p>
           )}
         </div>
       </div>
@@ -172,7 +174,7 @@ function ChannelRow({
           onChange={(event) =>
             update.mutate({ prior: event.target.value as Prior })
           }
-          className="rounded border px-2 py-1"
+          className="rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-2 py-1"
         >
           {PRIORS.map((prior) => (
             <option key={prior} value={prior}>
@@ -207,12 +209,12 @@ function ChannelRow({
             remove.mutate();
           }
         }}
-        className="text-sm text-red-700 underline disabled:opacity-50"
+        className="text-sm text-destructive underline disabled:opacity-50"
       >
         Unsubscribe
       </button>
       {(update.isError || remove.isError) && (
-        <p role="alert" className="w-full text-sm text-red-600">
+        <p role="alert" className="w-full text-sm text-destructive">
           Couldn't save that change. Try again.
         </p>
       )}

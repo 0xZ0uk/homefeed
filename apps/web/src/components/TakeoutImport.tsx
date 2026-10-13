@@ -25,7 +25,7 @@ export function TakeoutImport() {
       <h3 id="takeout-heading" className="text-lg font-semibold">
         Import watch history
       </h3>
-      <p className="text-gray-600">
+      <p className="text-muted-foreground">
         Upload the YouTube watch history from Google Takeout (
         <code>watch-history.json</code> or <code>watch-history.html</code>). Its
         channels and your most recently watched videos are added as candidates,
@@ -66,7 +66,7 @@ export function TakeoutImport() {
             defaultValue={DEFAULT_SUBSCRIBE_MIN_WATCHES}
             disabled={!subscribe}
             aria-label="Minimum watches to subscribe"
-            className="w-20 rounded border px-2 py-1 disabled:opacity-50"
+            className="w-20 rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-2 py-1 disabled:opacity-50"
           />
           <span>times</span>
         </div>
@@ -74,7 +74,7 @@ export function TakeoutImport() {
           <button
             type="submit"
             disabled={mutation.isPending}
-            className="rounded bg-black px-3 py-2 font-medium text-white disabled:opacity-50"
+            className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85 disabled:opacity-50"
           >
             {mutation.isPending ? "Importing…" : "Import"}
           </button>
@@ -82,12 +82,12 @@ export function TakeoutImport() {
       </form>
       <div id="takeout-status" role="status" className="min-h-6">
         {mutation.isError && (
-          <p className="text-red-600">
+          <p className="text-destructive">
             Couldn't import that file. Try again later.
           </p>
         )}
         {result?.ok === false && (
-          <p className="text-red-600">{result.message}</p>
+          <p className="text-destructive">{result.message}</p>
         )}
         {result?.ok === true && (
           <ul className="flex flex-col gap-1">

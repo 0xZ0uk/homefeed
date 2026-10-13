@@ -10,25 +10,26 @@ export function FeedHistory() {
 
   return (
     <section aria-labelledby="feed-history" className="flex flex-col gap-2">
-      <h2 id="feed-history" className="text-lg font-semibold">
+      <h2 id="feed-history" className="text-sm font-medium">
         Past feeds
       </h2>
       {feeds.length === 0 ? (
-        <p className="text-sm text-gray-600">No feeds yet.</p>
+        <p className="text-sm text-muted-foreground">No feeds yet.</p>
       ) : (
-        <ul className="flex flex-col gap-1 text-sm">
+        <ul className="flex flex-wrap gap-2 text-sm">
           {feeds.map((feed) => (
             <li key={feed.id}>
               <Link
                 to="/feed/$date"
                 params={{ date: feed.date }}
-                className="underline aria-[current=page]:font-medium aria-[current=page]:no-underline"
+                className="group flex h-8 items-center gap-1.5 rounded-lg bg-secondary px-3 font-medium outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 aria-[current=page]:bg-primary aria-[current=page]:text-primary-foreground"
               >
                 {formatFeedDate(feed.date)}
-              </Link>{" "}
-              <span className="text-gray-600">
-                · {feed.item_count} {feed.item_count === 1 ? "video" : "videos"}
-              </span>
+                <span className="font-normal text-muted-foreground group-aria-[current=page]:text-primary-foreground/70">
+                  · {feed.item_count}{" "}
+                  {feed.item_count === 1 ? "video" : "videos"}
+                </span>
+              </Link>
             </li>
           ))}
         </ul>

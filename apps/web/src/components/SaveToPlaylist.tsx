@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { ListPlus } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
 
 import { PLAYLIST_NAME_MAX_LENGTH, checkPlaylistName } from "#/lib/playlists";
@@ -21,10 +22,13 @@ export function SaveToPlaylist({ videoId }: { videoId: string }) {
 
   return (
     <details
-      className="text-sm"
+      className="relative text-sm"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
-      <summary className="cursor-pointer underline">Save to playlist</summary>
+      <summary className="inline-flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-full bg-secondary px-4 font-medium outline-none select-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
+        <ListPlus className="size-4" />
+        Save to playlist
+      </summary>
       {open && <PlaylistChoices videoId={videoId} />}
     </details>
   );
@@ -34,15 +38,17 @@ function PlaylistChoices({ videoId }: { videoId: string }) {
   const query = useQuery(playlistsForVideoQuery(videoId));
 
   return (
-    <div className="mt-2 flex flex-col gap-3 rounded border p-3">
+    <div className="absolute right-0 z-20 mt-2 flex w-72 max-w-[calc(100vw-2rem)] flex-col gap-3 rounded-xl bg-popover p-4 text-popover-foreground shadow-lg ring-1 ring-foreground/10">
       {query.isPending ? (
-        <p className="text-gray-600">Loading playlists…</p>
+        <p className="text-muted-foreground">Loading playlists…</p>
       ) : query.isError ? (
-        <p role="alert" className="text-red-600">
+        <p role="alert" className="text-destructive">
           Couldn't load your playlists. Try again later.
         </p>
       ) : query.data.length === 0 ? (
-        <p className="text-gray-600">No playlists yet. Create one below.</p>
+        <p className="text-muted-foreground">
+          No playlists yet. Create one below.
+        </p>
       ) : (
         <ul className="flex flex-col gap-1" aria-label="Playlists">
           {query.data.map((playlist) => (
@@ -94,7 +100,7 @@ function PlaylistChoice({
         <span className="break-words">{playlist.name}</span>
       </label>
       {toggle.isError && (
-        <p role="alert" className="text-red-600">
+        <p role="alert" className="text-destructive">
           Couldn't update “{playlist.name}”. Try again.
         </p>
       )}
@@ -149,18 +155,18 @@ function NewPlaylistWithVideo({ videoId }: { videoId: string }) {
           value={name}
           onChange={(event) => setName(event.target.value)}
           maxLength={PLAYLIST_NAME_MAX_LENGTH}
-          className="rounded border px-2 py-1"
+          className="min-w-0 flex-1 rounded-lg border border-input bg-transparent px-2 py-1.5 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
         />
         <button
           type="submit"
           disabled={create.isPending}
-          className="rounded bg-black px-2 py-1 font-medium text-white disabled:opacity-50"
+          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85 disabled:opacity-50"
         >
           {create.isPending ? "Creating…" : "Create and add"}
         </button>
       </div>
       {problem && (
-        <p role="alert" className="text-red-600">
+        <p role="alert" className="text-destructive">
           {problem}
         </p>
       )}

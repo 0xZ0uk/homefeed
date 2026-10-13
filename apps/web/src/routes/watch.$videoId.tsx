@@ -9,18 +9,21 @@ import {
   useRouter,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
-import { AppHeader } from "#/components/AppHeader";
+import { AppShell } from "#/components/AppShell";
 import { Chapters } from "#/components/Chapters";
 import { Comments } from "#/components/Comments";
 import { PlayerMediaProvider } from "#/components/PlayerMedia";
 import { SaveToPlaylist } from "#/components/SaveToPlaylist";
 import { SponsorSkip } from "#/components/SponsorSkip";
 import { WatchAndRate } from "#/components/WatchAndRate";
-import { WatchQueueControls } from "#/components/WatchQueueControls";
-import { formatDuration } from "#/lib/format";
+import { NextInQueue } from "#/components/NextInQueue";
+import { QueueButton } from "#/components/QueueButton";
 import { showsImages } from "#/lib/display";
+import { channelColor } from "#/lib/feed-grid";
+import { formatDuration, formatFeedDate } from "#/lib/format";
+import { cn } from "#/lib/utils";
 import { isVideoId } from "#/lib/ids";
 import { displayPrefsQuery } from "#/server/display";
 import { fetchResumePosition } from "#/server/history";
@@ -77,54 +80,120 @@ function Watch() {
   const { resumeAt } = Route.useLoaderData();
   if (!video) return null; // the loader already threw notFound
 
+  const images = showsImages(display);
+  const duration = formatDuration(video.duration_seconds);
+  const published = formatFeedDate(video.published_at?.slice(0, 10) ?? "");
+
   return (
     <WatchShell>
-      <WatchAndRate
-        key={video.id}
-        videoId={video.id}
-        poster={showsImages(display) ? video.thumbnail_url : null}
-        startAt={resumeAt}
-      />
-      <SponsorSkip videoId={video.id} />
-      <article className="flex flex-col gap-3">
-        <h2 className="text-2xl font-semibold">{video.title}</h2>
-        <p className="text-gray-700">
-          {video.channel_title}
-          {video.channel_handle && (
-            <span className="text-gray-500"> {video.channel_handle}</span>
-          )}
-          {video.duration_seconds != null && (
-            <span className="text-gray-500">
-              {" · "}
-              {formatDuration(video.duration_seconds)}
-            </span>
-          )}
-        </p>
-        <WatchQueueControls videoId={video.id} title={video.title} />
-        <SaveToPlaylist videoId={video.id} />
-        {video.is_stale && (
-          <p className="text-sm text-gray-500">
-            YouTube couldn't be reached; showing saved details.
-          </p>
-        )}
-        {video.description && (
-          <p className="whitespace-pre-line break-words text-gray-800">
-            {video.description}
-          </p>
-        )}
-        <Chapters chapters={video.chapters} />
+      <div className="flex min-w-0 flex-col gap-6">
+        <WatchAndRate
+          key={video.id}
+          videoId={video.id}
+          poster={images ? video.thumbnail_url : null}
+          startAt={resumeAt}
+        >
+          <SponsorSkip videoId={video.id} />
+          <h2 className="text-xl leading-7 font-bold">{video.title}</h2>
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+            <div className="flex min-w-0 items-center gap-3">
+              {images && (
+                <span
+                  aria-hidden="true"
+                  className="flex size-10 shrink-0 items-center justify-center rounded-full font-medium text-white"
+                  style={{ backgroundColor: channelColor(video.channel_id) }}
+                >
+                  {video.channel_title.trim().charAt(0).toUpperCase()}
+                </span>
+              )}
+              <p className="flex min-w-0 flex-col">
+                <span className="truncate font-medium">
+                  {video.channel_title}
+                </span>
+                {video.channel_handle && (
+                  <span className="truncate text-xs text-muted-foreground">
+                    {video.channel_handle}
+                  </span>
+                )}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <QueueButton videoId={video.id} title={video.title} />
+              <SaveToPlaylist videoId={video.id} />
+            </div>
+          </div>
+          <Description
+            meta={[duration, video.published_at && published].filter(
+              (part): part is string => Boolean(part),
+            )}
+            stale={video.is_stale}
+            text={video.description}
+          />
+        </WatchAndRate>
         <Comments videoId={video.id} />
-      </article>
+      </div>
+      <aside className="flex min-w-0 flex-col gap-4">
+        <NextInQueue videoId={video.id} />
+        <Chapters chapters={video.chapters} />
+      </aside>
     </WatchShell>
+  );
+}
+
+/** YouTube's description box: details on top, the text clamped until
+ * expanded. */
+function Description({
+  meta,
+  stale,
+  text,
+}: {
+  meta: string[];
+  stale: boolean;
+  text: string | null;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const long = (text?.length ?? 0) > 280 || (text?.split("\n").length ?? 0) > 3;
+
+  return (
+    <div className="flex flex-col gap-1 rounded-xl bg-secondary p-3 text-sm">
+      {meta.length > 0 && <p className="font-medium">{meta.join(" · ")}</p>}
+      {stale && (
+        <p className="text-muted-foreground">
+          YouTube couldn't be reached; showing saved details.
+        </p>
+      )}
+      {text && (
+        <p
+          className={cn(
+            "break-words whitespace-pre-line",
+            long && !expanded && "line-clamp-3",
+          )}
+        >
+          {text}
+        </p>
+      )}
+      {long && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+          className="self-start font-medium hover:underline"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
   );
 }
 
 function WatchShell({ children }: { children: ReactNode }) {
   return (
-    <main className="mx-auto flex max-w-4xl flex-col gap-6 p-8">
-      <AppHeader />
+    <AppShell
+      guide="drawer"
+      className="grid max-w-6xl gap-6 pt-4 has-[>aside>*]:max-w-[110rem] xl:has-[>aside>*]:grid-cols-[minmax(0,1fr)_24rem]"
+    >
       <PlayerMediaProvider>{children}</PlayerMediaProvider>
-    </main>
+    </AppShell>
   );
 }
 

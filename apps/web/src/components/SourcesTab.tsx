@@ -32,7 +32,7 @@ export function SourcesTab() {
     <div className="flex flex-col gap-6">
       <SourceForm />
       {sources.length === 0 ? (
-        <p className="text-gray-600">
+        <p className="text-muted-foreground">
           No sources yet. Add a subreddit, feed or page above, and the YouTube
           videos it links to will be considered for your feed.
         </p>
@@ -83,7 +83,7 @@ function SourceForm() {
       <h2 id="source-form-title" className="font-medium">
         Add a source
       </h2>
-      <p id="source-hint" className="text-sm text-gray-600">
+      <p id="source-hint" className="text-sm text-muted-foreground">
         Homefeed checks it on the schedule you pick and adds the YouTube videos
         it links to as candidates.
       </p>
@@ -95,7 +95,7 @@ function SourceForm() {
           id="source-kind"
           value={kind}
           onChange={(event) => setKind(event.target.value as SourceKind)}
-          className="rounded border px-2 py-2"
+          className="rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-2 py-2"
         >
           {SOURCE_KINDS.map((k) => (
             <option key={k} value={k}>
@@ -117,7 +117,7 @@ function SourceForm() {
           required
           aria-invalid={result?.ok === false}
           aria-describedby="source-hint source-status"
-          className="min-w-48 flex-1 rounded border px-3 py-2"
+          className="min-w-48 flex-1 rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
         />
         <label className="sr-only" htmlFor="source-schedule">
           How often to check
@@ -128,7 +128,7 @@ function SourceForm() {
           onChange={(event) =>
             setSchedule(event.target.value as SourceSchedule)
           }
-          className="rounded border px-2 py-2"
+          className="rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-2 py-2"
         >
           {SOURCE_SCHEDULES.map((s) => (
             <option key={s} value={s}>
@@ -139,19 +139,19 @@ function SourceForm() {
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="rounded bg-black px-3 py-2 font-medium text-white disabled:opacity-50"
+          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85 disabled:opacity-50"
         >
           {mutation.isPending ? "Adding…" : "Add source"}
         </button>
       </div>
       <p id="source-status" role="status" className="min-h-6">
         {mutation.isError && (
-          <span className="text-red-600">
+          <span className="text-destructive">
             Couldn't add that source. Try again later.
           </span>
         )}
         {result?.ok === false && (
-          <span className="text-red-600">{result.message}</span>
+          <span className="text-destructive">{result.message}</span>
         )}
         {result?.ok === true &&
           (result.created
@@ -190,9 +190,9 @@ function SourceRow({ source }: { source: ExternalSource }) {
             {source.label}
           </a>
         </p>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-muted-foreground">
           {KIND_LABELS[source.kind]} ·{" "}
-          <span className={failing ? "text-red-700" : undefined}>
+          <span className={failing ? "text-destructive" : undefined}>
             {sourceStatus(source)}
           </span>
         </p>
@@ -208,7 +208,7 @@ function SourceRow({ source }: { source: ExternalSource }) {
           onChange={(event) =>
             update.mutate(event.target.value as SourceSchedule)
           }
-          className="rounded border px-2 py-1"
+          className="rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-2 py-1"
         >
           {SOURCE_SCHEDULES.map((s) => (
             <option key={s} value={s}>
@@ -224,12 +224,12 @@ function SourceRow({ source }: { source: ExternalSource }) {
           if (window.confirm(`Remove ${source.label}?`)) remove.mutate();
         }}
         aria-label={`Remove ${source.label}`}
-        className="text-sm text-red-700 underline disabled:opacity-50"
+        className="text-sm text-destructive underline disabled:opacity-50"
       >
         Remove
       </button>
       {(update.isError || remove.isError) && (
-        <p role="alert" className="w-full text-sm text-red-600">
+        <p role="alert" className="w-full text-sm text-destructive">
           Couldn't save that change. Try again.
         </p>
       )}

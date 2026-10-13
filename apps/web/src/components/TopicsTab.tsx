@@ -35,7 +35,7 @@ export function TopicsTab() {
     <div className="flex flex-col gap-6">
       <TopicForm />
       {topics.length === 0 ? (
-        <p className="text-gray-600">
+        <p className="text-muted-foreground">
           No topics yet. Describe something you want more (or less) of above.
         </p>
       ) : (
@@ -84,7 +84,7 @@ function TopicForm() {
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-3">
       <h2 className="font-medium">Add a topic</h2>
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-muted-foreground">
         Describe a topic in plain language. Videos about it are boosted or
         suppressed by the weight you set, more so the closer they match.
       </p>
@@ -100,7 +100,7 @@ function TopicForm() {
           placeholder="e.g. Hand-tool woodworking"
           maxLength={60}
           required
-          className="rounded border px-3 py-2"
+          className="rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
         />
       </div>
       <div className="flex flex-col gap-1">
@@ -117,7 +117,7 @@ function TopicForm() {
           maxLength={500}
           rows={2}
           required
-          className="rounded border px-3 py-2"
+          className="rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
         />
       </div>
       <WeightSlider
@@ -134,18 +134,18 @@ function TopicForm() {
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="rounded bg-black px-3 py-2 font-medium text-white disabled:opacity-50"
+          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85 disabled:opacity-50"
         >
           {mutation.isPending ? "Adding…" : "Add topic"}
         </button>
         <p role="status" className="min-h-6">
           {mutation.isError && (
-            <span className="text-red-600">
+            <span className="text-destructive">
               Couldn't add the topic. Try again later.
             </span>
           )}
           {result?.ok === false && (
-            <span className="text-red-600">{result.message}</span>
+            <span className="text-destructive">{result.message}</span>
           )}
           {result?.ok === true && `Added “${result.topic.name}”.`}
         </p>
@@ -175,7 +175,7 @@ function WeightSlider({
       <label htmlFor={id} className="text-sm font-medium">
         {label}
       </label>
-      <span aria-hidden="true" className="text-xs text-gray-600">
+      <span aria-hidden="true" className="text-xs text-muted-foreground">
         Suppress
       </span>
       <input
@@ -193,7 +193,7 @@ function WeightSlider({
         onBlur={onCommit}
         className="w-48"
       />
-      <span aria-hidden="true" className="text-xs text-gray-600">
+      <span aria-hidden="true" className="text-xs text-muted-foreground">
         Boost
       </span>
       <output htmlFor={id} className="w-28 text-sm tabular-nums">
@@ -274,12 +274,14 @@ function TopicRow({ topic }: { topic: Topic }) {
             }
           }}
           aria-label={`Delete ${topic.name}`}
-          className="text-sm text-red-700 underline disabled:opacity-50"
+          className="text-sm text-destructive underline disabled:opacity-50"
         >
           Delete
         </button>
       </div>
-      <p className="break-words text-sm text-gray-700">{topic.description}</p>
+      <p className="break-words text-sm text-muted-foreground">
+        {topic.description}
+      </p>
       <WeightSlider
         id={`topic-weight-${topic.id}`}
         label="Weight"
@@ -295,19 +297,19 @@ function TopicRow({ topic }: { topic: Topic }) {
       />
       {topic.decay && (
         <div className="flex flex-wrap items-center gap-3 text-sm">
-          <span className="text-gray-600">{decayNote(topic)}</span>
+          <span className="text-muted-foreground">{decayNote(topic)}</span>
           <button
             type="button"
             disabled={busy}
             onClick={() => renew.mutate()}
-            className="rounded border px-2 py-1 disabled:opacity-50"
+            className="inline-flex items-center justify-center rounded-full bg-secondary px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
           >
             {renew.isPending ? "Reaffirming…" : "Reaffirm"}
           </button>
         </div>
       )}
       {failed && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-destructive">
           {update.data?.ok === false
             ? update.data.message
             : "Couldn't save that change. Try again."}

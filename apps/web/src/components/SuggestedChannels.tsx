@@ -34,7 +34,7 @@ export function SuggestedChannels() {
         <h2 id="suggested-heading" className="text-xl font-semibold">
           Suggested channels
         </h2>
-        <p className="text-gray-600">
+        <p className="text-muted-foreground">
           Channels featured by the channels you love or like, and by channels of
           videos you rated A-- or higher.
         </p>
@@ -43,7 +43,7 @@ export function SuggestedChannels() {
         {status}
       </p>
       {suggestions.length === 0 ? (
-        <p className="text-gray-600">
+        <p className="text-muted-foreground">
           No suggestions yet. Set a channel's prior to Love or Like in{" "}
           <Link to="/curation" className="underline">
             Curation
@@ -113,10 +113,10 @@ function SuggestionRow({
           )}
           <div className="min-w-0">
             <p className="truncate font-medium">{channel.title}</p>
-            <p className="truncate text-sm text-gray-600">
+            <p className="truncate text-sm text-muted-foreground">
               {[channel.handle, subscribers].filter(Boolean).join(" · ")}
             </p>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               {featuredByText(channel.featured_by)}
             </p>
           </div>
@@ -134,13 +134,13 @@ function SuggestionRow({
           type="button"
           disabled={mutation.isPending}
           onClick={() => mutation.mutate()}
-          className="rounded bg-black px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85 disabled:opacity-50"
         >
           {mutation.isPending ? "Subscribing…" : "Subscribe"}
         </button>
       </div>
       {failed && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-destructive">
           {mutation.data && !mutation.data.ok
             ? mutation.data.message
             : "Couldn't subscribe. Try again later."}
@@ -159,17 +159,17 @@ function UploadsPreview({ channelId }: { channelId: string }) {
   const { data, isPending, isError } = useQuery(channelUploadsQuery(channelId));
 
   if (isPending) {
-    return <p className="text-sm text-gray-600">Loading uploads…</p>;
+    return <p className="text-sm text-muted-foreground">Loading uploads…</p>;
   }
   if (isError) {
     return (
-      <p role="alert" className="text-sm text-red-600">
+      <p role="alert" className="text-sm text-destructive">
         Couldn't load this channel's uploads. Try again later.
       </p>
     );
   }
   if (data.videos.length === 0) {
-    return <p className="text-sm text-gray-600">No uploads.</p>;
+    return <p className="text-sm text-muted-foreground">No uploads.</p>;
   }
   return (
     <ul
@@ -191,7 +191,7 @@ function UploadsPreview({ channelId }: { channelId: string }) {
               {video.title}
             </Link>
             {details.length > 0 && (
-              <span className="text-gray-600 tabular-nums">
+              <span className="text-muted-foreground tabular-nums">
                 {" "}
                 · {details.join(" · ")}
               </span>

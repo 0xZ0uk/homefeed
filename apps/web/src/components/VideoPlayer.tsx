@@ -129,11 +129,11 @@ export function VideoPlayer({
         playsInline
         preload="metadata"
         poster={poster ?? undefined}
-        className="aspect-video w-full rounded bg-black"
+        className="aspect-video w-full rounded-xl bg-black"
       />
       <ResumeNotice startAt={initialStartAt} videoRef={videoRef} />
       {error && (
-        <p role="alert" className="text-red-700">
+        <p role="alert" className="text-destructive">
           {error}{" "}
           <button
             type="button"

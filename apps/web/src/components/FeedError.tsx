@@ -2,7 +2,8 @@ import { useQueryErrorResetBoundary } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { useEffect } from "react";
 
-import { AppHeader } from "#/components/AppHeader";
+import { AppShell } from "#/components/AppShell";
+import { Button } from "#/components/ui/button";
 
 /** Shown when a feed page can't load, keeping navigation and log out reachable. */
 export function FeedError() {
@@ -14,18 +15,13 @@ export function FeedError() {
   }, [queryErrorResetBoundary]);
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
-      <AppHeader />
+    <AppShell className="max-w-4xl">
       <div role="alert" className="mt-8 flex flex-col items-start gap-3">
         <p>Couldn't load the feed. The API may be down.</p>
-        <button
-          type="button"
-          onClick={() => void router.invalidate()}
-          className="underline"
-        >
+        <Button variant="secondary" onClick={() => void router.invalidate()}>
           Try again
-        </button>
+        </Button>
       </div>
-    </main>
+    </AppShell>
   );
 }

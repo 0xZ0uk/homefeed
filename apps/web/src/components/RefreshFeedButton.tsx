@@ -1,5 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { RefreshCw } from "lucide-react";
 
+import { Button } from "#/components/ui/button";
+import { cn } from "#/lib/utils";
 import {
   feedHistoryQuery,
   feedQuery,
@@ -13,8 +16,10 @@ import {
  */
 export function RefreshFeedButton({
   label = "Refresh feed",
+  variant = "default",
 }: {
   label?: string;
+  variant?: "default" | "secondary";
 }) {
   const queryClient = useQueryClient();
   const refresh = useMutation({
@@ -30,17 +35,19 @@ export function RefreshFeedButton({
 
   return (
     <div className="flex items-center gap-3">
-      <button
-        type="button"
+      <Button
+        variant={variant}
+        size="lg"
         onClick={() => refresh.mutate()}
         disabled={refresh.isPending}
-        className="rounded bg-black px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+        className="px-4"
       >
+        <RefreshCw className={cn(refresh.isPending && "animate-spin")} />
         {refresh.isPending ? "Refreshing…" : label}
-      </button>
-      <p role="status" className="text-sm">
+      </Button>
+      <p role="status" className="text-sm empty:hidden">
         {refresh.isError && (
-          <span className="text-red-600">
+          <span className="text-destructive">
             Couldn't refresh the feed. Try again later.
           </span>
         )}

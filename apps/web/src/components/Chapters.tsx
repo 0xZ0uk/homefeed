@@ -30,7 +30,7 @@ export function Chapters({ chapters }: { chapters: readonly Chapter[] }) {
 
   return (
     <section aria-labelledby="chapters-heading" className="flex flex-col gap-2">
-      <h3 id="chapters-heading" className="text-lg font-semibold">
+      <h3 id="chapters-heading" className="px-1 text-base font-bold">
         Chapters
       </h3>
       <ol className="flex flex-col">
@@ -43,9 +43,9 @@ export function Chapters({ chapters }: { chapters: readonly Chapter[] }) {
               onClick={() => {
                 if (media) media.currentTime = chapter.start_seconds;
               }}
-              className="flex w-full gap-3 rounded px-2 py-1 text-left hover:bg-gray-100 disabled:cursor-not-allowed aria-[current=true]:bg-gray-100 aria-[current=true]:font-semibold"
+              className="flex w-full gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-secondary disabled:cursor-not-allowed aria-[current=true]:bg-secondary aria-[current=true]:font-semibold"
             >
-              <span className="w-16 shrink-0 tabular-nums text-gray-600">
+              <span className="w-16 shrink-0 tabular-nums text-muted-foreground">
                 {formatDuration(chapter.start_seconds)}
               </span>
               <span>{chapter.title || `Chapter ${index + 1}`}</span>

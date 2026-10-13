@@ -2,7 +2,7 @@ import { useQueryErrorResetBoundary } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect } from "react";
 
-import { AppHeader } from "#/components/AppHeader";
+import { AppShell } from "#/components/AppShell";
 import { SuggestedChannels } from "#/components/SuggestedChannels";
 import { suggestedChannelsQuery } from "#/server/discover";
 import { displayPrefsQuery } from "#/server/display";
@@ -21,10 +21,9 @@ export const Route = createFileRoute("/discover")({
 
 function Discover() {
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
-      <AppHeader />
+    <AppShell className="flex max-w-4xl flex-col gap-6">
       <SuggestedChannels />
-    </main>
+    </AppShell>
   );
 }
 
@@ -37,8 +36,7 @@ function DiscoverError() {
   }, [queryErrorResetBoundary]);
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
-      <AppHeader />
+    <AppShell className="flex max-w-4xl flex-col gap-6">
       <div role="alert" className="flex flex-col items-start gap-3">
         <p>Couldn't load suggestions. The API may be down.</p>
         <button
@@ -49,6 +47,6 @@ function DiscoverError() {
           Try again
         </button>
       </div>
-    </main>
+    </AppShell>
   );
 }

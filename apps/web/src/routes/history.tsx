@@ -2,7 +2,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
-import { AppHeader } from "#/components/AppHeader";
+import { AppShell } from "#/components/AppShell";
 import { showsThumbnails, type DisplayPrefs } from "#/lib/display";
 import { formatAge, formatDuration } from "#/lib/format";
 import {
@@ -37,13 +37,12 @@ function History() {
   const params = Route.useSearch();
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
-      <AppHeader />
+    <AppShell className="flex max-w-4xl flex-col gap-6">
       <h2 className="text-xl font-semibold">History</h2>
       {/* Remount when the URL changes so the field shows the current search. */}
       <HistorySearch key={params.q ?? ""} query={params.q ?? ""} />
       <Entries params={params} />
-    </main>
+    </AppShell>
   );
 }
 
@@ -68,11 +67,11 @@ function HistorySearch({ query }: { query: string }) {
         onChange={(event) => setQ(event.target.value)}
         placeholder="Search by title or channel"
         maxLength={HISTORY_QUERY_MAX_LENGTH}
-        className="min-w-0 flex-1 rounded border px-3 py-2"
+        className="min-w-0 flex-1 rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
       />
       <button
         type="submit"
-        className="rounded bg-black px-3 py-2 font-medium text-white"
+        className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85"
       >
         Search
       </button>
@@ -87,14 +86,14 @@ function Entries({ params }: { params: HistoryParams }) {
 
   if (!outcome.ok) {
     return (
-      <p role="alert" className="text-red-600">
+      <p role="alert" className="text-destructive">
         {outcome.message}
       </p>
     );
   }
   if (outcome.entries.length === 0) {
     return (
-      <p className="text-gray-600">
+      <p className="text-muted-foreground">
         {params.q
           ? "Nothing you've watched matches. Try fewer words."
           : page > 1
@@ -158,7 +157,7 @@ function EntryRow({
           params={params}
           tabIndex={-1}
           aria-hidden="true"
-          className="relative aspect-video w-40 shrink-0 overflow-hidden rounded bg-gray-200"
+          className="relative aspect-video w-40 shrink-0 overflow-hidden rounded bg-secondary"
         >
           {entry.thumbnail_url && (
             <img
@@ -175,7 +174,7 @@ function EntryRow({
           )}
           {fraction !== null && (
             <span
-              className="absolute bottom-0 left-0 h-1 bg-red-600"
+              className="absolute bottom-0 left-0 h-1 bg-brand"
               style={{ width: `${fraction * 100}%` }}
             />
           )}
@@ -191,14 +190,14 @@ function EntryRow({
             {entry.title ?? `Video ${entry.video_id}`}
           </Link>
         </h3>
-        <p className="flex flex-wrap gap-x-2 text-sm text-gray-600">
+        <p className="flex flex-wrap gap-x-2 text-sm text-muted-foreground">
           {entry.channel_title && <span>{entry.channel_title}</span>}
           {duration && !thumbnails && (
             <span className="tabular-nums">· {duration}</span>
           )}
           {entry.grade && <span>· Rated {entry.grade}</span>}
         </p>
-        <p className="flex flex-wrap gap-x-2 text-sm text-gray-500">
+        <p className="flex flex-wrap gap-x-2 text-sm text-muted-foreground">
           <span>
             Watched{" "}
             <time dateTime={entry.last_watched_at}>

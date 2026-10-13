@@ -1,7 +1,7 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 
-import { AppHeader } from "#/components/AppHeader";
+import { AppShell } from "#/components/AppShell";
 import { DisplayToggles } from "#/components/DisplayToggles";
 import { FeedError } from "#/components/FeedError";
 import { FeedHistory } from "#/components/FeedHistory";
@@ -27,30 +27,34 @@ function Home() {
   const { data: display } = useSuspenseQuery(displayPrefsQuery);
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
-      <AppHeader />
-      <div className="flex flex-wrap items-baseline justify-between gap-4">
-        <h2 className="text-xl font-semibold">
-          Today{feed && ` · ${formatFeedDate(feed.date)}`}
+    <AppShell className="flex max-w-[110rem] flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pt-2">
+        <h2 className="text-xl font-bold">
+          Today
+          {feed && (
+            <span className="ml-2 text-base font-normal text-muted-foreground">
+              {formatFeedDate(feed.date)}
+            </span>
+          )}
         </h2>
-        <DisplayToggles />
+        {feed && <RefreshFeedButton variant="secondary" />}
       </div>
       {feed ? (
-        <>
-          <FeedList feed={feed} display={display} dismissible />
-          <RefreshFeedButton />
-        </>
+        <FeedList feed={feed} display={display} dismissible />
       ) : (
-        <div className="flex flex-col items-start gap-3 rounded border border-dashed p-6">
-          <p className="font-medium">There's no feed for today yet.</p>
-          <p className="text-gray-600">
+        <div className="mx-auto my-16 flex max-w-md flex-col items-center gap-3 text-center">
+          <p className="text-lg font-medium">There's no feed for today yet.</p>
+          <p className="text-muted-foreground">
             The feed is built once a day from your subscriptions. Build it now,
             or subscribe to channels on the curation page first.
           </p>
           <RefreshFeedButton label="Build today's feed" />
         </div>
       )}
-      <FeedHistory />
-    </main>
+      <footer className="mt-12 flex flex-col gap-6 border-t pt-6">
+        <DisplayToggles />
+        <FeedHistory />
+      </footer>
+    </AppShell>
   );
 }

@@ -32,10 +32,10 @@ export function healthLabel(health: ExtractorHealth): string {
 }
 
 const HEALTH_CLASSES: Record<ExtractorHealth, string> = {
-  ok: "bg-green-100 text-green-800",
-  degraded: "bg-amber-100 text-amber-900",
-  failing: "bg-red-100 text-red-800",
-  unknown: "bg-gray-100 text-gray-700",
+  ok: "bg-success/15 text-success",
+  degraded: "bg-warning/15 text-warning",
+  failing: "bg-destructive/15 text-destructive",
+  unknown: "bg-secondary text-muted-foreground",
 };
 
 /** Tailwind classes for a health badge. */

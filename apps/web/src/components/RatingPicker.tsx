@@ -27,8 +27,11 @@ interface RatingPickerProps {
   cancel?: { label: string; onCancel: () => void };
 }
 
+const LINK =
+  "inline-flex h-9 items-center justify-center rounded-full px-4 text-sm font-medium hover:bg-accent disabled:opacity-50";
+
 const BUTTON =
-  "min-w-12 rounded border border-gray-400 px-3 py-2 font-semibold aria-pressed:border-gray-900 aria-pressed:bg-gray-900 aria-pressed:text-white disabled:opacity-60";
+  "h-10 min-w-12 rounded-full bg-secondary px-4 font-semibold transition-colors hover:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground disabled:opacity-60";
 
 /**
  * Tier-list rating in one tap: S/A/B/C/D/F saves the plain tier right away.
@@ -80,7 +83,7 @@ export function RatingPicker({
   return (
     <section
       aria-labelledby={titleId}
-      className="flex flex-col gap-3 rounded border border-gray-300 p-4"
+      className="flex flex-col gap-3 rounded-xl bg-secondary/60 p-4"
     >
       <h3 id={titleId} className="font-semibold">
         {title}
@@ -127,7 +130,7 @@ export function RatingPicker({
         {tier ? (
           <button
             type="button"
-            className="underline"
+            className={LINK}
             disabled={saving}
             onClick={() => onClose(true)}
           >
@@ -136,7 +139,7 @@ export function RatingPicker({
         ) : (
           <button
             type="button"
-            className="underline"
+            className={LINK}
             disabled={saving}
             onClick={() => onClose(false)}
           >
@@ -146,14 +149,14 @@ export function RatingPicker({
         {cancel && (
           <button
             type="button"
-            className="underline"
+            className={LINK}
             disabled={saving}
             onClick={cancel.onCancel}
           >
             {cancel.label}
           </button>
         )}
-        <p aria-live="polite" className="text-sm text-gray-600">
+        <p aria-live="polite" className="text-sm text-muted-foreground">
           {error ??
             (tier ? `Saved ${current ?? tier}. Add a + or - if you like.` : "")}
         </p>

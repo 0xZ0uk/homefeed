@@ -36,17 +36,18 @@ export function DisplayToggles() {
   });
 
   return (
-    <fieldset className="flex flex-wrap items-center gap-4 text-sm">
-      <legend className="sr-only">Display</legend>
+    <fieldset className="flex flex-wrap items-center gap-2 text-sm">
+      <legend className="float-left mr-2 font-medium">Display</legend>
       {TOGGLES.map(({ key, label }) => {
         const disabled = key === "thumbnails" && prefs.textOnly;
         return (
           <label
             key={key}
-            className="flex items-center gap-1.5 has-disabled:text-gray-400"
+            className="flex h-8 cursor-pointer items-center gap-1.5 rounded-lg bg-secondary px-3 font-medium transition-colors select-none hover:bg-accent has-checked:bg-primary has-checked:text-primary-foreground has-focus-visible:ring-3 has-focus-visible:ring-ring/50 has-disabled:cursor-not-allowed has-disabled:opacity-50"
           >
             <input
               type="checkbox"
+              className="sr-only"
               checked={prefs[key] && !disabled}
               disabled={disabled}
               onChange={(event) =>
