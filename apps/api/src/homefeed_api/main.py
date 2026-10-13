@@ -1100,6 +1100,7 @@ class FeedItemOut(BaseModel):
     selection_probability: float | None
     dismissed_at: str | None
     dismiss_reason: str | None
+    watched: bool = Field(description="Whether the video has been played here or rated")
 
 
 class FeedOut(BaseModel):

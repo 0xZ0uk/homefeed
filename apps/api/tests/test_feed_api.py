@@ -154,6 +154,7 @@ def test_refresh_polls_then_builds_todays_feed(client: TestClient, poll: PollRec
         "selection_probability": None,
         "dismissed_at": None,
         "dismiss_reason": None,
+        "watched": False,
     }
     durations = {item["video_id"]: item["duration_seconds"] for item in body["items"]}
     assert durations["w0000000000"] == 600

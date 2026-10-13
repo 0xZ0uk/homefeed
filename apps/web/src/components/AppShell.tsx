@@ -117,8 +117,10 @@ export function AppShell({
   return (
     <div className="min-h-svh">
       <h1 className="sr-only">Homefeed</h1>
-      <header className="sticky top-0 z-40 flex h-14 items-center gap-4 bg-background px-2 sm:px-4">
-        <div className="flex shrink-0 items-center gap-1">
+      {/* Equal outer columns keep the search box centred on the screen, not
+          in whatever space the logo and the page's actions leave. */}
+      <header className="sticky top-0 z-40 grid h-14 grid-cols-[1fr_auto] items-center gap-4 bg-background px-2 sm:grid-cols-[1fr_minmax(0,36rem)_1fr] sm:px-4">
+        <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="icon-lg"
@@ -131,7 +133,7 @@ export function AppShell({
           <Logo />
         </div>
         <MastheadSearch />
-        <div className="ml-auto flex shrink-0 items-center gap-1">
+        <div className="flex items-center justify-end gap-1 sm:col-start-3">
           <Button
             variant="ghost"
             size="icon-lg"
@@ -230,7 +232,7 @@ function MastheadSearch() {
       role="search"
       onSubmit={onSubmit}
       action="/search"
-      className="mx-auto hidden w-full max-w-xl min-w-0 sm:flex"
+      className="hidden w-full min-w-0 sm:flex"
     >
       <Input
         type="search"
