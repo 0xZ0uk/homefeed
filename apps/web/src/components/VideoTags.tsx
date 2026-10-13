@@ -96,7 +96,14 @@ export function VideoTags({
               return (
                 <li key={tag.slug}>
                   <Badge
-                    variant="secondary"
+                    // Subscribed: filled. Muted: dashed outline. Plain: gray.
+                    variant={
+                      weight === undefined
+                        ? "secondary"
+                        : muted
+                          ? "outline"
+                          : "default"
+                    }
                     title={
                       weight === undefined
                         ? undefined
@@ -104,7 +111,8 @@ export function VideoTags({
                     }
                     className={cn(
                       "h-7 gap-0.5 pl-3 text-sm font-normal",
-                      weight !== undefined && "ring-1 ring-foreground/15",
+                      weight !== undefined && "pl-2.5 font-medium",
+                      muted && "border-dashed text-muted-foreground",
                     )}
                   >
                     <Link
@@ -113,16 +121,22 @@ export function VideoTags({
                       className="inline-flex items-center gap-1 rounded-sm hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                     >
                       {weight !== undefined && (
-                        <Icon aria-hidden="true" className="size-3.5" />
+                        <Icon
+                          aria-hidden="true"
+                          className="size-3.5 shrink-0"
+                        />
                       )}
-                      <span className={muted ? "opacity-80" : undefined}>
-                        {tag.label}
-                      </span>
+                      <span>{tag.label}</span>
                       {weight !== undefined && (
                         <>
                           <span
                             aria-hidden="true"
-                            className="text-xs text-muted-foreground tabular-nums"
+                            className={cn(
+                              "ml-0.5 rounded-full px-1.5 text-xs leading-5 font-semibold tabular-nums",
+                              muted
+                                ? "bg-secondary text-secondary-foreground"
+                                : "bg-primary-foreground/20",
+                            )}
                           >
                             {signed}
                           </span>
@@ -136,7 +150,12 @@ export function VideoTags({
                     <Button
                       variant="ghost"
                       size="icon-xs"
-                      className="size-6 rounded-full"
+                      className={cn(
+                        "size-6 rounded-full",
+                        weight !== undefined &&
+                          !muted &&
+                          "text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground",
+                      )}
                       aria-label={`Remove tag ${tag.label}`}
                       disabled={remove.isPending}
                       onClick={() => remove.mutate(tag.slug)}

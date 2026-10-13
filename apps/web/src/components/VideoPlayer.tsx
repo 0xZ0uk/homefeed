@@ -153,7 +153,7 @@ export function VideoPlayer({
           playsInline
           preload="metadata"
           poster={poster ?? undefined}
-          className="aspect-video h-auto max-h-[calc(100svh-3.5rem)] w-full bg-black"
+          className="aspect-video h-auto max-h-[80vh] w-full bg-black"
         />
       </div>
       {children ? children(notices) : notices}
