@@ -59,6 +59,7 @@ from homefeed_core.embeddings import (
 from homefeed_core.gateway import Gateway, GatewayError, Video, create_gateway
 from homefeed_core.gateway.events import format_timestamp
 from homefeed_core.llm_tags import Tagger, TagReport, get_tagger
+from homefeed_core.progress import Phases, Progress, ProgressLine, configure_cli_logging
 from homefeed_core.ratings import list_ratings, tier_rated_video_ids
 from homefeed_core.tags import refresh_tag_embeddings
 from homefeed_core.videos import store_video
@@ -134,34 +135,44 @@ class Enricher:
             return cached
         return self._compute(video_id)
 
-    def enrich_many(self, video_ids: Iterable[str]) -> EnrichReport:
-        """Enrich each video, recording failures instead of raising them."""
+    def enrich_many(
+        self, video_ids: Iterable[str], *, progress: Progress | None = None
+    ) -> EnrichReport:
+        """Enrich each video, recording failures instead of raising them. `progress` gets
+        (done, to do) over the videos that aren't up to date, after each one."""
         report = EnrichReport()
+        todo: list[str] = []
         for video_id in dict.fromkeys(video_ids):
             if self._cached(video_id) is not None:
                 report.cached.append(video_id)
-                continue
+            else:
+                todo.append(video_id)
+        for done, video_id in enumerate(todo, start=1):
             try:
                 self._compute(video_id)
             except (GatewayError, EmbeddingError) as error:
                 logger.warning("Could not enrich %s: %s", video_id, error)
                 report.failed[video_id] = str(error)
-                continue
-            report.enriched.append(video_id)
+            else:
+                report.enriched.append(video_id)
+            if progress is not None:
+                progress(done, len(todo))
         return report
 
-    def tag_many(self, video_ids: Iterable[str]) -> TagReport | None:
+    def tag_many(
+        self, video_ids: Iterable[str], *, progress: Progress | None = None
+    ) -> TagReport | None:
         """LLM-tag the videos without current tags; None without a tagger. Never raises:
         a failure is logged and the videos are left for the next run."""
         if self._tagger is None:
             return None
         try:
-            return self._tagger.tag_many(video_ids)
+            return self._tagger.tag_many(video_ids, progress=progress)
         except Exception:
             logger.exception("LLM tagging failed; continuing without new tags")
             return None
 
-    def refresh_video_embeddings(self) -> list[str]:
+    def refresh_video_embeddings(self, *, progress: Progress | None = None) -> list[str]:
         """Re-embed the stored videos embedded by another model than the current one,
         from their stored text (no YouTube requests), newest enrichment first. Returns
         their ids. Raises EmbeddingError if the embedder fails; the videos not done by
@@ -212,6 +223,8 @@ class Enricher:
                         {"model": model, "id": video_id},
                     )
                     done.append(video_id)
+            if progress is not None:
+                progress(len(done), len(rows))
         logger.info("Re-embedded %d videos with %s", len(done), model)
         return done
 
@@ -403,17 +416,23 @@ def enrich_candidates(
     sessions: sessionmaker[Session] | None = None,
     settings: Settings | None = None,
     now: datetime | None = None,
+    progress: Phases | None = None,
 ) -> EnrichReport:
     """Enrich the candidates the next feed will rank (first seen within
     `FEED_CANDIDATE_DAYS`), newest first, then the top-tier and bottom-tier rated videos
     the ranker compares them with. Up-to-date ones are skipped. Stored videos, topics and
     tags embedded by another model are re-embedded first (a failure there is logged and
     retried next run). Then, if the enricher has a tagger, those videos and every other
-    rated video are LLM-tagged (`EnrichReport.tags`)."""
+    rated video are LLM-tagged (`EnrichReport.tags`). `progress` makes a `Progress` per
+    phase ("Re-embedding", "Enriching", "Tagging"; see homefeed_core.progress)."""
     enricher = enricher or get_enricher()
+
+    def phase(label: str) -> Progress | None:
+        return None if progress is None else progress(label)
+
     reembedded: list[str] = []
     try:
-        reembedded = enricher.refresh_video_embeddings()
+        reembedded = enricher.refresh_video_embeddings(progress=phase("Re-embedding"))
         enricher.refresh_topic_embeddings()
         enricher.refresh_tag_embeddings()
     except EmbeddingError as error:
@@ -425,8 +444,9 @@ def enrich_candidates(
         video_ids = [candidate.video_id for candidate in list_candidates(session, since=since)]
         video_ids += tier_rated_video_ids(session)
         rated_ids = [rating.video_id for rating in list_ratings(session)]
-    report = enricher.enrich_many(video_ids)
-    return replace(report, reembedded=reembedded, tags=enricher.tag_many([*video_ids, *rated_ids]))
+    report = enricher.enrich_many(video_ids, progress=phase("Enriching"))
+    tags = enricher.tag_many([*video_ids, *rated_ids], progress=phase("Tagging"))
+    return replace(report, reembedded=reembedded, tags=tags)
 
 
 def _parse_timestamp(value: str) -> datetime:
@@ -437,14 +457,25 @@ def main() -> int:
     """Run the worker's enrichment once, now: `uv run python -m homefeed_core.enricher`
     (re-embeds after an `EMBEDDING_MODEL` change, enriches the next feed's candidates and
     tags them)."""
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    report = enrich_candidates()
-    tags = report.tags
+    line = ProgressLine()
+    configure_cli_logging(line)
+    report = enrich_candidates(progress=line.phase)
+    line.clear()
     print(
-        f"{len(report.reembedded)} re-embedded, {len(report.enriched)} enriched, "
-        f"{len(report.cached)} up to date, {len(report.failed)} failed"
-        + ("" if tags is None else f"; {len(tags.tagged)} tagged, {len(tags.failed)} not")
+        f"Enrichment: {len(report.enriched)} enriched, {len(report.cached)} already up to "
+        f"date, {len(report.failed)} failed (tried again next run)"
+        + (f"; {len(report.reembedded)} re-embedded" if report.reembedded else "")
     )
+    tags = report.tags
+    if tags is None:
+        print("Tagging: off (see LLM_PROVIDER)")
+    else:
+        print(
+            f"Tagging: {len(tags.tagged)} tagged, {len(tags.cached)} already tagged, "
+            f"{len(tags.failed)} failed (tried again next run)"
+            + (f", {len(tags.skipped)} left for the next run" if tags.skipped else "")
+            + (f"; stopped: {tags.stopped}" if tags.stopped else "")
+        )
     return 0
 
 

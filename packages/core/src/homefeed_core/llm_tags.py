@@ -50,6 +50,7 @@ from homefeed_core.config import OPENROUTER_BASE_URL, Settings, get_settings
 from homefeed_core.db import get_session_factory
 from homefeed_core.embeddings import EmbeddingProvider, calibration, get_embedding_provider
 from homefeed_core.gateway.events import format_timestamp
+from homefeed_core.progress import Progress, ProgressLine, configure_cli_logging
 from homefeed_core.ratings import list_ratings, tier_rated_video_ids
 from homefeed_core.tags import (
     DEFAULT_MERGE_THRESHOLD,
@@ -685,15 +686,19 @@ class Tagger:
     def model(self) -> str:
         return self._provider.model
 
-    def tag_many(self, video_ids: Iterable[str]) -> TagReport:
+    def tag_many(self, video_ids: Iterable[str], *, progress: Progress | None = None) -> TagReport:
         """Tag the videos without current tags, in order, at most `max_per_run` calls.
-        Failures are recorded, not raised."""
+        Failures are recorded, not raised. `progress` gets (calls made, calls planned)
+        after each call."""
         report = TagReport()
         ids = list(dict.fromkeys(video_ids))
         with self._sessions() as session:
             current = get_tags(session, ids)
             inputs = load_tag_inputs(session, [v for v in ids if v not in current])
             system = system_prompt(top_tag_labels(session, TOP_TAGS_IN_PROMPT))
+        planned = sum(1 for v in ids if v not in current and v in inputs)
+        if self._max_per_run is not None:
+            planned = min(planned, self._max_per_run)
         calls = 0
         usage = TokenUsage()
         for index, video_id in enumerate(ids):
@@ -705,6 +710,8 @@ class Tagger:
                 report.skipped.append(video_id)
                 continue
             calls += 1
+            if progress is not None and calls > 1:
+                progress(calls - 1, planned)
             try:
                 completion = self._provider.complete(system, tag_prompt(video))
                 usage += completion.usage or TokenUsage()
@@ -732,6 +739,8 @@ class Tagger:
                     now=now,
                 )
             report.tagged.append(video_id)
+        if progress is not None and calls:
+            progress(calls, planned if report.stopped is None else calls)
         report = replace(report, usage=usage)
         _log(report, self.model)
         return report
@@ -786,7 +795,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--all", action="store_true", help="tag every stored video")
     parser.add_argument("--limit", type=int, help="at most this many LLM calls (default: none)")
     args = parser.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    line = ProgressLine()
+    configure_cli_logging(line)
     settings = get_settings()
     provider = get_llm_provider(settings)
     if provider is None:
@@ -812,11 +822,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         embedder=get_embedding_provider(),
         merge_threshold=calibration(settings).tag_merge_threshold,
     )
-    report = tagger.tag_many(video_ids)
+    report = tagger.tag_many(video_ids, progress=line.phase("Tagging"))
+    line.clear()
+    usage = report.usage
     print(
         f"{len(report.tagged)} tagged, {len(report.cached)} already tagged, "
-        f"{len(report.skipped)} skipped, {len(report.failed)} failed"
-        + (f" (stopped: {report.stopped})" if report.stopped else "")
+        f"{len(report.failed)} failed (tried again next run), "
+        f"{len(report.skipped)} skipped (no stored metadata, past --limit, or after a stop)"
+        + (f"; stopped: {report.stopped}" if report.stopped else "")
+        + f"\n{usage.prompt_tokens} prompt + {usage.completion_tokens} completion tokens"
+        + (f", cost ${usage.cost:.4f}" if usage.cost is not None else "")
     )
     return 0 if report.stopped is None else 1
 

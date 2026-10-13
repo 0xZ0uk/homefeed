@@ -462,6 +462,21 @@ def test_a_failed_re_embedding_leaves_no_vectors_of_the_old_model(
         assert all(get_embedding(session, v) is not None for v in (VIDEO.id, SECOND.id))
 
 
+def test_enrich_many_reports_progress_over_the_videos_to_do(
+    enricher: Enricher, gateway: FakeGateway
+) -> None:
+    gateway.add_channel(CHANNEL, [VIDEO, SECOND])
+    enricher.enrich(VIDEO.id)
+    seen: list[tuple[int, int]] = []
+
+    enricher.enrich_many(
+        [VIDEO.id, SECOND.id, "zzzzzzzzzzz"], progress=lambda d, t: seen.append((d, t))
+    )
+
+    # VIDEO is up to date; the unknown video fails but counts as done.
+    assert seen == [(1, 2), (2, 2)]
+
+
 def test_enrich_many_records_embedding_failures(
     sessions: sessionmaker[Session], gateway: FakeGateway, clock: Clock
 ) -> None:
