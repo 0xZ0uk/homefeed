@@ -24,10 +24,7 @@ export function NextInQueue({ videoId }: { videoId: string }) {
         className="flex items-center gap-2 text-sm text-muted-foreground"
       >
         <ListVideo className="size-4" />
-        Next in your{" "}
-        <Link to="/queue" className="-ml-1 underline hover:text-foreground">
-          queue
-        </Link>
+        Next in your queue
       </h3>
       <Link
         to="/watch/$videoId"

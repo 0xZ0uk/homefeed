@@ -8,7 +8,6 @@ import {
   EyeOff,
   History,
   House,
-  ListVideo,
   Menu,
   Search,
   Settings,
@@ -25,6 +24,7 @@ import {
 } from "react";
 
 import { LogoutButton } from "#/components/LogoutButton";
+import { QueueDock } from "#/components/QueueDock";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
 import { Separator } from "#/components/ui/separator";
@@ -50,7 +50,6 @@ type NavItem = {
 const NAV: NavItem[][] = [
   [
     { to: "/", label: "Today", icon: House, exact: true },
-    { to: "/queue", label: "Queue", icon: ListVideo },
     { to: "/history", label: "History", icon: History },
     { to: "/playlists", label: "Playlists", icon: SquarePlay },
   ],
@@ -85,8 +84,9 @@ const guideStore = {
 
 /**
  * Every signed-in page's frame, after YouTube's: a masthead with the menu
- * button, logo, search box, the page's own `actions` and log out, and the guide (the main navigation)
- * down the left. On wide screens the guide is docked and the menu button
+ * button, logo, search box, the page's own `actions` and log out, the guide
+ * (the main navigation) down the left, and the queue docked at the bottom
+ * right. On wide screens the guide is docked and the menu button
  * switches it between full width and a mini rail; on narrow screens, or with
  * `guide="drawer"` (the watch page), it opens as a drawer instead.
  */
@@ -192,13 +192,14 @@ export function AppShell({
         )}
         <main
           className={cn(
-            "mx-auto w-full min-w-0 flex-1 px-4 pt-2 pb-12 sm:px-6",
+            "mx-auto w-full min-w-0 flex-1 px-4 pt-2 pb-24 sm:px-6",
             className,
           )}
         >
           {children}
         </main>
       </div>
+      <QueueDock />
     </div>
   );
 }

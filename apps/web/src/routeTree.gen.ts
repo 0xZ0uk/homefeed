@@ -18,7 +18,6 @@ import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LogoutRouteImport } from './routes/logout'
 import { Route as ModelsRouteImport } from './routes/models'
-import { Route as QueueRouteImport } from './routes/queue'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as StatusRouteImport } from './routes/status'
@@ -74,11 +73,6 @@ const LogoutRoute = LogoutRouteImport.update({
 const ModelsRoute = ModelsRouteImport.update({
   id: '/models',
   path: '/models',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const QueueRoute = QueueRouteImport.update({
-  id: '/queue',
-  path: '/queue',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SearchRoute = SearchRouteImport.update({
@@ -148,7 +142,6 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
   '/models': typeof ModelsRoute
-  '/queue': typeof QueueRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/status': typeof StatusRoute
@@ -171,7 +164,6 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
   '/models': typeof ModelsRoute
-  '/queue': typeof QueueRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/status': typeof StatusRoute
@@ -195,7 +187,6 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
   '/models': typeof ModelsRoute
-  '/queue': typeof QueueRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/status': typeof StatusRoute
@@ -220,7 +211,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/logout'
     | '/models'
-    | '/queue'
     | '/search'
     | '/settings'
     | '/status'
@@ -243,7 +233,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/logout'
     | '/models'
-    | '/queue'
     | '/search'
     | '/settings'
     | '/status'
@@ -266,7 +255,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/logout'
     | '/models'
-    | '/queue'
     | '/search'
     | '/settings'
     | '/status'
@@ -290,7 +278,6 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   LogoutRoute: typeof LogoutRoute
   ModelsRoute: typeof ModelsRoute
-  QueueRoute: typeof QueueRoute
   SearchRoute: typeof SearchRoute
   SettingsRoute: typeof SettingsRoute
   StatusRoute: typeof StatusRoute
@@ -367,13 +354,6 @@ declare module '@tanstack/react-router' {
       path: '/models'
       fullPath: '/models'
       preLoaderRoute: typeof ModelsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/queue': {
-      id: '/queue'
-      path: '/queue'
-      fullPath: '/queue'
-      preLoaderRoute: typeof QueueRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/search': {
@@ -466,7 +446,6 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   LogoutRoute: LogoutRoute,
   ModelsRoute: ModelsRoute,
-  QueueRoute: QueueRoute,
   SearchRoute: SearchRoute,
   SettingsRoute: SettingsRoute,
   StatusRoute: StatusRoute,
