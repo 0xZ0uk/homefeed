@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CurationRouteImport } from './routes/curation'
+import { Route as DesktopAuthRouteImport } from './routes/desktop-auth'
 import { Route as DiscoverRouteImport } from './routes/discover'
 import { Route as ExportDotjsonRouteImport } from './routes/export[.]json'
 import { Route as HistoryRouteImport } from './routes/history'
@@ -39,6 +40,11 @@ const IndexRoute = IndexRouteImport.update({
 const CurationRoute = CurationRouteImport.update({
   id: '/curation',
   path: '/curation',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DesktopAuthRoute = DesktopAuthRouteImport.update({
+  id: '/desktop-auth',
+  path: '/desktop-auth',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DiscoverRoute = DiscoverRouteImport.update({
@@ -141,6 +147,7 @@ const VideosVideoIdMediaItagRoute = VideosVideoIdMediaItagRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/curation': typeof CurationRoute
+  '/desktop-auth': typeof DesktopAuthRoute
   '/discover': typeof DiscoverRoute
   '/export.json': typeof ExportDotjsonRoute
   '/history': typeof HistoryRoute
@@ -164,6 +171,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/curation': typeof CurationRoute
+  '/desktop-auth': typeof DesktopAuthRoute
   '/discover': typeof DiscoverRoute
   '/export.json': typeof ExportDotjsonRoute
   '/history': typeof HistoryRoute
@@ -188,6 +196,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/curation': typeof CurationRoute
+  '/desktop-auth': typeof DesktopAuthRoute
   '/discover': typeof DiscoverRoute
   '/export.json': typeof ExportDotjsonRoute
   '/history': typeof HistoryRoute
@@ -213,6 +222,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/curation'
+    | '/desktop-auth'
     | '/discover'
     | '/export.json'
     | '/history'
@@ -236,6 +246,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/curation'
+    | '/desktop-auth'
     | '/discover'
     | '/export.json'
     | '/history'
@@ -259,6 +270,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/curation'
+    | '/desktop-auth'
     | '/discover'
     | '/export.json'
     | '/history'
@@ -283,6 +295,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CurationRoute: typeof CurationRoute
+  DesktopAuthRoute: typeof DesktopAuthRoute
   DiscoverRoute: typeof DiscoverRoute
   ExportDotjsonRoute: typeof ExportDotjsonRoute
   HistoryRoute: typeof HistoryRoute
@@ -318,6 +331,13 @@ declare module '@tanstack/react-router' {
       path: '/curation'
       fullPath: '/curation'
       preLoaderRoute: typeof CurationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/desktop-auth': {
+      id: '/desktop-auth'
+      path: '/desktop-auth'
+      fullPath: '/desktop-auth'
+      preLoaderRoute: typeof DesktopAuthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/discover': {
@@ -459,6 +479,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CurationRoute: CurationRoute,
+  DesktopAuthRoute: DesktopAuthRoute,
   DiscoverRoute: DiscoverRoute,
   ExportDotjsonRoute: ExportDotjsonRoute,
   HistoryRoute: HistoryRoute,

@@ -30,7 +30,6 @@ from typing import Protocol
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from homefeed_core.config import get_settings
 from homefeed_core.db import get_session_factory
 from homefeed_core.gateway import Gateway, GatewayError, create_gateway
 from homefeed_core.gateway.events import format_timestamp
@@ -230,7 +229,7 @@ def default_sources(sessions: sessionmaker[Session] | None = None) -> list[Candi
         SavedSearchSource(sessions, gateway),
         ChannelGraphSource(sessions, gateway),
         ExternalSourcesSource(sessions, gateway),
-        TagDiscoverySource(sessions, gateway, per_tag_per_day=get_settings().tag_discovery_per_day),
+        TagDiscoverySource(sessions, gateway),
     ]
 
 

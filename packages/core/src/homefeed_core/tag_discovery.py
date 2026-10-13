@@ -8,8 +8,10 @@ searched for its label once a day (`SEARCH_INTERVAL`, give or take the schedule 
 and its results become candidates with the tag's slug as `source_detail` (for "Because
 you follow #woodworking").
 
-At most `per_tag_per_day` new candidates are recorded per tag per local calendar day,
-counted from the candidate pool itself, so the cap holds however often the source runs.
+At most `per_tag_per_day` new candidates are recorded per tag per local calendar day (in
+the user's time zone), counted from the candidate pool itself, so the cap holds however
+often the source runs. Unless given, the cap is the `TAG_DISCOVERY_PER_DAY` user setting
+(see homefeed_core.user_settings), read on each run.
 A result is new when its video is not stored yet: videos already in the pool, rated or
 watched ones, and videos of subscribed channels are all stored, so none is found again.
 Videos of muted channels and videos found by another tag in the same run are left out.
@@ -21,7 +23,7 @@ both run it; a tag already searched today is skipped.
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
@@ -38,11 +40,11 @@ from homefeed_core.scheduled_search import (
     raise_if_all_failed,
     run_search,
 )
+from homefeed_core.user_settings import get_user_settings
 
 logger = logging.getLogger(__name__)
 
 SEARCH_INTERVAL = timedelta(days=1)
-DEFAULT_PER_TAG_PER_DAY = 10
 # Results requested per search, as many as there can be: the best matches are mostly known
 # after the first days, and the cap applies to what is new.
 SEARCH_RESULTS = MAX_SEARCH_LIMIT
@@ -104,9 +106,10 @@ def record_run(
     )
 
 
-def found_today(session: Session, slug: str, *, now: datetime) -> int:
-    """How many candidates the tag has brought in since local midnight."""
-    midnight = now.astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+def found_today(session: Session, slug: str, *, now: datetime, tz: tzinfo | None = None) -> int:
+    """How many candidates the tag has brought in since local midnight (in `tz`; None is
+    the process's time zone)."""
+    midnight = now.astimezone(tz).replace(hour=0, minute=0, second=0, microsecond=0)
     return session.execute(
         text(
             "SELECT count(*) FROM candidates WHERE source = :source AND source_detail = :slug "
@@ -127,7 +130,7 @@ class TagDiscoverySource:
         sessions: sessionmaker[Session],
         gateway: Gateway,
         *,
-        per_tag_per_day: int = DEFAULT_PER_TAG_PER_DAY,
+        per_tag_per_day: int | None = None,
         now: datetime | None = None,
     ) -> None:
         self._sessions = sessions
@@ -139,10 +142,16 @@ class TagDiscoverySource:
         now = self._now or datetime.now(UTC)
         todo: list[tuple[SubscribedTag, int]] = []  # tag, new candidates it may still bring
         with self._sessions() as session:
+            user = get_user_settings(session)
+            per_day = (
+                user.tag_discovery_per_day
+                if self._per_tag_per_day is None
+                else self._per_tag_per_day
+            )
             for tag in subscribed_tags(session, now=now):
                 if not is_due(last_run_at(session, tag.id), SEARCH_INTERVAL, now):
                     continue
-                remaining = self._per_tag_per_day - found_today(session, tag.slug, now=now)
+                remaining = per_day - found_today(session, tag.slug, now=now, tz=user.tz)
                 if remaining > 0:
                     todo.append((tag, remaining))
             muted = set(

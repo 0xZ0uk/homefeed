@@ -5,19 +5,47 @@ import {
   createStart,
 } from "@tanstack/react-start";
 
-import { LOGIN_PATH, isAuthenticated, loginUrl } from "#/server/auth";
+import {
+  DESKTOP_AUTH_PATH,
+  LOGIN_PATH,
+  LOGOUT_PATH,
+  isAuthenticated,
+  isDesktopMode,
+  loginUrl,
+} from "#/server/auth";
 
 const csrfMiddleware = createCsrfMiddleware({
   filter: (ctx) => ctx.handlerType === "serverFn",
 });
 
 /**
- * Every request needs a session except the login page itself. This covers
+ * Every request needs a session except the login page itself (or, in desktop
+ * mode, `/desktop-auth`). This covers
  * page loads, server routes, and server function calls, so new routes and
  * server functions are protected without opting in.
  */
 const authMiddleware = createMiddleware().server(
   async ({ request, pathname, handlerType, next }) => {
+    if (isDesktopMode()) {
+      if (handlerType === "router" && pathname === DESKTOP_AUTH_PATH) {
+        return next();
+      }
+      // There's no password to type: the session only comes from the shell.
+      if (pathname === LOGIN_PATH || pathname === LOGOUT_PATH) {
+        return new Response("Not found", { status: 404 });
+      }
+      if (await isAuthenticated()) {
+        return next();
+      }
+      return new Response(
+        "<!doctype html><title>Homefeed</title><p>Open Homefeed from the desktop app</p>",
+        {
+          status: 401,
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        },
+      );
+    }
+
     const authenticated = await isAuthenticated();
     const isLoginPage = handlerType === "router" && pathname === LOGIN_PATH;
 

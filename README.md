@@ -44,7 +44,7 @@ API and worker share one SQLite file (`DATABASE_PATH`), opened through `homefeed
 ## Deployment (Docker Compose)
 
 ```sh
-cp .env.example .env   # set APP_PASSWORD, SESSION_SECRET, TZ, OPENROUTER_API_KEY, ...
+cp .env.example .env   # set APP_PASSWORD, SESSION_SECRET, TZ, ...
 docker compose up -d --build
 ```
 
@@ -55,6 +55,21 @@ All three images come from the root `Dockerfile` (targets `api`, `worker`, `web`
 - `api`/`worker`: `uv sync --package homefeed-api|homefeed-worker --frozen --no-dev` into a self-contained venv.
 - `web`: `turbo prune @homefeed/web --docker`, then `nub ci` and `turbo run build`. turbo writes the pruned `nub.lock` as `pnpm-lock.yaml` (same format), so the Dockerfile renames it back. The API client is generated from an OpenAPI schema exported in the `openapi` stage, so the web build needs no Python. The image serves the build with [srvx](https://srvx.h3.dev).
 
+## Desktop mode
+
+The Electron shell runs the web server with `HOMEFEED_MODE=desktop` (unset or `server` is the password login above). There is no login page: the server returns a plain 401 ("Open Homefeed from the desktop app") to anything without a session, `/login` and `/logout` are 404, and the log out button is hidden. The shell starts a session by opening `GET /desktop-auth?token=<DESKTOP_TOKEN>&next=<path>`; a matching token sets the session cookie and redirects to `next` (a same-origin path, default `/`), anything else gets 403. The cookie is `HttpOnly`, `SameSite=Lax` and not `Secure` (the app is served over `http://127.0.0.1`).
+
+Env the shell must set for the web process (started as `srvx serve --prod --entry=dist/server/server.js --static=../client`, which reads `HOST` and `PORT`):
+
+- `HOMEFEED_MODE=desktop`
+- `HOST=127.0.0.1`: srvx otherwise listens on all interfaces, so other machines on the network could reach it.
+- `PORT`: any free port.
+- `API_URL`: where the API listens, e.g. `http://127.0.0.1:8000`.
+- `DESKTOP_TOKEN`: per-launch secret, at least 32 characters (`APP_PASSWORD` is not used).
+- `SESSION_SECRET`: per-launch, at least 32 characters.
+
+Start the API bound to `127.0.0.1` too (`uvicorn homefeed_api.main:app --host 127.0.0.1 --port <port>`); it has no auth of its own.
+
 ## Layout
 
 - `apps/api`: FastAPI app (`homefeed_api`), http://localhost:8000 in dev
@@ -64,6 +79,14 @@ All three images come from the root `Dockerfile` (targets `api`, `worker`, `web`
 - `packages/core`: Python domain logic (`homefeed_core`)
 - `packages/typescript-config`: shared `tsconfig.json` bases
 - `packages/eslint-config`: shared ESLint configurations
+
+## Settings
+
+The feed size and discovery slots, video length bounds, the daily feed and training times, the time zone, LLM tagging (provider, model, OpenRouter API key, videos per run), tag discovery per day and the SponsorBlock categories to skip are edited on the Settings page (API: `GET`/`PATCH /settings`) and stored in the database's `settings` table (`homefeed_core.user_settings`). Until changed there, each follows its `.env` variable (marked `[Settings]` in `.env.example`) or built-in default, so an install configured through `.env` keeps working; "Reset to default" goes back to it. The time zone defaults to the system's (`TZ`) and decides what "today" is and when the daily jobs run. Schedule changes reach the worker (or the API's in-process scheduler) within a minute, without a restart. The OpenRouter API key is kept in plain text in the local SQLite file, like the rest of your data, and the API only ever returns its last four characters. Everything else (paths, URLs, timeouts, embeddings, calibration) stays in `.env`.
+
+## Running the worker inside the API
+
+By default the scheduled jobs (polling, enrichment, the daily feed, nightly training) run in the separate `worker` process, which is what Docker Compose does. Set `RUN_WORKER_IN_API=true` to run them on a background thread of the API process instead (one process, e.g. for a desktop app), and don't start a worker then. Either way, a process that starts after the daily feed or training time (see Settings; a laptop that was asleep or off) builds today's feed and trains the model right away if they're missing or overdue.
 
 ## Extractor status and live smoke test
 

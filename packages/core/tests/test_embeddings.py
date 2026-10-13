@@ -16,8 +16,8 @@ from homefeed_core.embeddings import (
     Calibration,
     EmbeddingError,
     EmbeddingProvider,
+    FastEmbedProvider,
     OpenRouterEmbeddingProvider,
-    SentenceTransformerProvider,
     StubEmbeddingProvider,
     calibration,
     cosine_similarity,
@@ -43,13 +43,13 @@ def unit(index: int) -> tuple[float, ...]:
 
 
 def test_providers_implement_the_protocol() -> None:
-    providers: list[EmbeddingProvider] = [StubEmbeddingProvider(), SentenceTransformerProvider()]
+    providers: list[EmbeddingProvider] = [StubEmbeddingProvider(), FastEmbedProvider()]
     assert [p.dimensions for p in providers] == [EMBEDDING_DIMENSIONS] * 2
     assert providers[1].model == "BAAI/bge-small-en-v1.5"
 
 
-def test_sentence_transformer_provider_loads_nothing_for_no_texts() -> None:
-    assert SentenceTransformerProvider().embed([]) == []
+def test_fastembed_provider_loads_nothing_for_no_texts() -> None:
+    assert FastEmbedProvider().embed([]) == []
 
 
 def test_stub_is_deterministic_unit_length_and_recorded() -> None:
@@ -187,7 +187,7 @@ def test_the_provider_follows_the_settings(tmp_path: Path) -> None:
         )
     )
 
-    assert isinstance(local, SentenceTransformerProvider)
+    assert isinstance(local, FastEmbedProvider)
     assert local.model == "BAAI/bge-small-en-v1.5"
     assert isinstance(remote, OpenRouterEmbeddingProvider)
     assert remote.model == "perplexity/pplx-embed-v1-0.6b"

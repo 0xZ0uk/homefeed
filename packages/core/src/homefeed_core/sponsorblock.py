@@ -1,7 +1,8 @@
 """SponsorBlock (sponsor.ajay.app): crowd-sourced segments of videos worth skipping.
 
-Only the segments to skip are asked for ("skip" action), in the categories set in
-`SPONSORBLOCK_CATEGORIES`. Lookups use SponsorBlock's privacy-preserving endpoint: the
+Only the segments to skip are asked for ("skip" action), in the categories of the
+`sponsorblock_categories` user setting (see homefeed_core.user_settings; its default is
+`SPONSORBLOCK_CATEGORIES`). Lookups use SponsorBlock's privacy-preserving endpoint: the
 request carries the first characters of the video id's SHA-256, never the id, and the
 segments of the matching video are picked out of the reply.
 
@@ -75,28 +76,27 @@ def _urlopen(request: urllib.request.Request, timeout: float) -> HTTPResponse:
 
 
 class HttpSponsorBlock:
-    """`SponsorBlock` over its HTTP API. `open_url` is the seam for tests."""
+    """`SponsorBlock` over its HTTP API. `categories` may be a function, read on each
+    lookup. `open_url` is the seam for tests."""
 
     def __init__(
         self,
         *,
         base_url: str = DEFAULT_BASE_URL,
-        categories: Iterable[str] = DEFAULT_CATEGORIES,
+        categories: Iterable[str] | Callable[[], Iterable[str]] = DEFAULT_CATEGORIES,
         open_url: OpenUrl = _urlopen,
         timeout: float = TIMEOUT_SECONDS,
     ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._categories = tuple(dict.fromkeys(categories))
-        unknown = set(self._categories) - CATEGORIES
-        if unknown:
-            raise ValueError(f"Unknown SponsorBlock categories: {', '.join(sorted(unknown))}")
+        self._categories = categories if callable(categories) else _known(categories)
         self._open_url = open_url
         self._timeout = timeout
 
     def skip_segments(self, video_id: str) -> list[SponsorSegment]:
-        if not self._categories:
+        categories = _known(self._categories()) if callable(self._categories) else self._categories
+        if not categories:
             return []
-        url = skip_segments_url(self._base_url, video_id, self._categories)
+        url = skip_segments_url(self._base_url, video_id, categories)
         request = urllib.request.Request(
             url, headers={"User-Agent": _USER_AGENT, "Accept": "application/json"}
         )
@@ -115,15 +115,27 @@ class HttpSponsorBlock:
             data = json.loads(body)
         except ValueError as error:
             raise SponsorBlockError("SponsorBlock's response isn't JSON") from error
-        return segments_from_response(data, video_id, self._categories)
+        return segments_from_response(data, video_id, categories)
+
+
+def _known(categories: Iterable[str]) -> tuple[str, ...]:
+    known = tuple(dict.fromkeys(categories))
+    unknown = set(known) - CATEGORIES
+    if unknown:
+        raise ValueError(f"Unknown SponsorBlock categories: {', '.join(sorted(unknown))}")
+    return known
 
 
 def create_sponsorblock() -> SponsorBlock:
-    """The production client, configured by `SPONSORBLOCK_URL` and
-    `SPONSORBLOCK_CATEGORIES` (comma-separated; empty turns skipping off)."""
-    settings = get_settings()
-    categories = [c.strip() for c in settings.sponsorblock_categories.split(",") if c.strip()]
-    return HttpSponsorBlock(base_url=settings.sponsorblock_url, categories=categories)
+    """The production client: `SPONSORBLOCK_URL`, and the categories of the user
+    settings, read on each lookup (empty turns skipping off)."""
+    # homefeed_core.user_settings imports this module (for `CATEGORIES`).
+    from homefeed_core.user_settings import load_user_settings
+
+    return HttpSponsorBlock(
+        base_url=get_settings().sponsorblock_url,
+        categories=lambda: load_user_settings().sponsorblock_categories,
+    )
 
 
 def skip_segments_url(base_url: str, video_id: str, categories: Iterable[str]) -> str:

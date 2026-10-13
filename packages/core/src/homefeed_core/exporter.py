@@ -13,7 +13,8 @@ The export is one JSON object: a header (`format`, `version`, `schema_version`,
   LLM and manual tags alike), with the video's title when known. The LLM's own tags are
   derived data and left out.
 - `models`: trained ranking model versions and their metrics (not the model files).
-- `settings`: the `settings` table (`stored`) and the runtime configuration from the
+- `settings`: the `settings` table (`stored`: the user settings changed on the settings
+  screen, see homefeed_core.user_settings) and the runtime configuration from the
   environment (`config`), without secrets or file paths.
 
 What goes in is the `SECTIONS` registry: each `ExportSection` names where its data goes
@@ -44,7 +45,8 @@ EXPORT_FORMAT = "homefeed-export"
 # sections or fields doesn't need a bump.
 EXPORT_VERSION = 1
 
-# Configuration fields left out of `settings.config`: secrets and host file paths.
+# Configuration fields left out of `settings.config` and `settings.stored`: secrets and
+# host file paths.
 _PRIVATE_CONFIG = frozenset({"openrouter_api_key", "data_dir", "database_path"})
 
 type Reader = Callable[[Session], Any]
@@ -125,7 +127,7 @@ def _playlists(session: Session) -> list[dict[str, Any]]:
 
 def _stored_settings(session: Session) -> dict[str, Any]:
     rows = session.execute(text("SELECT key, value FROM settings ORDER BY key"))
-    return {key: json.loads(value) for key, value in rows}
+    return {key: json.loads(value) for key, value in rows if key not in _PRIVATE_CONFIG}
 
 
 def _config(_session: Session) -> dict[str, Any]:

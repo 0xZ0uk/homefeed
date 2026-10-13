@@ -22,7 +22,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -47,9 +47,11 @@ from homefeed_core import (
     scores,
     sponsorblock,
     tags,
+    user_settings,
     videos,
     watch_events,
 )
+from homefeed_core.config import LLMProviderName, get_settings
 from homefeed_core.db import get_session_factory
 from homefeed_core.embeddings import EmbeddingError, EmbeddingProvider, get_embedding_provider
 from homefeed_core.gateway import (
@@ -69,6 +71,7 @@ from homefeed_core.gateway import (
     create_gateway,
 )
 from homefeed_core.gateway.events import format_timestamp
+from homefeed_worker.scheduler import start_background_scheduler
 
 
 def operation_id(route: APIRoute) -> str:
@@ -79,7 +82,12 @@ def operation_id(route: APIRoute) -> str:
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     get_session_factory()  # create and migrate the database before serving
-    yield
+    scheduler = start_background_scheduler() if get_settings().run_worker_in_api else None
+    try:
+        yield
+    finally:
+        if scheduler is not None:
+            scheduler.shutdown(wait=False)
 
 
 logger = logging.getLogger(__name__)
@@ -1324,8 +1332,8 @@ def _feed_or_404(session: Session, feed_date: dt.date) -> FeedOut:
 
 @app.get("/feed/today", tags=["feed"], responses=FEED_NOT_FOUND)
 def get_today_feed(session: SessionDep) -> FeedOut:
-    """Today's feed (local date): the latest one built today."""
-    return _feed_or_404(session, feeds.local_today())
+    """Today's feed (local date, in the user's time zone): the latest one built today."""
+    return _feed_or_404(session, feeds.local_today(tz=user_settings.get_user_settings(session).tz))
 
 
 @app.get("/feed/{feed_date}", tags=["feed"], responses=FEED_NOT_FOUND)
@@ -1469,7 +1477,9 @@ def get_weekly_insights(
         good_threshold=scores.GOOD_THRESHOLD,
         weeks=[
             WeekInsightsOut.model_validate(week, from_attributes=True)
-            for week in insights.weekly_insights(session, weeks=weeks)
+            for week in insights.weekly_insights(
+                session, weeks=weeks, tz=user_settings.get_user_settings(session).tz
+            )
         ],
     )
 
@@ -2167,6 +2177,143 @@ def export_all(session: SessionDep) -> Response:
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+class UserSettingsOut(BaseModel):
+    feed_size: int = Field(description="Videos in the daily feed (and per Show more)")
+    feed_exploration_slots: int = Field(
+        description="Feed slots for channels with few or no ratings"
+    )
+    feed_min_duration_seconds: int | None = Field(description="Shortest video; null: no bound")
+    feed_max_duration_seconds: int | None = Field(description="Longest video; null: no bound")
+    feed_refresh_time: str = Field(description="Local time the daily feed is built, HH:MM")
+    model_training_time: str = Field(description="Local time the model is trained, HH:MM")
+    timezone: str | None = Field(description="IANA time zone; null is the system's")
+    llm_provider: LLMProviderName = Field(description="LLM tagging provider; none: off")
+    llm_model: str = Field(description="Tagging model; empty: the provider's default")
+    openrouter_api_key_set: bool
+    openrouter_api_key_hint: str | None = Field(
+        description="The key's last characters; the key itself is never returned"
+    )
+    llm_max_tags_per_run: int = Field(description="Videos tagged per enrichment run at most")
+    tag_discovery_per_day: int = Field(
+        description="New videos per subscribed tag per day from searching YouTube; 0: off"
+    )
+    sponsorblock_categories: list[str] = Field(
+        description="SponsorBlock categories the watch page skips; empty: off"
+    )
+
+
+SettingSourceOut = Literal["default", "env", "user"]
+
+
+class SettingsOut(BaseModel):
+    values: UserSettingsOut = Field(description="The settings in effect")
+    defaults: UserSettingsOut = Field(description="What resetting a setting goes back to")
+    sources: dict[user_settings.UserSettingKey, SettingSourceOut] = Field(
+        description="Where each value comes from: default (built in), env (environment "
+        "or .env) or user (changed in Settings)"
+    )
+    system_timezone: str | None = Field(
+        description="The system's time zone (used while `timezone` is null), if known"
+    )
+    sponsorblock_category_options: list[str] = Field(
+        description="Every SponsorBlock category that can be skipped"
+    )
+
+
+class SettingsChanges(BaseModel):
+    """New values; settings left out stay as they are."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    feed_size: int | None = None
+    feed_exploration_slots: int | None = None
+    feed_min_duration_seconds: int | None = None
+    feed_max_duration_seconds: int | None = None
+    feed_refresh_time: dt.time | None = Field(default=None, description="HH:MM")
+    model_training_time: dt.time | None = Field(default=None, description="HH:MM")
+    timezone: str | None = Field(default=None, description="IANA time zone, e.g. Europe/Lisbon")
+    llm_provider: LLMProviderName | None = None
+    llm_model: str | None = None
+    openrouter_api_key: str | None = Field(
+        default=None, description="Stored in the local database; empty or null: no key"
+    )
+    llm_max_tags_per_run: int | None = None
+    tag_discovery_per_day: int | None = None
+    sponsorblock_categories: list[str] | None = None
+
+
+class SettingsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    set: SettingsChanges = Field(default_factory=SettingsChanges)
+    reset: list[user_settings.UserSettingKey] = Field(
+        default_factory=list[user_settings.UserSettingKey],
+        description="Settings to put back to their defaults (environment or built in)",
+    )
+
+
+def _user_settings_out(values: user_settings.UserSettings) -> UserSettingsOut:
+    return UserSettingsOut(
+        feed_size=values.feed_size,
+        feed_exploration_slots=values.feed_exploration_slots,
+        feed_min_duration_seconds=values.feed_min_duration_seconds,
+        feed_max_duration_seconds=values.feed_max_duration_seconds,
+        feed_refresh_time=values.feed_refresh_time.strftime("%H:%M"),
+        model_training_time=values.model_training_time.strftime("%H:%M"),
+        timezone=values.timezone,
+        llm_provider=values.llm_provider,
+        llm_model=values.llm_model,
+        openrouter_api_key_set=values.openrouter_api_key is not None,
+        openrouter_api_key_hint=user_settings.key_hint(values.openrouter_api_key),
+        llm_max_tags_per_run=values.llm_max_tags_per_run,
+        tag_discovery_per_day=values.tag_discovery_per_day,
+        sponsorblock_categories=list(values.sponsorblock_categories),
+    )
+
+
+def _settings_out(state: user_settings.UserSettingsState) -> SettingsOut:
+    return SettingsOut(
+        values=_user_settings_out(state.values),
+        defaults=_user_settings_out(state.defaults),
+        sources=state.sources,
+        system_timezone=user_settings.system_timezone(),
+        sponsorblock_category_options=sorted(sponsorblock.CATEGORIES),
+    )
+
+
+@app.get("/settings", tags=["settings"])
+def get_user_settings(session: SessionDep) -> SettingsOut:
+    """The user settings: feed, schedule and time zone, LLM tagging and SponsorBlock.
+
+    Each comes from the environment (or a built-in default) until changed here. The
+    OpenRouter API key is never returned, only whether one is set and its last characters.
+    """
+    return _settings_out(user_settings.describe_user_settings(session))
+
+
+@app.patch(
+    "/settings",
+    tags=["settings"],
+    responses={422: {"model": ErrorDetail, "description": "An invalid value"}},
+)
+def update_user_settings(
+    body: SettingsUpdate, session: SessionDep, player: PlaybackDep
+) -> SettingsOut:
+    """Change settings (`set`) and put others back to their defaults (`reset`).
+
+    Nothing is saved if any value is invalid (a 422 with a string `detail`). Schedule
+    and time zone changes reach the scheduler within a minute, without a restart.
+    """
+    changes = body.set.model_dump(exclude_unset=True)
+    try:
+        state = user_settings.update_user_settings(session, changes, reset=body.reset)
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    if "sponsorblock_categories" in {*changes, *body.reset}:
+        player.forget_sponsor_segments()
+    return _settings_out(state)
 
 
 # Keep the tag routes last. `/tags/{slug}` matches any one-segment path, so literal routes

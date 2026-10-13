@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pytest
@@ -25,6 +26,7 @@ from homefeed_core.ranker import SIMILARITY_WEIGHT
 from homefeed_core.ranking_models import RidgeModel, activate, record_version, save_model
 from homefeed_core.ratings import set_rating
 from homefeed_core.tags import ProposedTag, remove_video_tag, resolve_tag, set_llm_tags
+from homefeed_core.user_settings import update_user_settings
 from homefeed_core.watch_events import record_watch_event
 
 NOW = datetime(2026, 10, 12, 6, 0, tzinfo=UTC)
@@ -734,3 +736,31 @@ def test_explanations_name_the_nearest_top_tier_video(sessions: sessionmaker[Ses
     with sessions.begin() as session:
         stored = session.execute(text("SELECT explanation FROM feed_items")).scalar_one()
     assert stored == feed.items[0].explanation
+
+
+# User settings (stored values over SETTINGS)
+
+
+def test_build_feed_uses_the_stored_user_settings(sessions: sessionmaker[Session]) -> None:
+    with sessions.begin() as session:
+        update_user_settings(session, {"feed_size": 3}, settings=SETTINGS)
+
+    assert len(build(sessions).items) == 3
+
+    with sessions.begin() as session:
+        update_user_settings(session, {}, reset=["feed_size"], settings=SETTINGS)
+    assert len(build(sessions).items) == 6  # back to SETTINGS' 15: all there is
+
+
+def test_build_feed_dates_the_feed_in_the_user_time_zone(sessions: sessionmaker[Session]) -> None:
+    # 06:00 UTC on the 12th is still the 11th in Honolulu.
+    with sessions.begin() as session:
+        update_user_settings(session, {"timezone": "Pacific/Honolulu"}, settings=SETTINGS)
+
+    assert build(sessions).date == date(2026, 10, 11)
+
+
+def test_local_today_in_a_time_zone() -> None:
+    assert feeds.local_today(NOW, ZoneInfo("Pacific/Honolulu")) == date(2026, 10, 11)
+    assert feeds.local_today(NOW, ZoneInfo("Asia/Tokyo")) == date(2026, 10, 12)
+    assert feeds.local_today(NOW) == NOW.astimezone().date()  # the system's

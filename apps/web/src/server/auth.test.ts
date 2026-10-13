@@ -8,12 +8,47 @@ import {
 } from "./auth";
 
 const secret = "x".repeat(32);
+const token = "t".repeat(32);
 
 describe("readAuthConfig", () => {
   it("reads the password and session secret", () => {
     expect(
       readAuthConfig({ APP_PASSWORD: "hunter2", SESSION_SECRET: secret }),
-    ).toEqual({ password: "hunter2", sessionSecret: secret });
+    ).toEqual({
+      mode: "server",
+      password: "hunter2",
+      sessionSecret: secret,
+    });
+  });
+
+  it("treats an empty HOMEFEED_MODE as server mode", () => {
+    expect(
+      readAuthConfig({
+        HOMEFEED_MODE: "",
+        APP_PASSWORD: "hunter2",
+        SESSION_SECRET: secret,
+      }).mode,
+    ).toBe("server");
+  });
+
+  it("still requires the password in server mode, whatever else is set", () => {
+    expect(() =>
+      readAuthConfig({
+        HOMEFEED_MODE: "server",
+        DESKTOP_TOKEN: token,
+        SESSION_SECRET: secret,
+      }),
+    ).toThrow("APP_PASSWORD");
+  });
+
+  it("refuses an unknown mode", () => {
+    expect(() =>
+      readAuthConfig({
+        HOMEFEED_MODE: "Desktop",
+        APP_PASSWORD: "hunter2",
+        SESSION_SECRET: secret,
+      }),
+    ).toThrow("HOMEFEED_MODE");
   });
 
   it("refuses to run without a password", () => {
@@ -32,6 +67,41 @@ describe("readAuthConfig", () => {
     expect(() =>
       readAuthConfig({ APP_PASSWORD: "hunter2", SESSION_SECRET: "short" }),
     ).toThrow("SESSION_SECRET");
+  });
+});
+
+describe("readAuthConfig in desktop mode", () => {
+  it("reads the token and session secret without a password", () => {
+    expect(
+      readAuthConfig({
+        HOMEFEED_MODE: "desktop",
+        DESKTOP_TOKEN: token,
+        SESSION_SECRET: secret,
+      }),
+    ).toEqual({ mode: "desktop", desktopToken: token, sessionSecret: secret });
+  });
+
+  it("refuses a missing or short token", () => {
+    const env = { HOMEFEED_MODE: "desktop", SESSION_SECRET: secret };
+    expect(() => readAuthConfig(env)).toThrow("DESKTOP_TOKEN");
+    expect(() => readAuthConfig({ ...env, DESKTOP_TOKEN: "short" })).toThrow(
+      "DESKTOP_TOKEN",
+    );
+  });
+
+  it("refuses a missing or short session secret", () => {
+    const env = { HOMEFEED_MODE: "desktop", DESKTOP_TOKEN: token };
+    expect(() => readAuthConfig(env)).toThrow("SESSION_SECRET");
+    expect(() => readAuthConfig({ ...env, SESSION_SECRET: "short" })).toThrow(
+      "SESSION_SECRET",
+    );
+  });
+
+  it("matches the token exactly", async () => {
+    expect(await passwordMatches(token, token)).toBe(true);
+    expect(await passwordMatches(token.slice(1), token)).toBe(false);
+    expect(await passwordMatches(`${token}x`, token)).toBe(false);
+    expect(await passwordMatches("", token)).toBe(false);
   });
 });
 
@@ -66,6 +136,8 @@ describe("safeRedirectTarget", () => {
       "/\\evil.example",
       "/login",
       "/login?redirect=/queue",
+      "/\t/evil.example",
+      "/\n/evil.example",
     ]) {
       expect(safeRedirectTarget(value)).toBe("/");
     }

@@ -6,12 +6,14 @@ import json
 import urllib.error
 import urllib.request
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
 from homefeed_core.config import get_settings
+from homefeed_core.db import get_session_factory
 from homefeed_core.gateway.fake import FakeGateway
 from homefeed_core.playback import SEGMENTS_TTL, Playback
 from homefeed_core.sponsorblock import (
@@ -21,6 +23,7 @@ from homefeed_core.sponsorblock import (
     create_sponsorblock,
     segments_from_response,
 )
+from homefeed_core.user_settings import update_user_settings
 
 VIDEO = "dQw4w9WgXcQ"
 PREFIX = hashlib.sha256(VIDEO.encode()).hexdigest()[:4]
@@ -150,21 +153,36 @@ def test_segments_from_response_without_the_video() -> None:
     assert segments_from_response([], VIDEO, ["sponsor"]) == []
 
 
-def test_create_sponsorblock_reads_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_sponsorblock_reads_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "homefeed.sqlite"))
     monkeypatch.setenv("SPONSORBLOCK_URL", "https://sb.invalid")
     monkeypatch.setenv("SPONSORBLOCK_CATEGORIES", " intro , outro,")
     get_settings.cache_clear()
+    get_session_factory.cache_clear()
+    server = Server([])
     try:
         client = create_sponsorblock()
-        server = Server([])
         assert isinstance(client, HttpSponsorBlock)
         client._open_url = server  # pyright: ignore[reportPrivateUsage]
         client.skip_segments(VIDEO)
+        # The categories are the user setting's, read on each lookup.
+        with get_session_factory().begin() as session:
+            update_user_settings(session, {"sponsorblock_categories": ["filler"]})
+        client.skip_segments(VIDEO)
+        with get_session_factory().begin() as session:
+            update_user_settings(session, {"sponsorblock_categories": []})
+        assert client.skip_segments(VIDEO) == []
     finally:
+        get_session_factory().kw["bind"].dispose()
         get_settings.cache_clear()
-    url = server.requests[0].full_url
-    assert url.startswith("https://sb.invalid/api/skipSegments/")
-    assert json.loads(parse_qs(urlsplit(url).query)["categories"][0]) == ["intro", "outro"]
+        get_session_factory.cache_clear()
+    urls = [request.full_url for request in server.requests]
+    assert len(urls) == 2  # none with skipping off
+    assert urls[0].startswith("https://sb.invalid/api/skipSegments/")
+    categories = [json.loads(parse_qs(urlsplit(url).query)["categories"][0]) for url in urls]
+    assert categories == [["intro", "outro"], ["filler"]]
 
 
 # Playback.sponsor_segments
@@ -208,4 +226,15 @@ def test_playback_does_not_cache_failures() -> None:
         playback.sponsor_segments(VIDEO)
     sponsorblock.error = None
     assert len(playback.sponsor_segments(VIDEO)) == 1
+    assert sponsorblock.calls == [VIDEO, VIDEO]
+
+
+def test_playback_forgets_segments_when_asked() -> None:
+    sponsorblock = FakeSponsorBlock()
+    playback = Playback(FakeGateway(), sponsorblock=sponsorblock)
+    playback.sponsor_segments(VIDEO)
+
+    playback.forget_sponsor_segments()  # the categories changed
+
+    playback.sponsor_segments(VIDEO)
     assert sponsorblock.calls == [VIDEO, VIDEO]

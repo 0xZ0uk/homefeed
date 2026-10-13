@@ -22,6 +22,7 @@ from homefeed_core.tag_discovery import (
     subscribed_tags,
 )
 from homefeed_core.tags import Tag, resolve_tag
+from homefeed_core.user_settings import update_user_settings
 
 T0 = datetime(2026, 10, 12, 12, 0, tzinfo=UTC)
 WOOD = make_channel("UC" + "w" * 22, title="Wood", handle="@wood")
@@ -149,6 +150,35 @@ def test_cap_per_tag_holds_across_runs_on_the_same_day(sessions: sessionmaker[Se
     assert len(gateway.searches) == 2  # nothing left under the cap: no search at all
     with sessions() as session:
         assert found_today(session, "woodworking", now=T0) == 7
+
+
+def test_the_cap_is_the_user_setting_unless_given(sessions: sessionmaker[Session]) -> None:
+    subscribe(sessions, "Woodworking")
+    gateway = FakeGateway()
+    gateway.add_search("Woodworking", videos("w", 12))
+    with sessions.begin() as session:
+        update_user_settings(session, {"tag_discovery_per_day": 3})
+
+    source = TagDiscoverySource(sessions, gateway, now=T0)
+    new = generate([source], sessions=sessions, now=T0).new
+
+    assert len(new[TAG]) == 3
+
+
+def test_the_day_is_the_user_time_zone_day(sessions: sessionmaker[Session]) -> None:
+    subscribe(sessions, "Woodworking")
+    gateway = FakeGateway()
+    gateway.add_search("Woodworking", videos("w", 12))
+    discover(sessions, gateway, per_day=4)  # 12:00 UTC
+    with sessions.begin() as session:
+        update_user_settings(session, {"timezone": "Asia/Tokyo"})
+        session.execute(text("DELETE FROM tag_discovery_runs"))
+
+    # 16:00 UTC is 01:00 the next day in Tokyo: a new day, a new cap.
+    source = TagDiscoverySource(sessions, gateway, per_tag_per_day=4, now=T0 + timedelta(hours=4))
+    new = generate([source], sessions=sessions, now=T0 + timedelta(hours=4)).new
+
+    assert len(new[TAG]) == 4
 
 
 def test_the_cap_starts_over_the_next_day(sessions: sessionmaker[Session]) -> None:

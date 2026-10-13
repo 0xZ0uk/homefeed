@@ -116,7 +116,9 @@ class Enricher:
         gateway: Gateway,
         embedder: EmbeddingProvider,
         *,
-        tagger: Tagger | None = None,
+        # Or a function giving the tagger for each run (the production one follows the
+        # user settings; see `llm_tags.get_tagger`).
+        tagger: Tagger | Callable[[], Tagger | None] | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._sessions = sessions
@@ -165,10 +167,11 @@ class Enricher:
     ) -> TagReport | None:
         """LLM-tag the videos without current tags; None without a tagger. Never raises:
         a failure is logged and the videos are left for the next run."""
-        if self._tagger is None:
+        tagger = self._tagger() if callable(self._tagger) else self._tagger
+        if tagger is None:
             return None
         try:
-            return self._tagger.tag_many(video_ids, progress=progress)
+            return tagger.tag_many(video_ids, progress=progress)
         except Exception:
             logger.exception("LLM tagging failed; continuing without new tags")
             return None
@@ -410,9 +413,7 @@ def get_enricher() -> Enricher:
     """The process-wide production enricher (one embedding model per process), tagging
     with the configured LLM provider, if any."""
     sessions = get_session_factory()
-    return Enricher(
-        sessions, create_gateway(sessions), get_embedding_provider(), tagger=get_tagger()
-    )
+    return Enricher(sessions, create_gateway(sessions), get_embedding_provider(), tagger=get_tagger)
 
 
 def enrich_candidates(

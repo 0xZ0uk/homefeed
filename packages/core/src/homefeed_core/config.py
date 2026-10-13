@@ -11,7 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # hosted OpenRouter API (openrouter.ai), "ollama" a local Ollama server and "none"
 # turns tagging off.
 type LLMProviderName = Literal["openrouter", "ollama", "none"]
-# Embedding providers (see homefeed_core.embeddings): "local" runs a sentence-transformers
+# Embedding providers (see homefeed_core.embeddings): "local" runs a fastembed
 # model in the process, "openrouter" calls OpenRouter's embeddings API.
 type EmbeddingProviderName = Literal["local", "openrouter"]
 
@@ -19,7 +19,13 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 class Settings(BaseSettings):
-    """Runtime configuration, read from environment variables and `.env`."""
+    """Runtime configuration, read from environment variables and `.env`.
+
+    The settings in `user_settings.UserSettings` (feed size, schedule, LLM tagging, ...)
+    can also be changed on the settings screen, which stores them in the database; the
+    values here are then only their defaults. Read those through
+    `user_settings.get_user_settings`, not from here.
+    """
 
     model_config = SettingsConfigDict(extra="ignore")
 
@@ -28,8 +34,12 @@ class Settings(BaseSettings):
     feed_size: int = 20
     # Feed slots reserved for exploring under-rated channels (Thompson sampling).
     feed_exploration_slots: int = 3
-    # Local time (the process's TZ) when the worker builds the day's feed.
+    # Local time (the user's time zone, by default the process's TZ) when the worker
+    # builds the day's feed.
     feed_refresh_time: time = time(6, 0)
+    # Run the worker's scheduled jobs inside the API process instead of a separate
+    # worker process (one process, e.g. the desktop app). Docker Compose keeps a worker.
+    run_worker_in_api: bool = False
     # Local time when the worker trains the ranking model (before the day's feed).
     model_training_time: time = time(3, 0)
     # Local time when the worker runs the live Gateway smoke test against real YouTube
@@ -42,7 +52,7 @@ class Settings(BaseSettings):
     # How far back (by when a video entered the candidate pool) the feed looks.
     feed_candidate_days: int = 7
     # Content embeddings (see homefeed_core.embeddings): "local" downloads a
-    # sentence-transformers model into DATA_DIR/models and runs it in the process (it must
+    # fastembed (ONNX) model into DATA_DIR/models and runs it in the process (it must
     # make 384-dimensional vectors); "openrouter" calls OpenRouter's embeddings API with
     # OPENROUTER_API_KEY, asking for 384 dimensions (e.g. perplexity/pplx-embed-v1-0.6b).
     # Changing the model re-embeds every stored video on the worker's next enrichment run,

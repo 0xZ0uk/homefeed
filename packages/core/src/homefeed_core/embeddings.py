@@ -1,8 +1,8 @@
 """Text embeddings: the provider interface and the stored video embeddings.
 
 Providers turn texts into unit-length vectors of 384 floats. `EMBEDDING_PROVIDER`
-picks the production one (`get_embedding_provider`): `SentenceTransformerProvider` runs
-a sentence-transformers model in the process (`BAAI/bge-small-en-v1.5` by default,
+picks the production one (`get_embedding_provider`): `FastEmbedProvider` runs a
+fastembed (ONNX Runtime) model in the process (`BAAI/bge-small-en-v1.5` by default,
 loaded on first use), `OpenRouterEmbeddingProvider` calls OpenRouter's embeddings API
 (e.g. `perplexity/pplx-embed-v1-0.6b`, asking for 384 dimensions). Tests use
 `StubEmbeddingProvider`, which needs no model. A provider's `model` names what produced a
@@ -42,7 +42,7 @@ from sqlalchemy.orm import Session
 from homefeed_core.config import OPENROUTER_BASE_URL, Settings, get_settings
 
 if TYPE_CHECKING:
-    from sentence_transformers import SentenceTransformer
+    from fastembed import TextEmbedding
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +73,8 @@ class EmbeddingProvider(Protocol):
         ...
 
 
-class SentenceTransformerProvider:
-    """A sentence-transformers model, downloaded into `cache_dir` and loaded on first use.
+class FastEmbedProvider:
+    """A fastembed (ONNX Runtime) model, downloaded into `cache_dir` and loaded on first use.
 
     Loading takes a few seconds and ~150 MB of memory, so keep one instance per process.
     Thread-safe.
@@ -92,39 +92,31 @@ class SentenceTransformerProvider:
         self.dimensions = dimensions
         self._cache_dir = cache_dir
         self._batch_size = batch_size
-        self._loaded: SentenceTransformer | None = None
+        self._loaded: TextEmbedding | None = None
         self._lock = threading.Lock()
 
     def embed(self, texts: Sequence[str]) -> list[Embedding]:
         if not texts:
             return []
         with self._lock:
-            vectors = self._load().encode(  # pyright: ignore[reportUnknownMemberType]
-                list(texts),
-                batch_size=self._batch_size,
-                normalize_embeddings=True,
-                convert_to_numpy=True,
-                show_progress_bar=False,
-            )
-        return [tuple(float(x) for x in vector) for vector in vectors]
+            vectors = list(self._load().embed(list(texts), batch_size=self._batch_size))
+        # fastembed's models answer unit vectors already; normalizing guards the ones that don't.
+        return [normalize([float(x) for x in vector]) for vector in vectors]
 
-    def _load(self) -> "SentenceTransformer":
+    def _load(self) -> "TextEmbedding":
         if self._loaded is None:
-            # Imported here: torch takes seconds to import and most processes never embed.
-            from sentence_transformers import SentenceTransformer
+            # Imported here: onnxruntime takes a moment to import and most processes never embed.
+            from fastembed import TextEmbedding
 
-            loaded = SentenceTransformer(
-                self.model,
-                device="cpu",
-                cache_folder=str(self._cache_dir) if self._cache_dir else None,
-            )
-            dimensions = loaded.get_embedding_dimension()
+            dimensions = TextEmbedding.get_embedding_size(self.model)
             if dimensions != self.dimensions:
                 raise ValueError(
                     f"{self.model} makes {dimensions}-dimensional embeddings, "
                     f"expected {self.dimensions}"
                 )
-            self._loaded = loaded
+            self._loaded = TextEmbedding(
+                self.model, cache_dir=str(self._cache_dir) if self._cache_dir else None
+            )
         return self._loaded
 
 
@@ -229,9 +221,7 @@ def make_embedding_provider(settings: Settings | None = None) -> EmbeddingProvid
             model=settings.embedding_model,
             timeout=settings.embedding_timeout_seconds,
         )
-    return SentenceTransformerProvider(
-        settings.embedding_model, cache_dir=settings.data_dir / "models"
-    )
+    return FastEmbedProvider(settings.embedding_model, cache_dir=settings.data_dir / "models")
 
 
 @lru_cache
