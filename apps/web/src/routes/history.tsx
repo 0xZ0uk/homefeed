@@ -3,7 +3,6 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
 import { AppShell } from "#/components/AppShell";
-import { showsThumbnails, type DisplayPrefs } from "#/lib/display";
 import { formatAge, formatDuration } from "#/lib/format";
 import {
   HISTORY_QUERY_MAX_LENGTH,
@@ -12,7 +11,6 @@ import {
   progressFraction,
   type HistoryParams,
 } from "#/lib/history";
-import { displayPrefsQuery } from "#/server/display";
 import { historyQuery, type HistoryEntry } from "#/server/history";
 
 /**
@@ -26,7 +24,6 @@ export const Route = createFileRoute("/history")({
   loaderDeps: ({ search }) => search,
   loader: async ({ context, deps }) => {
     await Promise.all([
-      context.queryClient.ensureQueryData(displayPrefsQuery),
       context.queryClient.ensureQueryData(historyQuery(deps)),
     ]);
   },
@@ -81,7 +78,6 @@ function HistorySearch({ query }: { query: string }) {
 
 function Entries({ params }: { params: HistoryParams }) {
   const { data: outcome } = useSuspenseQuery(historyQuery(params));
-  const { data: display } = useSuspenseQuery(displayPrefsQuery);
   const page = params.page ?? 1;
 
   if (!outcome.ok) {
@@ -106,7 +102,7 @@ function Entries({ params }: { params: HistoryParams }) {
     <>
       <ol className="flex flex-col divide-y" aria-label="Watched videos">
         {outcome.entries.map((entry) => (
-          <EntryRow key={entry.video_id} entry={entry} display={display} />
+          <EntryRow key={entry.video_id} entry={entry} />
         ))}
       </ol>
       {(page > 1 || outcome.hasMore) && (
@@ -135,51 +131,42 @@ function Entries({ params }: { params: HistoryParams }) {
   );
 }
 
-function EntryRow({
-  entry,
-  display,
-}: {
-  entry: HistoryEntry;
-  display: DisplayPrefs;
-}) {
+function EntryRow({ entry }: { entry: HistoryEntry }) {
   const duration = formatDuration(entry.duration);
-  const thumbnails = showsThumbnails(display);
   const progress = describeProgress(entry);
   const fraction = progressFraction(entry);
   const params = { videoId: entry.video_id };
 
   return (
     <li className="flex gap-4 py-3">
-      {thumbnails && (
-        // Mouse-only; the title link is the one in the tab order.
-        <Link
-          to="/watch/$videoId"
-          params={params}
-          tabIndex={-1}
-          aria-hidden="true"
-          className="relative aspect-video w-40 shrink-0 overflow-hidden rounded-lg bg-secondary"
-        >
-          {entry.thumbnail_url && (
-            <img
-              src={entry.thumbnail_url}
-              alt=""
-              loading="lazy"
-              className="size-full rounded-[inherit] object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
-            />
-          )}
-          {duration && (
-            <span className="absolute right-1 bottom-1 rounded bg-black/80 px-1 text-xs text-white tabular-nums">
-              {duration}
-            </span>
-          )}
-          {fraction !== null && (
-            <span
-              className="absolute bottom-0 left-0 h-1 bg-brand"
-              style={{ width: `${fraction * 100}%` }}
-            />
-          )}
-        </Link>
-      )}
+      {/* Mouse-only; the title link is the one in the tab order. */}
+      <Link
+        to="/watch/$videoId"
+        params={params}
+        tabIndex={-1}
+        aria-hidden="true"
+        className="relative aspect-video w-40 shrink-0 overflow-hidden rounded-lg bg-secondary"
+      >
+        {entry.thumbnail_url && (
+          <img
+            src={entry.thumbnail_url}
+            alt=""
+            loading="lazy"
+            className="size-full rounded-[inherit] object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
+          />
+        )}
+        {duration && (
+          <span className="absolute right-1 bottom-1 rounded bg-black/80 px-1 text-xs text-white tabular-nums">
+            {duration}
+          </span>
+        )}
+        {fraction !== null && (
+          <span
+            className="absolute bottom-0 left-0 h-1 bg-brand"
+            style={{ width: `${fraction * 100}%` }}
+          />
+        )}
+      </Link>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <h3 className="font-medium">
           <Link
@@ -192,9 +179,6 @@ function EntryRow({
         </h3>
         <p className="flex flex-wrap gap-x-2 text-sm text-muted-foreground">
           {entry.channel_title && <span>{entry.channel_title}</span>}
-          {duration && !thumbnails && (
-            <span className="tabular-nums">· {duration}</span>
-          )}
           {entry.grade && <span>· Rated {entry.grade}</span>}
         </p>
         <p className="flex flex-wrap gap-x-2 text-sm text-muted-foreground">

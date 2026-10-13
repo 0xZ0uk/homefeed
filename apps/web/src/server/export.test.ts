@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_DISPLAY, serializeDisplayPrefs } from "#/lib/display";
-
 import { handleExport } from "./export";
 
 const EXPORT = {
@@ -23,15 +21,10 @@ function fetchReturning(response: Response | Error) {
 }
 
 describe("handleExport", () => {
-  it("downloads the API's export with this browser's display settings", async () => {
+  it("downloads the API's export", async () => {
     const { urls, fetchImpl } = fetchReturning(Response.json(EXPORT));
-    const display = { ...DEFAULT_DISPLAY, thumbnails: true };
 
-    const response = await handleExport(
-      serializeDisplayPrefs(display),
-      fetchImpl,
-      "http://api:8000",
-    );
+    const response = await handleExport(fetchImpl, "http://api:8000");
 
     expect(urls).toEqual(["http://api:8000/export"]);
     expect(response.status).toBe(200);
@@ -39,19 +32,7 @@ describe("handleExport", () => {
       'attachment; filename="homefeed-export-2026-10-13.json"',
     );
     expect(response.headers.get("content-type")).toMatch(/^application\/json/);
-    expect(await response.json()).toEqual({
-      ...EXPORT,
-      settings: { stored: {}, display },
-    });
-  });
-
-  it("uses the default display settings without a cookie", async () => {
-    const { fetchImpl } = fetchReturning(Response.json(EXPORT));
-
-    const response = await handleExport(undefined, fetchImpl, "http://api");
-
-    const body = (await response.json()) as { settings: unknown };
-    expect(body.settings).toEqual({ stored: {}, display: DEFAULT_DISPLAY });
+    expect(await response.json()).toEqual(EXPORT);
   });
 
   it("answers 502 when the API fails or can't be reached", async () => {
@@ -62,7 +43,7 @@ describe("handleExport", () => {
       new Error("connection refused"),
     ]) {
       const { fetchImpl } = fetchReturning(upstream);
-      const response = await handleExport(undefined, fetchImpl, "http://api");
+      const response = await handleExport(fetchImpl, "http://api");
       expect(response.status).toBe(502);
     }
   });

@@ -31,7 +31,7 @@ def clean_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]
 def test_defaults() -> None:
     settings = Settings()
 
-    assert settings.feed_size == 15
+    assert settings.feed_size == 20
     assert settings.feed_refresh_time == time(6, 0)
     # The hosted OpenRouter API, which stays off until OPENROUTER_API_KEY is set.
     assert settings.llm_provider == "openrouter"

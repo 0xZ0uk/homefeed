@@ -20,7 +20,7 @@ class Settings(BaseSettings):
 
     data_dir: Path = Path("data")
     database_path: Path = Path("data/homefeed.sqlite")
-    feed_size: int = 15
+    feed_size: int = 20
     # Feed slots reserved for exploring under-rated channels (Thompson sampling).
     feed_exploration_slots: int = 3
     # Local time (the process's TZ) when the worker builds the day's feed.

@@ -36,7 +36,7 @@ from homefeed_core.external_sources import EXTERNAL
 from homefeed_core.grades import Grade, nearest_grade
 from homefeed_core.ranker import ChannelCuration, Curation, ScoredCandidate
 
-DEFAULT_FEED_SIZE = 15
+DEFAULT_FEED_SIZE = 20
 DEFAULT_PER_CHANNEL_CAP = 2
 DEFAULT_EXPLORATION_SLOTS = 3
 # Monte Carlo draws to estimate exploration selection probabilities.

@@ -7,7 +7,6 @@ import { SavedSearchesTab } from "#/components/SavedSearchesTab";
 import { SourcesTab } from "#/components/SourcesTab";
 import { TopicsTab } from "#/components/TopicsTab";
 import { channelsQuery } from "#/server/channels";
-import { displayPrefsQuery } from "#/server/display";
 import { externalSourcesQuery } from "#/server/external-sources";
 import { keywordMutesQuery } from "#/server/keyword-mutes";
 import { savedSearchesQuery } from "#/server/saved-searches";
@@ -45,10 +44,7 @@ export const Route = createFileRoute("/curation")({
     } else if (deps.tab === "sources") {
       await context.queryClient.ensureQueryData(externalSourcesQuery);
     } else {
-      await Promise.all([
-        context.queryClient.ensureQueryData(channelsQuery),
-        context.queryClient.ensureQueryData(displayPrefsQuery),
-      ]);
+      await Promise.all([context.queryClient.ensureQueryData(channelsQuery)]);
     }
   },
   component: Curation,

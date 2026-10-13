@@ -8,7 +8,6 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { channelUrl, featuredByText, formatSubscribers } from "#/lib/discover";
-import { showsImages } from "#/lib/display";
 import { formatAge, formatDuration } from "#/lib/format";
 import { channelsQuery, subscribe } from "#/server/channels";
 import {
@@ -16,14 +15,11 @@ import {
   suggestedChannelsQuery,
   type SuggestedChannel,
 } from "#/server/discover";
-import { displayPrefsQuery } from "#/server/display";
 
 /** Channels featured by channels I like, each with a subscribe action. */
 export function SuggestedChannels() {
   const { data: suggestions } = useSuspenseQuery(suggestedChannelsQuery);
-  const { data: display } = useSuspenseQuery(displayPrefsQuery);
   const [status, setStatus] = useState<string | null>(null);
-  const avatars = showsImages(display);
 
   return (
     <section
@@ -57,7 +53,6 @@ export function SuggestedChannels() {
             <SuggestionRow
               key={channel.channel_id}
               channel={channel}
-              avatar={avatars}
               onStatus={setStatus}
             />
           ))}
@@ -69,11 +64,9 @@ export function SuggestedChannels() {
 
 function SuggestionRow({
   channel,
-  avatar,
   onStatus,
 }: {
   channel: SuggestedChannel;
-  avatar: boolean;
   onStatus: (message: string) => void;
 }) {
   const queryClient = useQueryClient();
@@ -101,7 +94,7 @@ function SuggestionRow({
     <li className="flex flex-col gap-2 py-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex min-w-48 flex-1 items-center gap-3">
-          {avatar && channel.thumbnail_url && (
+          {channel.thumbnail_url && (
             <img
               src={channel.thumbnail_url}
               alt=""

@@ -6,7 +6,7 @@ This plan is written for Claude Code. It starts from a freshly created Turborepo
 
 A self-hosted, single-user YouTube client. The centerpiece is a **finite daily home feed** ranked by a model trained on my explicit tier-list ratings, blended with hand curation. It does not use the official YouTube Data API.
 
-The feed is designed against compulsion: a fixed number of items, refreshed once a day, no autoplay, no infinite scroll, no "up next", an optional text-only mode, and a "why this is here" explanation on every item.
+The feed is designed against compulsion: a fixed number of items, refreshed once a day, no autoplay, no infinite scroll, no "up next", and a "why this is here" explanation on every item.
 
 Success metric: the **weekly good-tier rate**, meaning the share of rated videos rated B-- or higher. Not watch time.
 
@@ -132,7 +132,7 @@ Goal: `nub run dev` starts web, api, and worker; `nub run test` and `nub run lin
    ```
 
 7. **Ignore files.** `.venv/`, `__pycache__/`, `*.sqlite*`, `data/`, `.env` in `.gitignore` (Turbo hashes git-tracked files).
-8. **Config.** `.env.example` with `DATA_DIR`, `DATABASE_PATH`, `API_URL` (used by web server functions), `APP_PASSWORD`, `SESSION_SECRET`, `FEED_SIZE=15`, `FEED_REFRESH_TIME=06:00`, `LLM_PROVIDER=none`. Load Python config with pydantic-settings.
+8. **Config.** `.env.example` with `DATA_DIR`, `DATABASE_PATH`, `API_URL` (used by web server functions), `APP_PASSWORD`, `SESSION_SECRET`, `FEED_SIZE=20`, `FEED_REFRESH_TIME=06:00`, `LLM_PROVIDER=none`. Load Python config with pydantic-settings.
 9. **Smoke check.** API exposes `GET /health`; the web home page calls it through a server function using the generated client and shows the result.
 
 ### Acceptance
@@ -230,7 +230,7 @@ Auth lives in the web app (single password, session cookie). The API binds to th
 
 `/` home feed · `/watch/$videoId` · `/queue` · `/history` · `/curation` (tabs: channels, topics, mutes, searches, sources) · `/discover` · `/insights` · `/settings` · `/status` · `/login`.
 
-Home feed items show title, channel, duration, upload age, explanation (expandable to the score breakdown), and an exploration badge. Thumbnails and view counts are toggleable. The watch page shows chapters, description, and comments on demand, skips SponsorBlock segments, saves resume position, and ends in the rating prompt. It never shows suggested videos and never autoplays.
+Home feed items show thumbnail, channel avatar, title, channel, duration, view count, upload age, explanation (expandable to the score breakdown), and status icons (pinned, exploring, dismissed). The watch page shows chapters, description, and comments on demand, skips SponsorBlock segments, saves resume position, and ends in the rating prompt. It never shows suggested videos and never autoplays.
 
 ## 11. Milestones
 

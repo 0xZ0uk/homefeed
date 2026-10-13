@@ -5,16 +5,12 @@ import { useEffect } from "react";
 import { AppShell } from "#/components/AppShell";
 import { SuggestedChannels } from "#/components/SuggestedChannels";
 import { suggestedChannelsQuery } from "#/server/discover";
-import { displayPrefsQuery } from "#/server/display";
 
 /** Ways to find new channels and videos beyond the daily feed. */
 export const Route = createFileRoute("/discover")({
   head: () => ({ meta: [{ title: "Discover · Homefeed" }] }),
   loader: ({ context: { queryClient } }) =>
-    Promise.all([
-      queryClient.ensureQueryData(suggestedChannelsQuery),
-      queryClient.ensureQueryData(displayPrefsQuery),
-    ]),
+    Promise.all([queryClient.ensureQueryData(suggestedChannelsQuery)]),
   component: Discover,
   errorComponent: DiscoverError,
 });
