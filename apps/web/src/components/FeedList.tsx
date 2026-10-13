@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
+  ArrowDownUp,
+  CircleCheck,
   Compass,
   EllipsisVertical,
   EyeOff,
@@ -21,6 +23,8 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "#/components/ui/dropdown-menu";
@@ -30,9 +34,13 @@ import {
   withItemDismissal,
 } from "#/lib/dismiss";
 import {
+  FEED_SORTS,
   LENGTH_FILTERS,
   channelColor,
+  isFeedSort,
   matchesLength,
+  sortFeedItems,
+  type FeedSort,
   type LengthFilter,
 } from "#/lib/feed-grid";
 import { formatAge, formatDuration, formatViews } from "#/lib/format";
@@ -47,9 +55,11 @@ import {
 
 /**
  * A feed as a fixed, ordered grid of video cards, YouTube-style, with chips
- * to narrow it by length. Every card links to its watch page and says why
- * it's there, expandable into its score breakdown. There is deliberately no
- * pagination or "load more": the feed is the whole grid.
+ * to narrow it by length and a menu to sort it (ranked, the feed's own order,
+ * by default). Every card links to its watch page and says why it's there,
+ * expandable into its score breakdown; videos already watched are greyed
+ * out. There is deliberately no pagination or "load more": the feed is the
+ * whole grid.
  *
  * With `dismissible`, each card's menu can dismiss it (with an optional
  * reason) and dismissed items are hidden; otherwise they're shown, marked
@@ -65,6 +75,7 @@ export function FeedList({
   // One "now" per render pass keeps every item's age consistent.
   const [now] = useState(() => new Date());
   const [filter, setFilter] = useState<LengthFilter>("all");
+  const [sort, setSort] = useState<FeedSort>("ranked");
   const statusRef = useRef<HTMLParagraphElement>(null);
   const { status, dismiss } = useDismiss(feed, statusRef);
 
@@ -77,28 +88,32 @@ export function FeedList({
     );
   }
   const shown = dismissible ? undismissedItems(feed.items) : feed.items;
-  const items = shown.filter((item) =>
-    matchesLength(item.duration_seconds, filter),
+  const items = sortFeedItems(
+    shown.filter((item) => matchesLength(item.duration_seconds, filter)),
+    sort,
   );
   return (
     <div className="flex flex-col gap-3">
-      <div
-        role="group"
-        aria-label="Filter by length"
-        className="sticky top-14 z-30 -mx-1 flex gap-3 overflow-x-auto bg-background px-1 py-3"
-      >
-        {LENGTH_FILTERS.map(({ value, label }) => (
-          <Button
-            key={value}
-            type="button"
-            variant="secondary"
-            aria-pressed={filter === value}
-            onClick={() => setFilter(value)}
-            className="shrink-0 rounded-lg px-3 aria-pressed:bg-primary aria-pressed:text-primary-foreground"
-          >
-            {label}
-          </Button>
-        ))}
+      <div className="sticky top-14 z-30 -mx-1 flex items-center gap-3 bg-background px-1 py-3">
+        <div
+          role="group"
+          aria-label="Filter by length"
+          className="flex min-w-0 flex-1 gap-3 overflow-x-auto"
+        >
+          {LENGTH_FILTERS.map(({ value, label }) => (
+            <Button
+              key={value}
+              type="button"
+              variant="secondary"
+              aria-pressed={filter === value}
+              onClick={() => setFilter(value)}
+              className="shrink-0 rounded-lg px-3 aria-pressed:bg-primary aria-pressed:text-primary-foreground"
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+        <SortMenu sort={sort} onSort={setSort} />
       </div>
       {/* Focus moves here when a dismissed card disappears from the grid. */}
       <p
@@ -139,6 +154,49 @@ export function FeedList({
         </ol>
       )}
     </div>
+  );
+}
+
+/** The sort menu at the end of the chips, naming the current sort. */
+function SortMenu({
+  sort,
+  onSort,
+}: {
+  sort: FeedSort;
+  onSort: (sort: FeedSort) => void;
+}) {
+  const current = FEED_SORTS.find(({ value }) => value === sort);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={<Button variant="ghost" className="shrink-0 rounded-lg px-3" />}
+        aria-label={`Sort: ${current?.label}`}
+      >
+        <ArrowDownUp aria-hidden="true" />
+        <span className="hidden sm:inline">{current?.label}</span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48 py-2">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="px-3">Sort by</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={sort}
+            onValueChange={(value) => {
+              if (isFeedSort(value)) onSort(value);
+            }}
+          >
+            {FEED_SORTS.map(({ value, label }) => (
+              <DropdownMenuRadioItem
+                key={value}
+                value={value}
+                className="px-3 py-2"
+              >
+                {label}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -201,6 +259,8 @@ function useDismiss(
  * has none, a placeholder in the channel's colour), then the channel's avatar
  * beside title, channel and stats, and a menu of actions. The title is the
  * card's one link, stretched over the whole card; the controls sit above it.
+ * A watched video's card is faded and its pictures greyed out, so the ones
+ * still to watch stand out.
  */
 function VideoCard({
   item,
@@ -222,7 +282,7 @@ function VideoCard({
     <li
       className={cn(
         "group/card relative flex flex-col gap-3",
-        item.dismissed_at && "opacity-60",
+        (item.dismissed_at || item.watched) && "opacity-60",
       )}
     >
       <QueueStatus
@@ -237,7 +297,10 @@ function VideoCard({
         />
       </div>
       <div
-        className="relative aspect-video overflow-hidden rounded-xl bg-secondary transition-[border-radius] group-hover/card:rounded-none"
+        className={cn(
+          "relative aspect-video overflow-hidden rounded-xl bg-secondary transition-[border-radius] group-hover/card:rounded-none",
+          item.watched && "grayscale",
+        )}
         style={thumbnail ? undefined : { backgroundColor: color }}
       >
         {thumbnail ? (
@@ -262,7 +325,10 @@ function VideoCard({
         )}
       </div>
       <div className="flex gap-3">
-        <Avatar aria-hidden="true" className="size-9">
+        <Avatar
+          aria-hidden="true"
+          className={cn("size-9", item.watched && "grayscale")}
+        >
           {item.channel_thumbnail_url && (
             <AvatarImage
               src={avatarUrl(item.channel_thumbnail_url)}
@@ -317,12 +383,14 @@ function VideoCard({
 
 /**
  * A card's states as small icons, each named for screen readers and in a
- * tooltip: pinned, exploring (a channel you don't follow yet), dismissed.
+ * tooltip: pinned, exploring (a channel you don't follow yet), watched,
+ * dismissed.
  */
 function StatusIcons({ item }: { item: FeedItem }) {
   const statuses: { icon: LucideIcon; label: string }[] = [];
   if (item.is_pinned) statuses.push({ icon: Pin, label: "Pinned" });
   if (item.is_exploration) statuses.push({ icon: Compass, label: "Exploring" });
+  if (item.watched) statuses.push({ icon: CircleCheck, label: "Watched" });
   if (item.dismissed_at) {
     statuses.push({
       icon: EyeOff,

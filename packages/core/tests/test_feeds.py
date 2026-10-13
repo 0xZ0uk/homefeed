@@ -284,6 +284,28 @@ def test_played_videos_are_left_out(sessions: sessionmaker[Session]) -> None:
     assert vid(LOVED, 2) in shown
 
 
+def test_items_watched_since_the_feed_was_built_are_marked(
+    sessions: sessionmaker[Session],
+) -> None:
+    feed = build(sessions)
+    played, rated, opened = feed.items[2], feed.items[3], feed.items[4]
+    assert not any(item.watched for item in feed.items)
+    with sessions.begin() as session:
+        record_watch_event(session, played.video_id, "play", 0.0, 600.0)
+        set_rating(session, rated.video_id, 7.0)
+        # Opened but never played: not watched.
+        record_watch_event(session, opened.video_id, "close", 0.0, 600.0)
+
+    with sessions() as session:
+        reread = feeds.get_feed(session, feed.date)
+
+    assert reread is not None
+    assert [item.video_id for item in reread.items if item.watched] == [
+        played.video_id,
+        rated.video_id,
+    ]
+
+
 def channel_score_model() -> RidgeModel:
     """Predicts `0.5 * channel_score + 0.1`, ignoring every other feature."""
     coef = np.zeros(len(FEATURE_NAMES))

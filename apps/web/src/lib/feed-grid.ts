@@ -1,6 +1,7 @@
 /**
  * The pure parts of the feed grid: filtering by length (the chips above it),
- * and giving each channel a colour for its avatar and placeholder thumbnails.
+ * sorting, and giving each channel a colour for its avatar and placeholder
+ * thumbnails.
  */
 
 export type LengthFilter = "all" | "short" | "medium" | "long";
@@ -31,6 +32,79 @@ export function matchesLength(
 
 export function isLengthFilter(value: unknown): value is LengthFilter {
   return LENGTH_FILTERS.some((filter) => filter.value === value);
+}
+
+export type FeedSort =
+  | "ranked"
+  | "recent"
+  | "oldest"
+  | "most-viewed"
+  | "least-viewed"
+  | "channel-score"
+  | "shortest"
+  | "longest";
+
+export const FEED_SORTS: { value: FeedSort; label: string }[] = [
+  { value: "ranked", label: "Ranked for you" },
+  { value: "recent", label: "Most recent" },
+  { value: "oldest", label: "Oldest" },
+  { value: "most-viewed", label: "Most viewed" },
+  { value: "least-viewed", label: "Least viewed" },
+  { value: "channel-score", label: "Channel score" },
+  { value: "shortest", label: "Shortest" },
+  { value: "longest", label: "Longest" },
+];
+
+/** What sorting reads from a feed item. */
+export interface SortableItem {
+  published_at: string | null;
+  view_count: number | null;
+  duration_seconds: number | null;
+  breakdown: { channel: number };
+}
+
+/** The value each sort orders by, and whether bigger comes first. */
+const SORT_KEYS: Record<
+  Exclude<FeedSort, "ranked">,
+  { key: (item: SortableItem) => number | null; descending: boolean }
+> = {
+  recent: { key: (item) => publishedTime(item), descending: true },
+  oldest: { key: (item) => publishedTime(item), descending: false },
+  "most-viewed": { key: (item) => item.view_count, descending: true },
+  "least-viewed": { key: (item) => item.view_count, descending: false },
+  "channel-score": { key: (item) => item.breakdown.channel, descending: true },
+  shortest: { key: (item) => item.duration_seconds, descending: false },
+  longest: { key: (item) => item.duration_seconds, descending: true },
+};
+
+/** `items` in `sort` order, as a new array. "ranked" keeps the feed's own
+ * order, which also breaks ties; unknown values (no date, views or length)
+ * go last either way. */
+export function sortFeedItems<T extends SortableItem>(
+  items: readonly T[],
+  sort: FeedSort,
+): T[] {
+  if (sort === "ranked") return [...items];
+  const { key, descending } = SORT_KEYS[sort];
+  return items
+    .map((item, index) => ({ item, index, value: key(item) }))
+    .sort((a, b) => {
+      if (a.value === b.value) return a.index - b.index;
+      if (a.value === null) return 1;
+      if (b.value === null) return -1;
+      return descending ? b.value - a.value : a.value - b.value;
+    })
+    .map(({ item }) => item);
+}
+
+export function isFeedSort(value: unknown): value is FeedSort {
+  return FEED_SORTS.some((sort) => sort.value === value);
+}
+
+function publishedTime(item: SortableItem): number | null {
+  if (!item.published_at) return null;
+  const time = Date.parse(item.published_at);
+  return Number.isNaN(time) ? null : time;
 }
 
 /** Channel colours: muted tones, all dark enough for white text. */

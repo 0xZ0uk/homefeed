@@ -8,7 +8,7 @@ homefeed_core.ranking_models), blended in by `alpha`; the feed records its versi
 first (and, in the worker, enriches the candidates: see homefeed_core.enricher); the
 worker runs it daily at `FEED_REFRESH_TIME` and `POST /feed/refresh` can run it on
 demand. `get_feed` and `list_feeds` read feeds back with their items joined to video
-and channel info.
+and channel info, each marked `watched` if the user has watched it since.
 `dismiss_feed_item` hides an item from the user with an optional reason; the video is
 then left out of every later feed and counts as a weak negative for training.
 
@@ -94,6 +94,7 @@ class FeedItem:
     selection_probability: float | None
     dismissed_at: str | None
     dismiss_reason: str | None
+    watched: bool  # played or rated, as of when the feed is read (see `watched_video_ids`)
 
 
 @dataclass(frozen=True)
@@ -469,7 +470,12 @@ _ITEM_SELECT = """
            c.id, c.title, c.handle, c.thumbnail_url,
            i.source, i.source_detail, i.score, i.breakdown, i.explanation,
            i.is_pinned, i.is_exploration, i.selection_probability,
-           i.dismissed_at, i.dismiss_reason
+           i.dismissed_at, i.dismiss_reason,
+           EXISTS (SELECT 1 FROM ratings AS r WHERE r.video_id = v.id)
+           OR EXISTS (
+               SELECT 1 FROM watch_events AS w
+               WHERE w.video_id = v.id AND w.event_type = 'play'
+           )
     FROM feed_items AS i
     JOIN videos AS v ON v.id = i.video_id
     JOIN channels AS c ON c.id = v.channel_id
@@ -505,4 +511,5 @@ def _item(row: Sequence[Any]) -> FeedItem:
         selection_probability=row[20],
         dismissed_at=row[21],
         dismiss_reason=row[22],
+        watched=bool(row[23]),
     )
