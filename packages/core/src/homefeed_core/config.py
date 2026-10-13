@@ -11,6 +11,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # hosted OpenRouter API (openrouter.ai), "ollama" a local Ollama server and "none"
 # turns tagging off.
 type LLMProviderName = Literal["openrouter", "ollama", "none"]
+# Embedding providers (see homefeed_core.embeddings): "local" runs a sentence-transformers
+# model in the process, "openrouter" calls OpenRouter's embeddings API.
+type EmbeddingProviderName = Literal["local", "openrouter"]
+
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 class Settings(BaseSettings):
@@ -36,9 +41,23 @@ class Settings(BaseSettings):
     feed_max_duration_seconds: int | None = None
     # How far back (by when a video entered the candidate pool) the feed looks.
     feed_candidate_days: int = 7
-    # sentence-transformers model for content embeddings (downloaded into DATA_DIR/models).
-    # Changing it re-embeds every video on its next enrichment; it must be 384-dimensional.
+    # Content embeddings (see homefeed_core.embeddings): "local" downloads a
+    # sentence-transformers model into DATA_DIR/models and runs it in the process (it must
+    # make 384-dimensional vectors); "openrouter" calls OpenRouter's embeddings API with
+    # OPENROUTER_API_KEY, asking for 384 dimensions (e.g. perplexity/pplx-embed-v1-0.6b).
+    # Changing the model re-embeds every stored video on the worker's next enrichment run,
+    # and the ranking model is set aside until it is retrained on the new vectors.
+    embedding_provider: EmbeddingProviderName = "local"
     embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embedding_timeout_seconds: float = 60.0
+    # Similarity calibration; unset uses the values measured for the embedding model (see
+    # embeddings.CALIBRATIONS). similarity_floor: below it a candidate counts as unrelated
+    # to a rated video; topic_similarity_floor: likewise for a topic's description;
+    # tag_merge_threshold: from it a proposed tag merges into the most similar existing
+    # one (higher merges less; see homefeed_core.tags).
+    similarity_floor: float | None = Field(default=None, ge=-1, lt=1)
+    topic_similarity_floor: float | None = Field(default=None, ge=-1, lt=1)
+    tag_merge_threshold: float | None = Field(default=None, ge=-1, le=1)
     # LLM tagging (topic, depth, clickbait, rage-bait, specific tags); see
     # homefeed_core.llm_tags. The default is the hosted OpenRouter API, which needs
     # OPENROUTER_API_KEY: without one, tagging is skipped (with a warning) and ranking
@@ -56,10 +75,6 @@ class Settings(BaseSettings):
     # At most this many videos are tagged per enrichment run, to bound cost (also how
     # fast a prompt version bump retags the library).
     llm_max_tags_per_run: int = 200
-    # Cosine similarity from which a proposed tag is merged into the most similar existing
-    # one (as an alias) instead of becoming a new tag; see homefeed_core.tags. Higher
-    # merges less.
-    tag_merge_threshold: float = 0.92
     # Tag discovery (see homefeed_core.tag_discovery): at most this many new candidates per
     # subscribed tag per day come from searching YouTube for it (0 turns discovery off).
     tag_discovery_per_day: int = Field(default=10, ge=0)

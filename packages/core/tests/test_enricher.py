@@ -1,5 +1,5 @@
 import json
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -12,12 +12,19 @@ from homefeed_core.candidates import SUBSCRIPTION, record
 from homefeed_core.config import Settings
 from homefeed_core.curation import add_topic, topic_vectors
 from homefeed_core.db import open_database
-from homefeed_core.embeddings import StubEmbeddingProvider, cosine_similarity, get_embedding
+from homefeed_core.embeddings import (
+    Embedding,
+    EmbeddingError,
+    StubEmbeddingProvider,
+    cosine_similarity,
+    get_embedding,
+)
 from homefeed_core.enricher import (
     CAPTIONS_RETRY_AFTER,
     PROMPT_VERSION,
     TRANSCRIPT_SECONDS,
     Enricher,
+    embedding_text,
     enrich_candidates,
     get_features,
 )
@@ -360,3 +367,108 @@ def test_enrich_candidates_re_embeds_topics_from_another_model(
         model = session.execute(text("SELECT embedding_model FROM topics")).scalar_one()
     assert model == embedder.model
     assert vector.embedding == pytest.approx(embedder.embed(["woodworking"])[0], abs=1e-6)
+
+
+SECOND = make_video(
+    "bbbbbbbbbbb", channel=CHANNEL, title="Sharpening chisels", published_at=NOW - timedelta(days=2)
+)
+
+
+class FailingEmbedder(StubEmbeddingProvider):
+    """Embeds `ok_calls` calls, then fails like an unreachable API."""
+
+    def __init__(self, model: str, *, ok_calls: int) -> None:
+        super().__init__(model)
+        self.ok_calls = ok_calls
+
+    def embed(self, texts: Sequence[str]) -> list[Embedding]:
+        if len(self.calls) >= self.ok_calls:
+            self.calls.append(list(texts))
+            raise EmbeddingError("Can't reach the API")
+        return super().embed(texts)
+
+
+def enrich_with(
+    sessions: sessionmaker[Session], gateway: FakeGateway, model: str, clock: Clock
+) -> None:
+    Enricher(sessions, gateway, StubEmbeddingProvider(model), now=clock).enrich_many(
+        [VIDEO.id, SECOND.id]
+    )
+
+
+def test_a_model_change_re_embeds_stored_videos_without_youtube(
+    sessions: sessionmaker[Session], gateway: FakeGateway, clock: Clock
+) -> None:
+    gateway.add_channel(CHANNEL, [VIDEO, SECOND])
+    enrich_with(sessions, gateway, "model-a", clock)
+    with sessions() as session:
+        before = get_features(session, VIDEO.id)
+    gateway.calls.clear()
+    newer = StubEmbeddingProvider("model-b")
+    enricher = Enricher(sessions, gateway, newer, now=clock)
+
+    assert sorted(enricher.refresh_video_embeddings()) == [VIDEO.id, SECOND.id]
+
+    assert gateway.calls == []
+    assert before is not None
+    with sessions() as session:
+        after = get_features(session, VIDEO.id)
+    # Same text as enrichment embedded, the features stay as they were.
+    assert after is not None and after.embedding_model == "model-b"
+    assert after.embedding == pytest.approx(
+        newer.embed([embedding_text(VIDEO, before.transcript_excerpt)])[0], abs=1e-6
+    )
+    assert (after.enriched_at, after.transcript_excerpt) == (
+        before.enriched_at,
+        before.transcript_excerpt,
+    )
+    # Now current: nothing to re-embed, and enrichment is a cache hit.
+    assert enricher.refresh_video_embeddings() == []
+    assert enricher.enrich_many([VIDEO.id]).cached == [VIDEO.id]
+    assert gateway.calls == []
+
+
+def test_a_failed_re_embedding_leaves_no_vectors_of_the_old_model(
+    sessions: sessionmaker[Session],
+    gateway: FakeGateway,
+    clock: Clock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway.add_channel(CHANNEL, [VIDEO, SECOND])
+    enrich_with(sessions, gateway, "model-a", clock)
+    monkeypatch.setattr(enricher_module, "REFRESH_BATCH_SIZE", 1)
+    failing = FailingEmbedder("model-b", ok_calls=1)
+    enricher = Enricher(sessions, gateway, failing, now=clock)
+
+    with pytest.raises(EmbeddingError):
+        enricher.refresh_video_embeddings()
+
+    with sessions() as session:
+        models = dict(
+            session.execute(text("SELECT video_id, embedding_model FROM video_features")).all()
+        )
+        embedded = {video_id for video_id in models if get_embedding(session, video_id) is not None}
+    # One batch got through; the other video has no vector rather than model-a's.
+    assert embedded == {video_id for video_id, model in models.items() if model == "model-b"}
+    assert len(embedded) == 1
+
+    # enrich_candidates logs the failure and goes on; the next run finishes the job.
+    report = enrich_candidates(enricher=enricher, sessions=sessions, settings=Settings(), now=NOW)
+    assert report.reembedded == []
+    failing.ok_calls = 100
+    report = enrich_candidates(enricher=enricher, sessions=sessions, settings=Settings(), now=NOW)
+    assert len(report.reembedded) == 1
+    with sessions() as session:
+        assert all(get_embedding(session, v) is not None for v in (VIDEO.id, SECOND.id))
+
+
+def test_enrich_many_records_embedding_failures(
+    sessions: sessionmaker[Session], gateway: FakeGateway, clock: Clock
+) -> None:
+    enricher = Enricher(sessions, gateway, FailingEmbedder("model-b", ok_calls=0), now=clock)
+
+    report = enricher.enrich_many([VIDEO.id])
+
+    assert list(report.failed) == [VIDEO.id]
+    with sessions() as session:
+        assert get_features(session, VIDEO.id) is None

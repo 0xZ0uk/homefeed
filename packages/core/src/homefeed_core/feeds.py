@@ -47,7 +47,7 @@ from homefeed_core.composer import (
 )
 from homefeed_core.config import Settings, get_settings
 from homefeed_core.db import get_session_factory
-from homefeed_core.embeddings import get_embeddings
+from homefeed_core.embeddings import calibration, get_embeddings
 from homefeed_core.gateway.events import format_timestamp
 from homefeed_core.llm_tags import get_scores
 from homefeed_core.ranker import (
@@ -168,7 +168,10 @@ def build_feed(
     # Uploads of channels unsubscribed since they were polled no longer belong.
     pool = [c for c in pool if c.source != SUBSCRIPTION or c.channel_id in curation]
     topics = curation_prefs.topic_vectors(session, now=now)
-    active = load_active_model(session, data_dir=settings.data_dir)
+    active = load_active_model(
+        session, data_dir=settings.data_dir, embedding_model=settings.embedding_model
+    )
+    floors = calibration(settings)
     scored = rank(
         pool,
         curation=curation,
@@ -183,6 +186,8 @@ def build_feed(
         llm_tags=get_scores(session, [c.video_id for c in pool]),
         video_tags=_tag_confidences(session, topics, [c.video_id for c in pool]),
         model=None if active is None else ranker_model(active.model, now=now),
+        similarity_floor=floors.similarity_floor,
+        topic_similarity_floor=floors.topic_similarity_floor,
     )
     slots = compose(
         scored,

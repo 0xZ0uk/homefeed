@@ -294,6 +294,11 @@ def test_similarity_score_counts_closeness_above_the_floor() -> None:
     assert similarity_score(features(0.65, 0.2)) == pytest.approx(SIMILARITY_WEIGHT * 0.5)
     assert similarity_score(features(0.65, 0.65)) == pytest.approx(0.0)
     assert similarity_score(features(-0.5, -0.9)) == 0.0
+    # Another embedding model's floor (see embeddings.calibration).
+    assert similarity_score(features(0.2, None), floor=0.2) == 0.0
+    assert similarity_score(features(0.6, None), floor=0.2) == pytest.approx(
+        SIMILARITY_WEIGHT * 0.5
+    )
 
 
 def test_rank_uses_similarity_to_rated_tiers() -> None:
@@ -477,6 +482,11 @@ def unit(index: int) -> tuple[float, ...]:
 )
 def test_topic_boost(weight: float, similarity: float, boost: float) -> None:
     assert topic_boost(weight, similarity) == pytest.approx(boost)
+
+
+def test_topic_boost_takes_the_embedding_models_floor() -> None:
+    assert topic_boost(1.0, 0.2, floor=0.2) == 0.0
+    assert topic_boost(1.0, 0.6, floor=0.2) == pytest.approx(0.5)
 
 
 def test_topic_boosts_by_name_leave_out_non_matching_topics() -> None:

@@ -9,7 +9,7 @@ from sqlalchemy import text
 from homefeed_api.main import app, get_embedder
 from homefeed_core.config import get_settings
 from homefeed_core.db import get_session_factory
-from homefeed_core.embeddings import StubEmbeddingProvider
+from homefeed_core.embeddings import EmbeddingError, StubEmbeddingProvider
 from homefeed_core.gateway.events import format_timestamp
 from homefeed_core.tags import resolve_tag
 
@@ -74,6 +74,23 @@ def test_create_and_list(client: TestClient, embedder: StubEmbeddingProvider) ->
     response = client.get("/topics")
     assert response.status_code == 200
     assert [t["name"] for t in response.json()] == ["drama", "Woodworking"]
+
+
+def test_an_unreachable_embeddings_api_is_a_503_and_saves_nothing(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, embedder: StubEmbeddingProvider
+) -> None:
+    def fail(texts: object) -> list[object]:
+        raise EmbeddingError("Can't reach https://openrouter.ai/api/v1/embeddings")
+
+    monkeypatch.setattr(embedder, "embed", fail)
+
+    response = client.post(
+        "/topics", json={"name": "Wood", "description": "Hand tools", "weight": 0.5}
+    )
+
+    assert response.status_code == 503
+    assert "try again" in response.json()["detail"]
+    assert stored() == []
 
 
 def test_duplicate_names_conflict(client: TestClient) -> None:

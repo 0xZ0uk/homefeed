@@ -36,6 +36,7 @@ than `PROMOTION_TOLERANCE` (0.02). An undefined Spearman counts as 0. The newest
 
 import logging
 import math
+import sys
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -452,13 +453,19 @@ def train(
     lightgbm_min_ratings: int = LIGHTGBM_MIN_RATINGS,
     min_explicit_ratings: int = MIN_EXPLICIT_RATINGS,
     keep: int = KEEP_VERSIONS,
+    embedding_model: str | None = None,
 ) -> TrainResult | None:
     """Train, evaluate and record a model, promote it if it is not worse than the
     active one, and prune old versions. None when there are too few explicit ratings.
 
+    `embedding_model` (default `EMBEDDING_MODEL`) is recorded as the model of the
+    embeddings it was trained on; an active model trained on another one's is replaced
+    whatever its Spearman.
+
     The model file is written to `data_dir` right away; the caller commits, then
     deletes the files of `TrainResult.pruned`."""
     now = now or datetime.now(UTC)
+    embedding_model = embedding_model or get_settings().embedding_model
     examples = build_dataset(session, now=now)
     n_explicit = sum(1 for e in examples if e.signal is Signal.EXPLICIT)
     if n_explicit < min_explicit_ratings:
@@ -475,6 +482,7 @@ def train(
         promote = (
             active is None
             or not active.compatible
+            or active.embedding_model != embedding_model
             or should_promote(evaluation.spearman, active.spearman)
         )
         counts = {signal: 0 for signal in Signal}
@@ -493,6 +501,7 @@ def train(
             "active_version": active.id if active else None,
             "active_spearman": active.spearman if active else None,
             "promoted": promote,
+            "embedding_model": embedding_model,
         }
         version = record_version(
             session,
@@ -533,8 +542,30 @@ def run_nightly_training(
     sessions = sessions or get_session_factory()
     settings = settings or get_settings()
     with sessions.begin() as session:
-        result = train(session, data_dir=settings.data_dir, now=now)
+        result = train(
+            session, data_dir=settings.data_dir, now=now, embedding_model=settings.embedding_model
+        )
     if result is not None:
         for version in result.pruned:
             delete_model_file(version.path, settings.data_dir)
     return result
+
+
+def main() -> int:
+    """Train now rather than at `MODEL_TRAINING_TIME`: `uv run python -m
+    homefeed_core.trainer` (e.g. after an `EMBEDDING_MODEL` change, so the feed doesn't
+    stay rules-only until the night)."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    result = run_nightly_training()
+    if result is None:
+        print("Not trained: too few explicit ratings")
+        return 1
+    print(
+        f"Model version {result.version.id} ({result.version.kind}): "
+        + ("promoted" if result.promoted else "recorded, not promoted")
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

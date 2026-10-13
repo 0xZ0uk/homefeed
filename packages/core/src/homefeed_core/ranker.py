@@ -16,14 +16,18 @@ tier (rated 7.0 and up) and bottom tier (4.0 and down): the max and mean cosine 
 each set (`SimilarityFeatures`). They are passed to the model and, until the model can
 weigh them itself, also make the rules-based `similarity` term: how much closer the
 candidate's nearest top-tier video is than its nearest bottom-tier one, each counted
-like a topic boost (only the part above `SIMILARITY_FLOOR`, since unrelated texts still
+like a topic boost (only the part above the similarity floor, since unrelated texts still
 have some similarity). Candidates without an embedding get no similarity features and a
 `similarity` term of 0.
 
-Topic boosts: each topic adds `weight * max(0, cos_sim(video, topic) - 0.3) / 0.7` (see
-`topic_boost`), with the topic's effective (decayed) weight. `breakdown.topics` maps a
-topic's name to its boost, holding only the topics with a nonzero boost; videos without
-an embedding (not enriched yet) get no embedding-matched boosts.
+Topic boosts: each topic adds `weight * max(0, cos_sim(video, topic) - floor) /
+(1 - floor)` (see `topic_boost`), with the topic's effective (decayed) weight.
+`breakdown.topics` maps a topic's name to its boost, holding only the topics with a
+nonzero boost; videos without an embedding (not enriched yet) get no embedding-matched
+boosts.
+
+Both floors depend on the embedding model (see embeddings.calibration), so `rank` takes
+them; the constants below are bge-small's.
 
 Tag-backed topics (see homefeed_core.curation) match by tag as well: with match mode
 'tag' a topic adds `weight * confidence` when the video carries its tag (a link that is
@@ -64,10 +68,12 @@ SHORT_MAX_SECONDS = 60
 # Number of explicit ratings at which a model's score gets half the weight.
 ALPHA_HALF_RATINGS = 50
 # Topic similarity below this gives no boost; the boost grows linearly from here to 1.
+# The default; the one for the embedding model is passed in (embeddings.calibration).
 TOPIC_SIMILARITY_FLOOR = 0.3
 # live_status values that are not (yet) a regular video.
 LIVE_STATUSES = frozenset({"is_live", "is_upcoming"})
 # Cosine similarity below which a rated video counts as unrelated (as for topic boosts).
+# Likewise a default.
 SIMILARITY_FLOOR = 0.3
 # Weight of the similarity term: a candidate as close to a top-tier video as possible,
 # and unrelated to the bottom tier, gets this much (the channel score's range is [-1, 1]).
@@ -312,17 +318,19 @@ def similarity_features(embedding: Sequence[float], tiers: RatedTiers) -> Simila
     return _similarity_features(embedding, _normalized(tiers.top), _normalized(tiers.bottom))
 
 
-def similarity_score(features: SimilarityFeatures | None) -> float:
+def similarity_score(
+    features: SimilarityFeatures | None, *, floor: float = SIMILARITY_FLOOR
+) -> float:
     """The rules-based `similarity` term, in [-SIMILARITY_WEIGHT, SIMILARITY_WEIGHT]:
     `weight * (affinity(top_tier.max) - affinity(bottom_tier.max))`, where
-    `affinity(s) = max(0, s - SIMILARITY_FLOOR) / (1 - SIMILARITY_FLOOR)`."""
+    `affinity(s) = max(0, s - floor) / (1 - floor)`."""
     if features is None:
         return 0.0
 
     def affinity(tier: TierSimilarity | None) -> float:
         if tier is None:
             return 0.0
-        return max(0.0, tier.max - SIMILARITY_FLOOR) / (1 - SIMILARITY_FLOOR)
+        return max(0.0, tier.max - floor) / (1 - floor)
 
     return SIMILARITY_WEIGHT * (affinity(features.top_tier) - affinity(features.bottom_tier))
 
@@ -352,15 +360,19 @@ def _tier_similarity(unit: Embedding, tier: Mapping[str, Embedding]) -> TierSimi
     )
 
 
-def topic_boost(weight: float, similarity: float) -> float:
-    """`weight * max(0, similarity - 0.3) / 0.7`: 0 up to the floor, `weight` at 1."""
-    return weight * max(0.0, similarity - TOPIC_SIMILARITY_FLOOR) / (1 - TOPIC_SIMILARITY_FLOOR)
+def topic_boost(
+    weight: float, similarity: float, *, floor: float = TOPIC_SIMILARITY_FLOOR
+) -> float:
+    """`weight * max(0, similarity - floor) / (1 - floor)`: 0 up to the floor, `weight` at 1."""
+    return weight * max(0.0, similarity - floor) / (1 - floor)
 
 
 def topic_boosts(
     embedding: Embedding | None,
     topics: Iterable[TopicVector],
     tag_confidences: Mapping[int, float] | None = None,
+    *,
+    floor: float = TOPIC_SIMILARITY_FLOOR,
 ) -> dict[str, float]:
     """Each topic's boost for a video with `embedding` and tags (tag id to confidence), by
     topic name; zeros left out. Embedding-matched terms need an embedding, tag-matched ones
@@ -369,7 +381,8 @@ def topic_boosts(
     for topic in topics:
         terms: list[float] = []
         if embedding is not None and topic.match_mode != "tag":
-            terms.append(topic_boost(topic.weight, cosine_similarity(embedding, topic.embedding)))
+            similarity = cosine_similarity(embedding, topic.embedding)
+            terms.append(topic_boost(topic.weight, similarity, floor=floor))
         if (
             topic.match_mode != "embedding"
             and tag_confidences
@@ -430,13 +443,16 @@ def rank(
     topics: Sequence[TopicVector] = (),
     llm_tags: Mapping[str, LLMTags] | None = None,
     video_tags: Mapping[str, Mapping[int, float]] | None = None,
+    similarity_floor: float = SIMILARITY_FLOOR,
+    topic_similarity_floor: float = TOPIC_SIMILARITY_FLOOR,
 ) -> list[ScoredCandidate]:
     """Filter and score `candidates`, best first (ties keep the input order).
 
     `embeddings` holds candidate embeddings by video id, for similarity features and
     topic boosts; candidates without one get neither. `llm_tags` holds candidate LLM
     tags by video id, passed to the model. `video_tags` holds each video's tags (not
-    removed ones) as tag id to confidence, for tag-matched topics."""
+    removed ones) as tag id to confidence, for tag-matched topics. The floors are those of
+    the embedding model (see embeddings.calibration)."""
     embeddings = embeddings or {}
     video_tags = video_tags or {}
     hidden_tags = {t.tag_id for t in topics if t.hide and t.tag_id is not None}
@@ -483,10 +499,15 @@ def rank(
             model=model_score,
             alpha=blend,
             channel=item.channel_score,
-            similarity=similarity_score(item.similarity),
+            similarity=similarity_score(item.similarity, floor=similarity_floor),
             similarity_features=item.similarity,
             topics=(
-                topic_boosts(item.embedding, topics, video_tags.get(candidate.video_id))
+                topic_boosts(
+                    item.embedding,
+                    topics,
+                    video_tags.get(candidate.video_id),
+                    floor=topic_similarity_floor,
+                )
                 if topics
                 else {}
             ),

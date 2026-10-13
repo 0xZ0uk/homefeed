@@ -46,9 +46,9 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from homefeed_core.candidates import list_candidates
-from homefeed_core.config import Settings, get_settings
+from homefeed_core.config import OPENROUTER_BASE_URL, Settings, get_settings
 from homefeed_core.db import get_session_factory
-from homefeed_core.embeddings import EmbeddingProvider, get_embedding_provider
+from homefeed_core.embeddings import EmbeddingProvider, calibration, get_embedding_provider
 from homefeed_core.gateway.events import format_timestamp
 from homefeed_core.ratings import list_ratings, tier_rated_video_ids
 from homefeed_core.tags import (
@@ -102,7 +102,7 @@ TOP_TAGS_IN_PROMPT = 200
 DESCRIPTION_CHARS = 1500
 TRANSCRIPT_CHARS = 4000
 
-DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+DEFAULT_OPENROUTER_BASE_URL = OPENROUTER_BASE_URL
 # Cheap, fast, non-reasoning, multilingual and supports JSON mode on OpenRouter.
 DEFAULT_OPENROUTER_MODEL = "google/gemini-2.5-flash-lite"
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
@@ -770,7 +770,7 @@ def get_tagger() -> Tagger | None:
         provider,
         max_per_run=settings.llm_max_tags_per_run,
         embedder=get_embedding_provider(),
-        merge_threshold=settings.tag_merge_threshold,
+        merge_threshold=calibration(settings).tag_merge_threshold,
     )
 
 
@@ -810,7 +810,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         provider,
         max_per_run=args.limit,
         embedder=get_embedding_provider(),
-        merge_threshold=settings.tag_merge_threshold,
+        merge_threshold=calibration(settings).tag_merge_threshold,
     )
     report = tagger.tag_many(video_ids)
     print(

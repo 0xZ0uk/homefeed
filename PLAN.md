@@ -50,7 +50,7 @@ Rating UX: when a video ends or the player is closed, show a slider from 💩 (1
 - **Backend:** Python 3.12+, FastAPI (API process), APScheduler (worker process).
 - **Storage:** SQLite (WAL mode) + sqlite-vec for embedding similarity. One database file shared by API and worker.
 - **YouTube:** yt-dlp as a library; channel RSS feeds (`https://www.youtube.com/feeds/videos.xml?channel_id=…`) for subscriptions.
-- **ML:** sentence-transformers with `BAAI/bge-small-en-v1.5` (384-dim) for embeddings; LightGBM regressor, with logistic/ridge regression fallback while labels are few.
+- **ML:** 384-dim embeddings from OpenRouter (`perplexity/pplx-embed-v1-0.6b`, `EMBEDDING_PROVIDER=openrouter`) or a local sentence-transformers model (`BAAI/bge-small-en-v1.5`), with similarity thresholds calibrated per model; LightGBM regressor, with logistic/ridge regression fallback while labels are few.
 - **LLM tagging:** pluggable provider interface (`LLM_PROVIDER`): the hosted **OpenRouter** API by default (OpenAI-compatible chat completions at `https://openrouter.ai/api/v1`, key in `OPENROUTER_API_KEY`; tagging is skipped while no key is set), local Ollama as the alternative, or `none`. Added in Milestone 4.
 - **Frontend:** TanStack Start (React, SSR), TanStack Router, TanStack Query, Tailwind. Server functions call the Python API, so the API is never exposed to the browser.
 - **Player:** Shaka Player.
