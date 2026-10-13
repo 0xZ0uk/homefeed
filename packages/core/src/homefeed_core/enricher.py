@@ -32,6 +32,7 @@ depth, clickbait and rage-bait, and specific tags (homefeed_core.tags). Tagging 
 fails the run: errors are logged and the untagged videos are tried again next time.
 """
 
+import argparse
 import json
 import logging
 import sys
@@ -171,6 +172,10 @@ class Enricher:
         except Exception:
             logger.exception("LLM tagging failed; continuing without new tags")
             return None
+
+    @property
+    def embedding_model(self) -> str:
+        return self._embedder.model
 
     def refresh_video_embeddings(self, *, progress: Progress | None = None) -> list[str]:
         """Re-embed the stored videos embedded by another model than the current one,
@@ -453,12 +458,24 @@ def _parse_timestamp(value: str) -> datetime:
     return datetime.fromisoformat(value).astimezone(UTC)
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Run the worker's enrichment once, now: `uv run python -m homefeed_core.enricher`
     (re-embeds after an `EMBEDDING_MODEL` change, enriches the next feed's candidates and
-    tags them)."""
+    tags them). With `--reembed`, only re-embeds stored videos, topics and tags made with
+    another embedding model."""
+    parser = argparse.ArgumentParser(
+        prog="python -m homefeed_core.enricher", description=main.__doc__
+    )
+    parser.add_argument(
+        "--reembed",
+        action="store_true",
+        help="only re-embed what another embedding model made (no YouTube, no tagging)",
+    )
+    args = parser.parse_args(argv)
     line = ProgressLine()
     configure_cli_logging(line)
+    if args.reembed:
+        return _reembed(get_enricher(), line)
     report = enrich_candidates(progress=line.phase)
     line.clear()
     print(
@@ -475,6 +492,27 @@ def main() -> int:
             f"{len(tags.failed)} failed (tried again next run)"
             + (f", {len(tags.skipped)} left for the next run" if tags.skipped else "")
             + (f"; stopped: {tags.stopped}" if tags.stopped else "")
+        )
+    return 0
+
+
+def _reembed(enricher: Enricher, line: ProgressLine) -> int:
+    model = enricher.embedding_model
+    try:
+        videos = enricher.refresh_video_embeddings(progress=line.phase("Re-embedding"))
+        topics = enricher.refresh_topic_embeddings()
+        tags = enricher.refresh_tag_embeddings()
+    except EmbeddingError as error:
+        line.clear()
+        print(f"Re-embedding stopped (run it again to carry on): {error}")
+        return 1
+    line.clear()
+    if not (videos or topics or tags):
+        print(f"Nothing to re-embed: everything already uses {model}")
+    else:
+        print(
+            f"Re-embedded with {model}: {len(videos)} videos, {len(topics)} topics, "
+            f"{len(tags)} tags"
         )
     return 0
 

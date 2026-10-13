@@ -16,6 +16,16 @@ nub run test   # run tests across packages
 nub run lint   # lint across packages
 ```
 
+## Enrichment and tagging by hand
+
+The worker enriches and tags new videos every 30 minutes. To run it now, with a progress bar:
+
+```sh
+nub run reembed        # re-embed videos, topics and tags made by another EMBEDDING_MODEL
+nub run enrich         # what the worker does: re-embed, enrich the next feed's candidates, tag them
+nub run tag            # tag only (same videos as the worker); add --all for every stored video, --limit N to cap LLM calls
+```
+
 ## End-to-end tests
 
 Playwright flows in `apps/e2e` (view the feed, watch and rate, dismiss, edit a channel prior) run the real web app (`vite dev`) and API against a fake Gateway with a throwaway data dir, so they never touch YouTube or your `data/`. The API side is `apps/e2e/fake_api.py`, which seeds two channels and today's feed; tests reset it before each run.

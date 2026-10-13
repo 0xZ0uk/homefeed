@@ -8,7 +8,10 @@
     "lint": "turbo run lint",
     "check-types": "turbo run check-types",
     "e2e": "turbo run e2e",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "reembed": "uv run python -m homefeed_core.enricher --reembed",
+    "enrich": "uv run python -m homefeed_core.enricher",
+    "tag": "uv run python -m homefeed_core.llm_tags"
   },
   "devDependencies": {
     "prettier": "3.9.6",
