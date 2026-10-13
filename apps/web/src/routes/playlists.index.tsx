@@ -5,9 +5,11 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { AppShell } from "#/components/AppShell";
+import { Button } from "#/components/ui/button";
+import { Input } from "#/components/ui/input";
 import {
   PLAYLIST_DESCRIPTION_MAX_LENGTH,
   PLAYLIST_NAME_MAX_LENGTH,
@@ -62,6 +64,7 @@ function Playlists() {
 
 function NewPlaylistForm() {
   const queryClient = useQueryClient();
+  const nameRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -75,17 +78,24 @@ function NewPlaylistForm() {
         setProblem(null);
         await queryClient.invalidateQueries({ queryKey: ["playlists"] });
       } else {
-        setProblem(result.message);
+        fail(result.message);
       }
     },
-    onError: () => setProblem("Couldn't create the playlist. Try again."),
+    onError: () => fail("Couldn't create the playlist. Try again."),
   });
+
+  /** Show `message` under the name field and put the cursor back in it. */
+  function fail(message: string) {
+    setProblem(message);
+    nameRef.current?.focus();
+  }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (mutation.isPending) return;
     const checked = checkPlaylistName(name);
     if (!checked.ok) {
-      setProblem(checked.message);
+      fail(checked.message);
       return;
     }
     mutation.mutate({ name: checked.name, description });
@@ -97,7 +107,8 @@ function NewPlaylistForm() {
         <label htmlFor="playlist-name" className="text-sm font-medium">
           New playlist
         </label>
-        <input
+        <Input
+          ref={nameRef}
           id="playlist-name"
           type="text"
           value={name}
@@ -105,8 +116,15 @@ function NewPlaylistForm() {
           placeholder="e.g. Weekend woodworking"
           maxLength={PLAYLIST_NAME_MAX_LENGTH}
           required
-          className="rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
+          aria-invalid={problem ? true : undefined}
+          aria-describedby={problem ? "playlist-name-problem" : undefined}
+          className="h-10 px-3"
         />
+        {problem && (
+          <p id="playlist-name-problem" className="text-sm text-destructive">
+            {problem}
+          </p>
+        )}
       </div>
       <div className="flex flex-col gap-1">
         <label htmlFor="playlist-description" className="text-sm font-medium">
@@ -119,23 +137,18 @@ function NewPlaylistForm() {
           onChange={(event) => setDescription(event.target.value)}
           maxLength={PLAYLIST_DESCRIPTION_MAX_LENGTH}
           rows={2}
-          className="rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
+          className="rounded-lg border border-input bg-transparent px-3 py-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
         />
       </div>
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={mutation.isPending}
-          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85 disabled:opacity-50"
-        >
-          {mutation.isPending ? "Creating…" : "Create playlist"}
-        </button>
-        {problem && (
-          <p role="alert" className="text-sm text-destructive">
-            {problem}
-          </p>
-        )}
-      </div>
+      {/* aria-disabled, not disabled, so the button keeps keyboard focus. */}
+      <Button
+        type="submit"
+        size="lg"
+        aria-disabled={mutation.isPending || undefined}
+        className="self-start px-4 aria-disabled:opacity-50"
+      >
+        {mutation.isPending ? "Creating…" : "Create playlist"}
+      </Button>
     </form>
   );
 }
@@ -152,13 +165,13 @@ function PlaylistsError() {
     <AppShell className="flex max-w-4xl flex-col gap-6">
       <div role="alert" className="flex flex-col items-start gap-3">
         <p>Couldn't load your playlists. The API may be down.</p>
-        <button
+        <Button
           type="button"
+          variant="outline"
           onClick={() => void router.invalidate()}
-          className="underline"
         >
           Try again
-        </button>
+        </Button>
       </div>
     </AppShell>
   );

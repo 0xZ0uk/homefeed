@@ -3,6 +3,8 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
 import { AppShell } from "#/components/AppShell";
+import { Button } from "#/components/ui/button";
+import { Input } from "#/components/ui/input";
 import { formatAge, formatDuration } from "#/lib/format";
 import {
   HISTORY_QUERY_MAX_LENGTH,
@@ -58,21 +60,18 @@ function HistorySearch({ query }: { query: string }) {
       <label htmlFor="history-query" className="sr-only">
         Search your history
       </label>
-      <input
+      <Input
         id="history-query"
         type="search"
         value={q}
         onChange={(event) => setQ(event.target.value)}
         placeholder="Search by title or channel"
         maxLength={HISTORY_QUERY_MAX_LENGTH}
-        className="min-w-0 flex-1 rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
+        className="h-10 flex-1 px-3"
       />
-      <button
-        type="submit"
-        className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85"
-      >
+      <Button type="submit" size="lg" className="h-10 px-4">
         Search
-      </button>
+      </Button>
     </form>
   );
 }
@@ -89,13 +88,21 @@ function Entries({ params }: { params: HistoryParams }) {
     );
   }
   if (outcome.entries.length === 0) {
+    if (params.q) {
+      return (
+        <p className="text-muted-foreground">
+          No watched videos match “{params.q}”.{" "}
+          <Link to="/history" className="text-foreground underline">
+            Clear search
+          </Link>
+        </p>
+      );
+    }
     return (
       <p className="text-muted-foreground">
-        {params.q
-          ? "Nothing you've watched matches. Try fewer words."
-          : page > 1
-            ? "No older videos."
-            : "Nothing here yet. Videos you play show up here."}
+        {page > 1
+          ? "No older videos."
+          : "Nothing here yet. Videos you play show up here."}
       </p>
     );
   }
@@ -139,14 +146,14 @@ function EntryRow({ entry }: { entry: HistoryEntry }) {
   const params = { videoId: entry.video_id };
 
   return (
-    <li className="flex gap-4 py-3">
+    <li className="flex items-start gap-3 py-3 sm:gap-4">
       {/* Mouse-only; the title link is the one in the tab order. */}
       <Link
         to="/watch/$videoId"
         params={params}
         tabIndex={-1}
         aria-hidden="true"
-        className="relative aspect-video w-40 shrink-0 overflow-hidden rounded-lg bg-secondary"
+        className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-lg bg-secondary sm:w-40"
       >
         {entry.thumbnail_url && (
           <img
@@ -169,7 +176,7 @@ function EntryRow({ entry }: { entry: HistoryEntry }) {
         )}
       </Link>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <h3 className="font-medium">
+        <h3 className="font-medium break-words">
           <Link
             to="/watch/$videoId"
             params={params}
