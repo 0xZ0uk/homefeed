@@ -1,19 +1,16 @@
-import { parseDisplayPrefs } from "#/lib/display";
-import { exportFilename, withDisplayPrefs } from "#/lib/export";
+import { exportFilename } from "#/lib/export";
 import { apiBaseUrl } from "#/server/api";
 
 /**
  * `GET /export.json` in this app: the API's `GET /export` (not reachable from
- * browsers) plus this browser's display settings, sent as a file download.
+ * browsers), sent as a file download.
  * Behind the login like every route (see `src/start.ts`).
  */
 
 /**
- * Build the download. `displayCookie` is the display settings cookie's value;
- * `fetchImpl` and `baseUrl` are the seams for tests.
+ * Build the download. `fetchImpl` and `baseUrl` are the seams for tests.
  */
 export async function handleExport(
-  displayCookie: string | undefined,
   fetchImpl: typeof fetch = fetch,
   baseUrl: string = apiBaseUrl(),
 ): Promise<Response> {
@@ -36,8 +33,7 @@ export async function handleExport(
   const record = data as Record<string, unknown>;
   const exportedAt =
     typeof record.exported_at === "string" ? record.exported_at : "";
-  const body = withDisplayPrefs(record, parseDisplayPrefs(displayCookie));
-  return new Response(JSON.stringify(body, null, 2), {
+  return new Response(JSON.stringify(record, null, 2), {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "content-disposition": `attachment; filename="${exportFilename(exportedAt)}"`,

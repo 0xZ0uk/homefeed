@@ -9,7 +9,6 @@ import { useState, type FormEvent } from "react";
 import { Button } from "#/components/ui/button";
 import { AppShell } from "#/components/AppShell";
 import { QueueButton } from "#/components/QueueButton";
-import { showsThumbnails, type DisplayPrefs } from "#/lib/display";
 import { formatDuration, formatViews } from "#/lib/format";
 import {
   DURATIONS,
@@ -23,7 +22,6 @@ import {
   type Schedule,
   type SearchParams,
 } from "#/lib/search";
-import { displayPrefsQuery } from "#/server/display";
 import { saveSearch, savedSearchesQuery } from "#/server/saved-searches";
 import { searchQuery, type SearchResult } from "#/server/search";
 
@@ -38,7 +36,6 @@ export const Route = createFileRoute("/search")({
   loaderDeps: ({ search }) => search,
   loader: async ({ context, deps }) => {
     await Promise.all([
-      context.queryClient.ensureQueryData(displayPrefsQuery),
       deps.q ? context.queryClient.ensureQueryData(searchQuery(deps)) : null,
     ]);
   },
@@ -239,7 +236,6 @@ function SaveSearch({ params }: { params: SearchParams }) {
 
 function Results({ params }: { params: SearchParams }) {
   const { data: outcome } = useSuspenseQuery(searchQuery(params));
-  const { data: display } = useSuspenseQuery(displayPrefsQuery);
 
   if (!outcome.ok) {
     return (
@@ -258,52 +254,43 @@ function Results({ params }: { params: SearchParams }) {
   return (
     <ol className="flex flex-col divide-y" aria-label="Search results">
       {outcome.results.map((result) => (
-        <ResultRow key={result.id} result={result} display={display} />
+        <ResultRow key={result.id} result={result} />
       ))}
     </ol>
   );
 }
 
-function ResultRow({
-  result,
-  display,
-}: {
-  result: SearchResult;
-  display: DisplayPrefs;
-}) {
+function ResultRow({ result }: { result: SearchResult }) {
   const duration = formatDuration(result.duration_seconds);
-  const views = display.viewCounts ? formatViews(result.view_count) : null;
-  const thumbnails = showsThumbnails(display);
+  const views = formatViews(result.view_count);
   const params = { videoId: result.id };
   const live =
     result.live_status === "is_live" || result.live_status === "is_upcoming";
 
   return (
     <li className="flex gap-4 py-3">
-      {thumbnails && (
-        // Mouse-only; the title link is the one in the tab order.
-        <Link
-          to="/watch/$videoId"
-          params={params}
-          tabIndex={-1}
-          aria-hidden="true"
-          className="relative aspect-video w-40 shrink-0 overflow-hidden rounded-lg bg-secondary"
-        >
-          {result.thumbnail_url && (
-            <img
-              src={result.thumbnail_url}
-              alt=""
-              loading="lazy"
-              className="size-full rounded-[inherit] object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
-            />
-          )}
-          {duration && (
-            <span className="absolute right-1 bottom-1 rounded bg-black/80 px-1 text-xs text-white tabular-nums">
-              {duration}
-            </span>
-          )}
-        </Link>
-      )}
+      {/* Mouse-only; the title link is the one in the tab order. */}
+      <Link
+        to="/watch/$videoId"
+        params={params}
+        tabIndex={-1}
+        aria-hidden="true"
+        className="relative aspect-video w-40 shrink-0 overflow-hidden rounded-lg bg-secondary"
+      >
+        {result.thumbnail_url && (
+          <img
+            src={result.thumbnail_url}
+            alt=""
+            loading="lazy"
+            className="size-full rounded-[inherit] object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
+          />
+        )}
+        {duration && (
+          <span className="absolute right-1 bottom-1 rounded bg-black/80 px-1 text-xs text-white tabular-nums">
+            {duration}
+          </span>
+        )}
+      </Link>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <h3 className="font-medium">
           <Link
@@ -316,9 +303,6 @@ function ResultRow({
         </h3>
         <p className="flex flex-wrap gap-x-2 text-sm text-muted-foreground">
           <span>{result.channel_title}</span>
-          {duration && !thumbnails && (
-            <span className="tabular-nums">· {duration}</span>
-          )}
           {views && <span>· {views}</span>}
           {live && (
             <span>

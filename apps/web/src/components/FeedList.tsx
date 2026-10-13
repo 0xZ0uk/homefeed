@@ -1,11 +1,19 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { EllipsisVertical, EyeOff, ListMinus, ListPlus } from "lucide-react";
+import {
+  Compass,
+  EllipsisVertical,
+  EyeOff,
+  ListMinus,
+  ListPlus,
+  Pin,
+  type LucideIcon,
+} from "lucide-react";
 import { useRef, useState, type RefObject } from "react";
 
 import { QueueStatus, useQueueToggle } from "#/components/QueueButton";
 import { WhyThisPopover } from "#/components/WhyThisPopover";
-import { Badge } from "#/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "#/components/ui/avatar";
 import { Button } from "#/components/ui/button";
 import {
   DropdownMenu,
@@ -21,7 +29,6 @@ import {
   undismissedItems,
   withItemDismissal,
 } from "#/lib/dismiss";
-import { showsImages, showsThumbnails, type DisplayPrefs } from "#/lib/display";
 import {
   LENGTH_FILTERS,
   channelColor,
@@ -50,11 +57,9 @@ import {
  */
 export function FeedList({
   feed,
-  display,
   dismissible = false,
 }: {
   feed: Feed;
-  display: DisplayPrefs;
   dismissible?: boolean;
 }) {
   // One "now" per render pass keeps every item's age consistent.
@@ -125,7 +130,6 @@ export function FeedList({
             <VideoCard
               key={item.id}
               item={item}
-              display={display}
               now={now}
               onDismiss={
                 dismissible ? (reason) => dismiss(item, reason) : undefined
@@ -193,28 +197,25 @@ function useDismiss(
 }
 
 /**
- * One video: thumbnail (or, with thumbnails off, a placeholder in the
- * channel's colour), then the channel's avatar beside title, channel and
- * stats, and a menu of actions. The title is the card's one link, stretched
- * over the whole card; the controls sit above it.
+ * One video: its status icons and why it's here, its thumbnail (or, when it
+ * has none, a placeholder in the channel's colour), then the channel's avatar
+ * beside title, channel and stats, and a menu of actions. The title is the
+ * card's one link, stretched over the whole card; the controls sit above it.
  */
 function VideoCard({
   item,
-  display,
   now,
   onDismiss,
 }: {
   item: FeedItem;
-  display: DisplayPrefs;
   now: Date;
   onDismiss?: (reason: string | null) => void;
 }) {
   const queue = useQueueToggle(item.video_id);
   const duration = formatDuration(item.duration_seconds);
   const age = formatAge(item.published_at, now);
-  const views = display.viewCounts ? formatViews(item.view_count) : null;
-  const images = showsImages(display);
-  const thumbnail = showsThumbnails(display) ? item.thumbnail_url : null;
+  const views = formatViews(item.view_count);
+  const thumbnail = item.thumbnail_url;
   const color = channelColor(item.channel_id);
 
   return (
@@ -224,43 +225,59 @@ function VideoCard({
         item.dismissed_at && "opacity-60",
       )}
     >
-      {images && (
-        <div
-          className="relative aspect-video overflow-hidden rounded-xl bg-secondary transition-[border-radius] group-hover/card:rounded-none"
-          style={thumbnail ? undefined : { backgroundColor: color }}
-        >
-          {thumbnail ? (
-            <img
-              src={thumbnail}
-              alt=""
-              loading="lazy"
-              className="size-full rounded-[inherit] object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
-            />
-          ) : (
-            <span
-              aria-hidden="true"
-              className="flex size-full items-center justify-center bg-linear-to-br from-white/10 to-black/30 text-7xl font-bold text-white/25"
-            >
-              {initial(item.channel_title)}
-            </span>
-          )}
-          {duration && (
-            <span className="absolute right-1.5 bottom-1.5 rounded bg-black/80 px-1 py-px text-xs font-medium text-white tabular-nums">
-              {duration}
-            </span>
-          )}
-        </div>
-      )}
-      <div className="flex gap-3">
-        {images && (
+      <QueueStatus
+        message={queue.message}
+        className="mt-1 text-xs empty:hidden"
+      />
+      <div className="relative z-10 -mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+        <StatusIcons item={item} />
+        <WhyThisPopover
+          explanation={item.explanation}
+          breakdown={item.breakdown}
+        />
+      </div>
+      <div
+        className="relative aspect-video overflow-hidden rounded-xl bg-secondary transition-[border-radius] group-hover/card:rounded-none"
+        style={thumbnail ? undefined : { backgroundColor: color }}
+      >
+        {thumbnail ? (
+          <img
+            src={thumbnail}
+            alt=""
+            loading="lazy"
+            className="size-full rounded-[inherit] object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
+          />
+        ) : (
           <span
             aria-hidden="true"
-            className="flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-medium text-white"
-            style={{ backgroundColor: color }}
+            className="flex size-full items-center justify-center bg-linear-to-br from-white/10 to-black/30 text-7xl font-bold text-white/25"
           >
             {initial(item.channel_title)}
           </span>
         )}
+        {duration && (
+          <span className="absolute right-1.5 bottom-1.5 rounded bg-black/80 px-1 py-px text-xs font-medium text-white tabular-nums">
+            {duration}
+          </span>
+        )}
+      </div>
+      <div className="flex gap-3">
+        <Avatar aria-hidden="true" className="size-9">
+          {item.channel_thumbnail_url && (
+            <AvatarImage
+              src={avatarUrl(item.channel_thumbnail_url)}
+              alt=""
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
+          )}
+          <AvatarFallback
+            className="font-medium text-white"
+            style={{ backgroundColor: color }}
+          >
+            {initial(item.channel_title)}
+          </AvatarFallback>
+        </Avatar>
         <div className="flex min-w-0 flex-1 flex-col">
           <h3 className="line-clamp-2 leading-snug font-medium">
             <Link
@@ -276,7 +293,6 @@ function VideoCard({
           </p>
           <p className="flex flex-wrap gap-x-1 text-sm text-muted-foreground">
             {[
-              !images && duration,
               views,
               age && item.published_at && (
                 <time dateTime={item.published_at} suppressHydrationWarning>
@@ -292,31 +308,39 @@ function VideoCard({
                 </span>
               ))}
           </p>
-          <div className="relative z-10 mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-            {item.is_pinned && <Badge variant="secondary">Pinned</Badge>}
-            {item.is_exploration && (
-              <Badge variant="secondary">Exploring</Badge>
-            )}
-            {item.dismissed_at && (
-              <Badge variant="secondary">
-                {item.dismiss_reason
-                  ? `Dismissed: ${item.dismiss_reason}`
-                  : "Dismissed"}
-              </Badge>
-            )}
-            <WhyThisPopover
-              explanation={item.explanation}
-              breakdown={item.breakdown}
-            />
-          </div>
-          <QueueStatus
-            message={queue.message}
-            className="mt-1 text-xs empty:hidden"
-          />
         </div>
         <CardMenu item={item} queue={queue} onDismiss={onDismiss} />
       </div>
     </li>
+  );
+}
+
+/**
+ * A card's states as small icons, each named for screen readers and in a
+ * tooltip: pinned, exploring (a channel you don't follow yet), dismissed.
+ */
+function StatusIcons({ item }: { item: FeedItem }) {
+  const statuses: { icon: LucideIcon; label: string }[] = [];
+  if (item.is_pinned) statuses.push({ icon: Pin, label: "Pinned" });
+  if (item.is_exploration) statuses.push({ icon: Compass, label: "Exploring" });
+  if (item.dismissed_at) {
+    statuses.push({
+      icon: EyeOff,
+      label: item.dismiss_reason
+        ? `Dismissed: ${item.dismiss_reason}`
+        : "Dismissed",
+    });
+  }
+  if (statuses.length === 0) return null;
+  return (
+    <ul className="flex h-4 shrink-0 items-center gap-1.5">
+      {statuses.map(({ icon: Icon, label }) => (
+        <li key={label} title={label}>
+          <Icon aria-hidden="true" className="size-3.5" />
+          <span className="sr-only">{label}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -380,6 +404,14 @@ function CardMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+/**
+ * YouTube channel avatars come at full size (`=s0`); ask for one sized for
+ * the card instead (2x its 36px).
+ */
+function avatarUrl(url: string): string {
+  return url.replace(/=s\d+[^/]*$/, "=s72");
 }
 
 function initial(name: string): string {

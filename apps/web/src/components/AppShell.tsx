@@ -80,7 +80,7 @@ const guideStore = {
 
 /**
  * Every signed-in page's frame, after YouTube's: a masthead with the menu
- * button, logo, search box and log out, and the guide (the main navigation)
+ * button, logo, search box, the page's own `actions` and log out, and the guide (the main navigation)
  * down the left. On wide screens the guide is docked and the menu button
  * switches it between full width and a mini rail; on narrow screens, or with
  * `guide="drawer"` (the watch page), it opens as a drawer instead.
@@ -88,9 +88,12 @@ const guideStore = {
 export function AppShell({
   children,
   className,
+  actions,
   guide = "docked",
 }: {
   children: ReactNode;
+  /** Page-specific controls for the masthead, shown before log out. */
+  actions?: ReactNode;
   /** Classes for the `<main>` element, e.g. its max width. */
   className?: string;
   guide?: "docked" | "drawer";
@@ -139,6 +142,7 @@ export function AppShell({
           >
             <Search className="size-5" />
           </Button>
+          {actions}
           <LogoutButton />
         </div>
       </header>

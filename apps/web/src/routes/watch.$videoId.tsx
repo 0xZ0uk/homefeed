@@ -20,12 +20,10 @@ import { SponsorSkip } from "#/components/SponsorSkip";
 import { WatchAndRate } from "#/components/WatchAndRate";
 import { NextInQueue } from "#/components/NextInQueue";
 import { QueueButton } from "#/components/QueueButton";
-import { showsImages } from "#/lib/display";
 import { channelColor } from "#/lib/feed-grid";
 import { formatDuration, formatFeedDate } from "#/lib/format";
 import { cn } from "#/lib/utils";
 import { isVideoId } from "#/lib/ids";
-import { displayPrefsQuery } from "#/server/display";
 import { fetchResumePosition } from "#/server/history";
 import { ratingQuery } from "#/server/ratings";
 import { videoQuery } from "#/server/videos";
@@ -42,9 +40,8 @@ export const Route = createFileRoute("/watch/$videoId")({
     if (!isVideoId(params.videoId)) throw notFound();
     // Not awaited: a missing rating shouldn't hold up (or fail) the page.
     void queryClient.prefetchQuery(ratingQuery(params.videoId));
-    const [video, , resumeAt] = await Promise.all([
+    const [video, resumeAt] = await Promise.all([
       queryClient.ensureQueryData(videoQuery(params.videoId)),
-      queryClient.ensureQueryData(displayPrefsQuery),
       // Fresh on every visit (not cached): it's where the last one stopped.
       fetchResumePosition({ data: { videoId: params.videoId } }).catch(
         () => null,
@@ -76,11 +73,9 @@ export const Route = createFileRoute("/watch/$videoId")({
 function Watch() {
   const { videoId } = Route.useParams();
   const { data: video } = useSuspenseQuery(videoQuery(videoId));
-  const { data: display } = useSuspenseQuery(displayPrefsQuery);
   const { resumeAt } = Route.useLoaderData();
   if (!video) return null; // the loader already threw notFound
 
-  const images = showsImages(display);
   const duration = formatDuration(video.duration_seconds);
   const published = formatFeedDate(video.published_at?.slice(0, 10) ?? "");
 
@@ -90,22 +85,20 @@ function Watch() {
         <WatchAndRate
           key={video.id}
           videoId={video.id}
-          poster={images ? video.thumbnail_url : null}
+          poster={video.thumbnail_url}
           startAt={resumeAt}
         >
           <SponsorSkip videoId={video.id} />
           <h2 className="text-xl leading-7 font-bold">{video.title}</h2>
           <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
             <div className="flex min-w-0 items-center gap-3">
-              {images && (
-                <span
-                  aria-hidden="true"
-                  className="flex size-10 shrink-0 items-center justify-center rounded-full font-medium text-white"
-                  style={{ backgroundColor: channelColor(video.channel_id) }}
-                >
-                  {video.channel_title.trim().charAt(0).toUpperCase()}
-                </span>
-              )}
+              <span
+                aria-hidden="true"
+                className="flex size-10 shrink-0 items-center justify-center rounded-full font-medium text-white"
+                style={{ backgroundColor: channelColor(video.channel_id) }}
+              >
+                {video.channel_title.trim().charAt(0).toUpperCase()}
+              </span>
               <p className="flex min-w-0 flex-col">
                 <span className="truncate font-medium">
                   {video.channel_title}

@@ -16,10 +16,8 @@ import {
 import { Button, buttonVariants } from "#/components/ui/button";
 import { cn } from "#/lib/utils";
 import { AppShell } from "#/components/AppShell";
-import { showsThumbnails, type DisplayPrefs } from "#/lib/display";
 import { formatDuration } from "#/lib/format";
 import { parseVideoInput, withItemMoved, withoutItem } from "#/lib/queue";
-import { displayPrefsQuery } from "#/server/display";
 import {
   dequeue,
   emptyQueue,
@@ -33,10 +31,7 @@ import {
 export const Route = createFileRoute("/queue")({
   head: () => ({ meta: [{ title: "Queue · Homefeed" }] }),
   loader: ({ context: { queryClient } }) =>
-    Promise.all([
-      queryClient.ensureQueryData(queueQuery),
-      queryClient.ensureQueryData(displayPrefsQuery),
-    ]),
+    Promise.all([queryClient.ensureQueryData(queueQuery)]),
   component: Queue,
   errorComponent: QueueError,
 });
@@ -45,7 +40,6 @@ type Status = { ok: boolean; message: string };
 
 function Queue() {
   const { data: items } = useSuspenseQuery(queueQuery);
-  const { data: display } = useSuspenseQuery(displayPrefsQuery);
   const [status, setStatus] = useState<Status | null>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
   const actions = useQueueActions(setStatus, statusRef);
@@ -104,7 +98,6 @@ function Queue() {
                 item={item}
                 index={index}
                 count={items.length}
-                display={display}
                 actions={actions}
               />
             ))}
@@ -206,18 +199,15 @@ function QueueRow({
   item,
   index,
   count,
-  display,
   actions,
 }: {
   item: QueueItem;
   index: number;
   count: number;
-  display: DisplayPrefs;
   actions: QueueActions;
 }) {
   const title = itemTitle(item);
   const duration = formatDuration(item.duration_seconds);
-  const thumbnails = showsThumbnails(display);
   const params = { videoId: item.video_id };
   const isFirst = index === 0;
   const isLast = index === count - 1;
@@ -254,25 +244,23 @@ function QueueRow({
       >
         {index + 1}
       </span>
-      {thumbnails && (
-        // Mouse-only; the title link is the one in the tab order.
-        <Link
-          to="/watch/$videoId"
-          params={params}
-          tabIndex={-1}
-          aria-hidden="true"
-          className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-lg bg-secondary"
-        >
-          {item.thumbnail_url && (
-            <img
-              src={item.thumbnail_url}
-              alt=""
-              loading="lazy"
-              className="size-full rounded-[inherit] object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
-            />
-          )}
-        </Link>
-      )}
+      {/* Mouse-only; the title link is the one in the tab order. */}
+      <Link
+        to="/watch/$videoId"
+        params={params}
+        tabIndex={-1}
+        aria-hidden="true"
+        className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-lg bg-secondary"
+      >
+        {item.thumbnail_url && (
+          <img
+            src={item.thumbnail_url}
+            alt=""
+            loading="lazy"
+            className="size-full rounded-[inherit] object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
+          />
+        )}
+      </Link>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <h3 className="font-medium break-words">
           <Link
