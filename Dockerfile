@@ -48,6 +48,7 @@ FROM python-build AS api-build
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --package homefeed-api --frozen --no-dev --no-editable --no-install-workspace
 COPY packages/core/src packages/core/src
+COPY apps/worker/src apps/worker/src
 COPY apps/api/src apps/api/src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --package homefeed-api --frozen --no-dev --no-editable

@@ -40,7 +40,7 @@ import sys
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta, tzinfo
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -69,11 +69,13 @@ from homefeed_core.ranking_models import (
     activate,
     delete_model_file,
     get_active_version,
+    list_model_versions,
     prune_versions,
     record_version,
     save_model,
 )
 from homefeed_core.ratings import list_ratings
+from homefeed_core.scheduled_search import parse_timestamp
 from homefeed_core.scores import is_bottom_tier, is_top_tier
 
 logger = logging.getLogger(__name__)
@@ -549,6 +551,53 @@ def run_nightly_training(
         for version in result.pruned:
             delete_model_file(version.path, settings.data_dir)
     return result
+
+
+def last_training_due(now: datetime, training_time: time, tz: tzinfo | None = None) -> datetime:
+    """The most recent occurrence of `training_time` (local time in `tz`, the user's time
+    zone; None is the process's) at or before `now`."""
+    local = now.astimezone(tz)
+    due = local.replace(
+        hour=training_time.hour,
+        minute=training_time.minute,
+        second=0,
+        microsecond=0,
+        tzinfo=None,
+    )
+    if due > local.replace(tzinfo=None):
+        due -= timedelta(days=1)
+    # naive local time -> aware
+    return due.astimezone() if tz is None else due.replace(tzinfo=tz)
+
+
+def training_overdue(
+    latest_model_at: datetime | None, due: datetime, *, enough_ratings: bool
+) -> bool:
+    """Whether a nightly run was missed: no model yet although there are enough
+    ratings, or the newest model predates the last scheduled training time `due`."""
+    if latest_model_at is None:
+        return enough_ratings
+    return latest_model_at < due
+
+
+def is_training_overdue(
+    session: Session,
+    *,
+    training_time: time,
+    tz: tzinfo | None = None,
+    now: datetime | None = None,
+    min_explicit_ratings: int = MIN_EXPLICIT_RATINGS,
+) -> bool:
+    """Whether the process missed its nightly training (it was down at
+    `training_time`, local time in `tz`); the worker then trains at startup."""
+    now = now or datetime.now(UTC)
+    versions = list_model_versions(session)
+    latest = max((parse_timestamp(v.created_at) for v in versions), default=None)
+    return training_overdue(
+        latest,
+        last_training_due(now, training_time, tz),
+        enough_ratings=len(list_ratings(session)) >= min_explicit_ratings,
+    )
 
 
 def main() -> int:

@@ -1,8 +1,9 @@
 import json
 import math
 from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pytest
@@ -625,3 +626,107 @@ def test_activate_switches_the_active_version(sessions: sessionmaker[Session]) -
     assert rolled_back is not None and rolled_back.active
     assert rolled_back.activated_at == format_timestamp(NOW)
     assert active is not None and active.id == a.id
+
+
+@pytest.fixture
+def lisbon_clock(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    import time as time_module
+
+    monkeypatch.setenv("TZ", "Europe/Lisbon")
+    time_module.tzset()
+    yield
+    monkeypatch.undo()
+    time_module.tzset()
+
+
+def test_last_training_due_is_today_after_the_training_time(lisbon_clock: None) -> None:
+    now = datetime(2026, 1, 15, 3, 30, tzinfo=UTC)  # 03:30 local (WET, UTC+0)
+
+    due = trainer.last_training_due(now, time(3, 0))
+
+    assert due == datetime(2026, 1, 15, 3, 0, tzinfo=UTC)
+
+
+def test_last_training_due_is_yesterday_before_the_training_time(lisbon_clock: None) -> None:
+    now = datetime(2026, 1, 15, 2, 59, tzinfo=UTC)
+
+    assert trainer.last_training_due(now, time(3, 0)) == datetime(2026, 1, 14, 3, 0, tzinfo=UTC)
+
+
+def test_last_training_due_at_exactly_the_training_time(lisbon_clock: None) -> None:
+    now = datetime(2026, 1, 15, 3, 0, tzinfo=UTC)
+
+    assert trainer.last_training_due(now, time(3, 0)) == now
+
+
+def test_last_training_due_crosses_a_month_boundary(lisbon_clock: None) -> None:
+    now = datetime(2026, 3, 1, 1, 0, tzinfo=UTC)
+
+    assert trainer.last_training_due(now, time(23, 30)) == datetime(2026, 2, 28, 23, 30, tzinfo=UTC)
+
+
+def test_last_training_due_uses_local_time_in_summer(lisbon_clock: None) -> None:
+    now = datetime(2026, 7, 1, 2, 30, tzinfo=UTC)  # 03:30 local (WEST, UTC+1)
+
+    assert trainer.last_training_due(now, time(3, 0)) == datetime(2026, 7, 1, 2, 0, tzinfo=UTC)
+
+
+def test_last_training_due_in_the_user_time_zone(lisbon_clock: None) -> None:
+    now = datetime(2026, 7, 1, 2, 30, tzinfo=UTC)  # 11:30 in Tokyo (UTC+9), whatever TZ says
+
+    due = trainer.last_training_due(now, time(3, 0), ZoneInfo("Asia/Tokyo"))
+
+    assert due == datetime(2026, 6, 30, 18, 0, tzinfo=UTC)
+
+
+DUE = datetime(2026, 1, 15, 3, 0, tzinfo=UTC)
+
+
+def test_training_is_overdue_when_the_newest_model_predates_the_due_time() -> None:
+    assert trainer.training_overdue(DUE - timedelta(seconds=1), DUE, enough_ratings=True)
+    assert trainer.training_overdue(DUE - timedelta(days=3), DUE, enough_ratings=False)
+
+
+def test_training_is_not_overdue_from_the_due_time_on() -> None:
+    assert not trainer.training_overdue(DUE, DUE, enough_ratings=True)
+    assert not trainer.training_overdue(DUE + timedelta(hours=5), DUE, enough_ratings=True)
+
+
+def test_training_without_any_model_is_overdue_only_with_enough_ratings() -> None:
+    assert trainer.training_overdue(None, DUE, enough_ratings=True)
+    assert not trainer.training_overdue(None, DUE, enough_ratings=False)
+
+
+def test_is_training_overdue_reads_the_newest_model_and_rating_count(
+    sessions: sessionmaker[Session], lisbon_clock: None
+) -> None:
+    now = datetime(2026, 1, 15, 10, 0, tzinfo=UTC)
+    training_time = time(3, 0)
+    with sessions.begin() as session:
+        assert not trainer.is_training_overdue(session, training_time=training_time, now=now)
+        for i in range(trainer.MIN_EXPLICIT_RATINGS):
+            add_video(session, f"v{i}")
+            rate(session, f"v{i}", 1.0, now - timedelta(days=2))
+        assert trainer.is_training_overdue(session, training_time=training_time, now=now)
+
+        record_version(
+            session,
+            path="old.json",
+            kind="ridge",
+            spearman=0.5,
+            mae=0.3,
+            metrics={},
+            now=datetime(2026, 1, 14, 3, 0, tzinfo=UTC),
+        )
+        assert trainer.is_training_overdue(session, training_time=training_time, now=now)
+
+        record_version(
+            session,
+            path="new.json",
+            kind="ridge",
+            spearman=0.5,
+            mae=0.3,
+            metrics={},
+            now=datetime(2026, 1, 15, 3, 0, 5, tzinfo=UTC),
+        )
+        assert not trainer.is_training_overdue(session, training_time=training_time, now=now)

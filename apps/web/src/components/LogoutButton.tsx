@@ -1,9 +1,18 @@
+import { getRouteApi } from "@tanstack/react-router";
 import { LogOut } from "lucide-react";
 
 import { Button } from "#/components/ui/button";
 
-/** Ends the session. A plain form post so it works without client JS. */
+const rootRoute = getRouteApi("__root__");
+
+/**
+ * Ends the session. A plain form post so it works without client JS. Hidden in
+ * desktop mode, where the session comes from the shell and can't be restored
+ * from a login page.
+ */
 export function LogoutButton() {
+  const mode = rootRoute.useLoaderData();
+  if (mode === "desktop") return null;
   return (
     <form method="post" action="/logout">
       <Button

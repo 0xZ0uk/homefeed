@@ -16,7 +16,10 @@ as a weak negative for training.
 
 A date can have several feeds (each refresh adds one, so dismissals and what was shown
 stay on record); the feed for a date is the latest one built for it. Dates are local
-calendar dates, like `FEED_REFRESH_TIME`.
+calendar dates, like `FEED_REFRESH_TIME`, in the user's time zone (see `local_today`).
+
+The feed size, exploration slots and duration bounds are user settings (see
+homefeed_core.user_settings): stored values over `settings`.
 
 History sources:
 - watched: videos played on the watch page (a `play` watch event) or rated.
@@ -30,7 +33,7 @@ import random
 from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any
 
 from sqlalchemy import bindparam, text
@@ -66,6 +69,7 @@ from homefeed_core.ranking_models import load_active_model, ranker_model
 from homefeed_core.ratings import list_ratings
 from homefeed_core.scores import is_bottom_tier, is_good, is_top_tier
 from homefeed_core.tags import get_video_tags
+from homefeed_core.user_settings import get_user_settings
 
 logger = logging.getLogger(__name__)
 
@@ -118,9 +122,10 @@ class Feed:
     items: list[FeedItem]
 
 
-def local_today(now: datetime | None = None) -> date:
-    """Today's date in the process's local time zone."""
-    return (now or datetime.now(UTC)).astimezone().date()
+def local_today(now: datetime | None = None, tz: tzinfo | None = None) -> date:
+    """Today's date in `tz`, the user's time zone (`UserSettings.tz`); None is the
+    process's local time zone."""
+    return (now or datetime.now(UTC)).astimezone(tz).date()
 
 
 def refresh_feed(
@@ -164,7 +169,7 @@ def build_feed(
     `feed_date` (default: today). The caller commits."""
     settings = settings or get_settings()
     now = now or datetime.now(UTC)
-    feed_date = feed_date or local_today(now)
+    feed_date = feed_date or local_today(now, get_user_settings(session, settings).tz)
     slots, scored_count, model_version = _rank_and_compose(
         session, settings=settings, rng=rng, now=now, exclude=()
     )
@@ -227,6 +232,7 @@ def _rank_and_compose(
     """Rank the candidate pool, drop `exclude`d videos and compose one page of
     `feed_size` slots. Returns the slots, how many candidates were left after ranking
     and the active model version (None when rules-only)."""
+    user = get_user_settings(session, settings)
     curation = load_curation(session)
     pool = load_rank_candidates(session, since=now - timedelta(days=settings.feed_candidate_days))
     # Uploads of channels unsubscribed since they were polled no longer belong.
@@ -240,9 +246,7 @@ def _rank_and_compose(
         pool,
         curation=curation,
         history=load_history(session),
-        bounds=DurationBounds(
-            settings.feed_min_duration_seconds, settings.feed_max_duration_seconds
-        ),
+        bounds=DurationBounds(user.feed_min_duration_seconds, user.feed_max_duration_seconds),
         keyword_mutes=KeywordMutes(curation_prefs.muted_keywords(session)),
         topics=topics,
         embeddings=get_embeddings(session, [c.video_id for c in pool]),
@@ -258,7 +262,7 @@ def _rank_and_compose(
     slots = compose(
         scored,
         curation,
-        ComposeSettings(size=settings.feed_size, exploration_slots=settings.feed_exploration_slots),
+        ComposeSettings(size=user.feed_size, exploration_slots=user.feed_exploration_slots),
         rng or random.Random(),
         videos=load_video_refs(session, referenced_video_ids(scored)),
         channel_ratings=load_channel_ratings(session),

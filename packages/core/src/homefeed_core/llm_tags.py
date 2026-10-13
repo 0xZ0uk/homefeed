@@ -4,8 +4,9 @@
 An `LLMProvider` answers a system prompt plus a user message with text. Two
 implementations exist: `OpenRouterProvider`, the hosted OpenRouter API (the default,
 OpenAI-compatible chat completions; needs `OPENROUTER_API_KEY`), and `OllamaProvider`, a
-local Ollama server. `LLM_PROVIDER=none` turns tagging off. Tests use
-`StubLLMProvider`, which needs no network.
+local Ollama server. `LLM_PROVIDER=none` turns tagging off. The provider, model, API key
+and per-run cap are user settings (see homefeed_core.user_settings), read on each run.
+Tests use `StubLLMProvider`, which needs no network.
 
 `Tagger.tag_many(video_ids)` asks the provider to tag each video from its stored
 metadata (title, channel, duration, YouTube tags, description and, once enriched, the
@@ -60,6 +61,7 @@ from homefeed_core.tags import (
     slugify,
     top_tag_labels,
 )
+from homefeed_core.user_settings import UserSettings, load_user_settings
 
 logger = logging.getLogger(__name__)
 
@@ -338,18 +340,15 @@ class StubLLMProvider:
         return Completion(self.default, self.usage)
 
 
-def get_llm_provider(settings: Settings | None = None) -> LLMProvider | None:
-    """The configured provider, or None when tagging is off or can't be set up (logged)."""
+def get_llm_provider(user: UserSettings, settings: Settings | None = None) -> LLMProvider | None:
+    """The provider `user` (the user settings) picks, with the base URL and timeout of
+    `settings`, or None when tagging is off or can't be set up (logged)."""
     settings = settings or get_settings()
-    match settings.llm_provider:
+    match user.llm_provider:
         case "none":
             return None
         case "openrouter":
-            key = (
-                settings.openrouter_api_key.get_secret_value()
-                if settings.openrouter_api_key
-                else ""
-            )
+            key = user.openrouter_api_key.get_secret_value() if user.openrouter_api_key else ""
             if not key.strip():
                 logger.warning(
                     "LLM_PROVIDER=openrouter but OPENROUTER_API_KEY is not set; skipping tagging"
@@ -357,13 +356,13 @@ def get_llm_provider(settings: Settings | None = None) -> LLMProvider | None:
                 return None
             return OpenRouterProvider(
                 key.strip(),
-                model=settings.llm_model or DEFAULT_OPENROUTER_MODEL,
+                model=user.llm_model or DEFAULT_OPENROUTER_MODEL,
                 base_url=settings.llm_base_url or DEFAULT_OPENROUTER_BASE_URL,
                 timeout=settings.llm_timeout_seconds,
             )
         case "ollama":
             return OllamaProvider(
-                model=settings.llm_model or DEFAULT_OLLAMA_MODEL,
+                model=user.llm_model or DEFAULT_OLLAMA_MODEL,
                 base_url=settings.llm_base_url or DEFAULT_OLLAMA_BASE_URL,
                 timeout=settings.llm_timeout_seconds,
             )
@@ -766,18 +765,24 @@ def _log(report: TagReport, model: str) -> None:
     )
 
 
-@lru_cache
 def get_tagger() -> Tagger | None:
-    """The process-wide production tagger, or None when tagging is off or the provider
-    isn't configured (warned about once per process)."""
+    """The production tagger for the current user settings, or None when tagging is off
+    or the provider isn't configured. Called on each run, so a change on the settings
+    screen applies from the next one."""
+    return _tagger_for(load_user_settings())
+
+
+@lru_cache(maxsize=1)
+def _tagger_for(user: UserSettings) -> Tagger | None:
+    """One tagger per settings (so a missing key is warned about once, not every run)."""
     settings = get_settings()
-    provider = get_llm_provider(settings)
+    provider = get_llm_provider(user, settings)
     if provider is None:
         return None
     return Tagger(
         get_session_factory(),
         provider,
-        max_per_run=settings.llm_max_tags_per_run,
+        max_per_run=user.llm_max_tags_per_run,
         embedder=get_embedding_provider(),
         merge_threshold=calibration(settings).tag_merge_threshold,
     )
@@ -798,9 +803,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     line = ProgressLine()
     configure_cli_logging(line)
     settings = get_settings()
-    provider = get_llm_provider(settings)
+    provider = get_llm_provider(load_user_settings(settings=settings), settings)
     if provider is None:
-        print("Tagging is off: set LLM_PROVIDER, and OPENROUTER_API_KEY for openrouter.")
+        print("Tagging is off: turn it on in Settings (LLM provider and API key).")
         return 1
     sessions = get_session_factory()
     with sessions() as session:

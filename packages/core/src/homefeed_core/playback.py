@@ -179,6 +179,11 @@ class Playback:
             _trim(self._segments)
         return list(segments)
 
+    def forget_sponsor_segments(self) -> None:
+        """Drop the cached segments (the categories to skip changed)."""
+        with self._lock:
+            self._segments.clear()
+
     # Manifest
 
     def manifest(self, video_id: str) -> str:

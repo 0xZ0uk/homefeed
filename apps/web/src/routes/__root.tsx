@@ -9,6 +9,8 @@ import { TanStackDevtools } from "@tanstack/react-devtools";
 import { DisableThemeTransitions } from "../components/DisableThemeTransitions";
 import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
 
+import { getAppMode } from "../server/app-mode";
+
 import appCss from "../styles.css?url";
 
 import type { QueryClient } from "@tanstack/react-query";
@@ -19,6 +21,9 @@ interface MyRouterContext {
 }
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
+  // The mode is fixed for the life of the process.
+  loader: () => getAppMode(),
+  staleTime: Infinity,
   head: () => ({
     meta: [
       {

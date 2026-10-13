@@ -11,9 +11,10 @@ from pydantic import SecretStr
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from homefeed_core import llm_tags
 from homefeed_core.candidates import SUBSCRIPTION, record
-from homefeed_core.config import Settings
-from homefeed_core.db import open_database
+from homefeed_core.config import Settings, get_settings
+from homefeed_core.db import get_session_factory, open_database
 from homefeed_core.embeddings import StubEmbeddingProvider
 from homefeed_core.enricher import Enricher, enrich_candidates
 from homefeed_core.gateway.fake import FakeGateway, make_captions, make_channel, make_video
@@ -42,6 +43,7 @@ from homefeed_core.llm_tags import (
 from homefeed_core.model_features import FEATURE_NAMES, ModelInput, feature_row
 from homefeed_core.ratings import set_rating
 from homefeed_core.tags import ProposedTag, VideoTag, get_video_tags, set_llm_tags
+from homefeed_core.user_settings import default_user_settings, update_user_settings
 
 NOW = datetime(2026, 10, 13, 6, 0, tzinfo=UTC)
 CHANNEL = make_channel("UC" + "w" * 22, title="Woodworking", handle="@wood")
@@ -308,7 +310,7 @@ def test_ollama_posts_a_json_mode_chat() -> None:
 
 
 def test_no_provider_when_tagging_is_off() -> None:
-    assert get_llm_provider(Settings(llm_provider="none")) is None
+    assert get_llm_provider(default_user_settings(Settings(llm_provider="none"))) is None
 
 
 @pytest.mark.parametrize("key", [None, SecretStr(""), SecretStr("  ")])
@@ -316,7 +318,9 @@ def test_openrouter_without_a_key_is_skipped_with_a_warning(
     key: SecretStr | None, caplog: pytest.LogCaptureFixture
 ) -> None:
     with caplog.at_level(logging.WARNING):
-        provider = get_llm_provider(Settings(llm_provider="openrouter", openrouter_api_key=key))
+        provider = get_llm_provider(
+            default_user_settings(Settings(llm_provider="openrouter", openrouter_api_key=key))
+        )
 
     assert provider is None
     assert "OPENROUTER_API_KEY" in caplog.text
@@ -324,16 +328,49 @@ def test_openrouter_without_a_key_is_skipped_with_a_warning(
 
 def test_configured_providers() -> None:
     openrouter = get_llm_provider(
-        Settings(llm_provider="openrouter", openrouter_api_key=SecretStr("sk-or-test"))
+        default_user_settings(
+            Settings(llm_provider="openrouter", openrouter_api_key=SecretStr("sk-or-test"))
+        )
     )
-    ollama = get_llm_provider(
-        Settings(llm_provider="ollama", llm_model="qwen3:8b", llm_base_url="http://gpu:11434")
+    settings = Settings(
+        llm_provider="ollama", llm_model="qwen3:8b", llm_base_url="http://gpu:11434"
     )
+    ollama = get_llm_provider(default_user_settings(settings), settings)
 
     assert isinstance(openrouter, OpenRouterProvider)
     assert openrouter.model == f"openrouter:{DEFAULT_OPENROUTER_MODEL}"
     assert isinstance(ollama, OllamaProvider)
     assert ollama.model == "ollama:qwen3:8b"
+
+
+def test_get_tagger_follows_the_user_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "homefeed.sqlite"))
+    monkeypatch.setenv("LLM_PROVIDER", "none")
+    monkeypatch.setattr(llm_tags, "get_embedding_provider", StubEmbeddingProvider)
+    get_settings.cache_clear()
+    get_session_factory.cache_clear()
+    llm_tags._tagger_for.cache_clear()  # pyright: ignore[reportPrivateUsage]
+    try:
+        assert llm_tags.get_tagger() is None
+        with get_session_factory().begin() as session:
+            update_user_settings(
+                session,
+                {
+                    "llm_provider": "openrouter",
+                    "openrouter_api_key": "sk-or-test",
+                    "llm_model": "qwen/qwen3-8b",
+                },
+            )
+        tagger = llm_tags.get_tagger()
+        assert tagger is not None and tagger.model == "openrouter:qwen/qwen3-8b"
+        assert llm_tags.get_tagger() is tagger  # the same while the settings are
+    finally:
+        get_session_factory().kw["bind"].dispose()
+        get_settings.cache_clear()
+        get_session_factory.cache_clear()
+        llm_tags._tagger_for.cache_clear()  # pyright: ignore[reportPrivateUsage]
 
 
 # Tagging

@@ -2,9 +2,12 @@ import logging
 import signal
 import threading
 from collections.abc import Callable
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, time, tzinfo
 from types import FrameType
+from typing import Any
 
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.base import BaseScheduler
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -16,6 +19,7 @@ from homefeed_core.db import get_session_factory
 from homefeed_core.external_sources import ExternalSourcesSource
 from homefeed_core.gateway import create_gateway
 from homefeed_core.tag_discovery import TagDiscoverySource
+from homefeed_core.user_settings import UserSettings, get_user_settings, load_user_settings
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +36,9 @@ EXTERNAL_SOURCES_CHECK_MINUTES = 15
 # How often the worker looks for subscribed tags that are due a YouTube search (once a day
 # each, capped per day; see homefeed_core.tag_discovery).
 TAG_DISCOVERY_CHECK_MINUTES = 60
+# How often the user settings are read again, so a feed or training time (or time zone)
+# changed on the settings screen applies without a restart, whichever process runs the jobs.
+SETTINGS_CHECK_MINUTES = 1
 
 
 # The feed job polls too; this keeps it and the poll job from polling at the same time.
@@ -92,11 +99,7 @@ def fetch_external_sources() -> None:
 def discover_tag_videos() -> None:
     """Search YouTube for the subscribed tags that are due and record the new videos."""
     sessions = get_session_factory()
-    source = TagDiscoverySource(
-        sessions,
-        create_gateway(sessions),
-        per_tag_per_day=get_settings().tag_discovery_per_day,
-    )
+    source = TagDiscoverySource(sessions, create_gateway(sessions))
     report = candidates.generate([source], sessions=sessions)
     for name, video_ids in report.new.items():
         logger.info("Candidate source %r found %d new candidates", name, len(video_ids))
@@ -128,31 +131,66 @@ def run_gateway_smoke_test() -> None:
         logger.warning("Gateway smoke test failed: %s", report.summary())
 
 
-def build_scheduler(
+def daily_triggers(user: UserSettings, smoke_time: time | None) -> dict[str, CronTrigger]:
+    """The daily jobs' triggers, by job id: the feed and training at the user settings'
+    times, and the smoke test (if `smoke_time` is set), all in the user's time zone."""
+    triggers = {
+        "daily_feed": _daily(user.feed_refresh_time, user.tz),
+        "train_model": _daily(user.model_training_time, user.tz),
+    }
+    if smoke_time is not None:
+        triggers["gateway_smoke_test"] = _daily(smoke_time, user.tz)
+    return triggers
+
+
+def _daily(at: time, tz: tzinfo | None) -> CronTrigger:
+    # A None time zone is the system's (APScheduler asks tzlocal).
+    return CronTrigger(hour=at.hour, minute=at.minute, timezone=tz)
+
+
+def sync_schedule(
+    scheduler: BaseScheduler, *, smoke_time: time | None, user: UserSettings | None = None
+) -> None:
+    """Reschedule the daily jobs whose time or time zone changed in the user settings
+    (default: read now). Run every `SETTINGS_CHECK_MINUTES`."""
+    user = user or load_user_settings()
+    for job_id, trigger in daily_triggers(user, smoke_time).items():
+        job = scheduler.get_job(job_id)
+        if job is not None and repr(job.trigger) != repr(trigger):
+            scheduler.reschedule_job(job_id, trigger=trigger)
+            logger.info("Rescheduled %r: %s", job.name, trigger)
+
+
+def register_jobs(
+    scheduler: BaseScheduler,
     poll: Callable[[], None] = poll_subscriptions,
     enrich: Callable[[], None] = enrich_candidates,
     build_feed: Callable[[], None] = build_daily_feed,
     train: Callable[[], None] = train_model,
     smoke: Callable[[], None] = run_gateway_smoke_test,
     *,
-    feed_refresh_time: time | None = None,
-    model_training_time: time | None = None,
+    user: UserSettings | None = None,
     gateway_smoke_test_time: time | None = None,
     build_feed_now: bool = False,
-) -> BlockingScheduler:
-    """Create the scheduler with all worker jobs registered.
+    train_now: bool = False,
+) -> None:
+    """Register all worker jobs on `scheduler` (a blocking one for the standalone
+    worker, a background one when the API process runs them).
 
-    The daily feed runs at `feed_refresh_time` (default `FEED_REFRESH_TIME`) and model
-    training at `model_training_time` (default `MODEL_TRAINING_TIME`), both in the
-    process's local time zone; `build_feed_now` also builds the feed right away. The
-    live Gateway smoke test is opt-in: it runs daily at `gateway_smoke_test_time`
-    (default `GATEWAY_SMOKE_TEST_TIME`) and isn't scheduled when neither is set.
+    The daily feed runs at the `feed_refresh_time` and model training at the
+    `model_training_time` of the user settings (`user`, default: read now), in their time
+    zone; `build_feed_now` also builds the feed right away. A job re-reads the settings
+    every `SETTINGS_CHECK_MINUTES` and reschedules those when they change. The live
+    Gateway smoke test is opt-in: it runs daily at `gateway_smoke_test_time` (default
+    `GATEWAY_SMOKE_TEST_TIME`) and isn't scheduled when neither is set.
+
+    `build_feed_now` and `train_now` are startup catch-up: cron runs missed while the
+    process was down don't fire on their own, so those jobs also run once right away (in
+    the scheduler's thread pool, without blocking startup).
     """
-    settings = get_settings()
-    refresh = feed_refresh_time or settings.feed_refresh_time
-    training = model_training_time or settings.model_training_time
-    smoke_time = gateway_smoke_test_time or settings.gateway_smoke_test_time
-    scheduler = BlockingScheduler(timezone=UTC)
+    user = user or load_user_settings()
+    smoke_time = gateway_smoke_test_time or get_settings().gateway_smoke_test_time
+    triggers = daily_triggers(user, smoke_time)
     scheduler.add_job(
         poll,
         IntervalTrigger(minutes=POLL_CHECK_MINUTES, timezone=UTC),
@@ -174,7 +212,7 @@ def build_scheduler(
     )
     scheduler.add_job(
         build_feed,
-        CronTrigger(hour=refresh.hour, minute=refresh.minute),  # local time zone
+        triggers["daily_feed"],
         id="daily_feed",
         name="Build the daily feed",
         max_instances=1,
@@ -184,12 +222,13 @@ def build_scheduler(
     )
     scheduler.add_job(
         train,
-        CronTrigger(hour=training.hour, minute=training.minute),  # local time zone
+        triggers["train_model"],
         id="train_model",
         name="Train the ranking model",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=None,
+        next_run_time=datetime.now(UTC) if train_now else undefined,
     )
     scheduler.add_job(
         fetch_external_sources,
@@ -212,24 +251,66 @@ def build_scheduler(
     if smoke_time is not None:
         scheduler.add_job(
             smoke,
-            CronTrigger(hour=smoke_time.hour, minute=smoke_time.minute),  # local time zone
+            triggers["gateway_smoke_test"],
             id="gateway_smoke_test",
             name="Live Gateway smoke test",
             max_instances=1,
             coalesce=True,
             misfire_grace_time=None,
         )
+    scheduler.add_job(
+        sync_schedule,
+        IntervalTrigger(minutes=SETTINGS_CHECK_MINUTES, timezone=UTC),
+        args=[scheduler],
+        kwargs={"smoke_time": smoke_time},
+        id="sync_schedule",
+        name="Apply schedule changes from the settings",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=None,
+    )
+
+
+def build_scheduler(**kwargs: Any) -> BlockingScheduler:
+    """A blocking scheduler with all worker jobs registered (see `register_jobs`)."""
+    scheduler = BlockingScheduler(timezone=UTC)
+    register_jobs(scheduler, **kwargs)
+    return scheduler
+
+
+def catch_up_needed() -> tuple[bool, bool]:
+    """Whether today's feed is missing and whether training is overdue, for a process
+    that has just started (a laptop is often asleep or off at FEED_REFRESH_TIME and
+    MODEL_TRAINING_TIME, as the user settings have them). Returns
+    `(build_feed_now, train_now)`."""
+    with get_session_factory()() as session:
+        user = get_user_settings(session)
+        missing_today = feeds.get_feed(session, feeds.local_today(tz=user.tz)) is None
+        overdue = trainer.is_training_overdue(
+            session, training_time=user.model_training_time, tz=user.tz
+        )
+    return missing_today, overdue
+
+
+def start_background_scheduler() -> BackgroundScheduler:
+    """Start the worker jobs on a background thread of this process (the API's, when
+    `RUN_WORKER_IN_API` is set), with startup catch-up. Stop it with `shutdown`."""
+    build_feed_now, train_now = catch_up_needed()
+    scheduler = BackgroundScheduler(timezone=UTC)
+    register_jobs(scheduler, build_feed_now=build_feed_now, train_now=train_now)
+    scheduler.start()
+    logger.info("Worker jobs started in this process")
     return scheduler
 
 
 def run() -> None:
     logging.basicConfig(level=logging.INFO)
     settings = get_settings()
-    sessions = get_session_factory()  # create and migrate the database before scheduling
-    with sessions() as session:
-        missing_today = feeds.get_feed(session, feeds.local_today()) is None
-    # A worker started after FEED_REFRESH_TIME (or after downtime) builds today's feed now.
-    scheduler = build_scheduler(build_feed_now=missing_today)
+    get_session_factory()  # create and migrate the database before scheduling
+    # A worker started after FEED_REFRESH_TIME or MODEL_TRAINING_TIME (or after downtime)
+    # builds today's feed and trains the model now.
+    build_feed_now, train_now = catch_up_needed()
+    scheduler = build_scheduler(build_feed_now=build_feed_now, train_now=train_now)
 
     def stop(signum: int, _frame: FrameType | None) -> None:
         logger.info("Received %s, shutting down", signal.Signals(signum).name)
