@@ -61,7 +61,6 @@ const OPERATION_LABELS: Record<string, string> = {
   get_video: "Video metadata",
   get_formats: "Stream formats",
   get_captions: "Captions",
-  get_comments: "Comments",
   get_related: "Related videos",
   search: "Search",
   get_channel_uploads: "Channel uploads",

@@ -7,18 +7,21 @@ import {
   keepPreviousData,
 } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Plus, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { EyeOff, Plus, Tag, X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
+import { formatWeight, tagWeights, weightEffect } from "#/lib/topics";
+import { cn } from "#/lib/utils";
 import {
   addTagToVideo,
   removeTagFromVideo,
   tagSuggestionsQuery,
   type TagEditResult,
 } from "#/server/video-tags";
+import { topicsQuery } from "#/server/topics";
 import { videoQuery } from "#/server/videos";
 
 interface TagOption {
@@ -46,6 +49,9 @@ export function VideoTags({
   const queryClient = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // Plain chips until the topics load (or if they fail to).
+  const { data: topics } = useQuery(topicsQuery);
+  const weights = useMemo(() => tagWeights(topics ?? []), [topics]);
 
   const save = (result: TagEditResult) => {
     if (!result.ok) return setMessage(result.message);
@@ -80,32 +86,67 @@ export function VideoTags({
       <div className="flex flex-wrap items-center gap-2">
         {tags.length > 0 && (
           <ul aria-label="Tags" className="flex flex-wrap gap-2">
-            {tags.map((tag) => (
-              <li key={tag.slug}>
-                <Badge
-                  variant="secondary"
-                  className="h-7 gap-0.5 pl-3 text-sm font-normal"
-                >
-                  <Link
-                    to="/tags/$slug"
-                    params={{ slug: tag.slug }}
-                    className="rounded-sm hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            {tags.map((tag) => {
+              const weight = weights.get(tag.slug);
+              const muted = weight !== undefined && weight < 0;
+              const state = muted ? "Muted" : "Subscribed";
+              const signed = weight === undefined ? "" : formatWeight(weight);
+              const effect = weight === undefined ? "" : weightEffect(weight);
+              const Icon = muted ? EyeOff : Tag;
+              return (
+                <li key={tag.slug}>
+                  <Badge
+                    variant="secondary"
+                    title={
+                      weight === undefined
+                        ? undefined
+                        : `${state} · ${effect} ${signed}`
+                    }
+                    className={cn(
+                      "h-7 gap-0.5 pl-3 text-sm font-normal",
+                      weight !== undefined && "ring-1 ring-foreground/15",
+                    )}
                   >
-                    {tag.label}
-                  </Link>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className="size-5 rounded-full"
-                    aria-label={`Remove tag ${tag.label}`}
-                    disabled={remove.isPending}
-                    onClick={() => remove.mutate(tag.slug)}
-                  >
-                    <X aria-hidden="true" />
-                  </Button>
-                </Badge>
-              </li>
-            ))}
+                    <Link
+                      to="/tags/$slug"
+                      params={{ slug: tag.slug }}
+                      className="inline-flex items-center gap-1 rounded-sm hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    >
+                      {weight !== undefined && (
+                        <Icon aria-hidden="true" className="size-3.5" />
+                      )}
+                      <span className={muted ? "opacity-80" : undefined}>
+                        {tag.label}
+                      </span>
+                      {weight !== undefined && (
+                        <>
+                          <span
+                            aria-hidden="true"
+                            className="text-xs text-muted-foreground tabular-nums"
+                          >
+                            {signed}
+                          </span>
+                          <span className="sr-only">
+                            , {state.toLowerCase()}, {effect.toLowerCase()}{" "}
+                            {signed}
+                          </span>
+                        </>
+                      )}
+                    </Link>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className="size-6 rounded-full"
+                      aria-label={`Remove tag ${tag.label}`}
+                      disabled={remove.isPending}
+                      onClick={() => remove.mutate(tag.slug)}
+                    >
+                      <X aria-hidden="true" />
+                    </Button>
+                  </Badge>
+                </li>
+              );
+            })}
           </ul>
         )}
         <AddTag

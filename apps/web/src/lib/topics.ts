@@ -90,6 +90,19 @@ export function isMuted(topic: { weight: number }): boolean {
 /** The weight at which a muted tag can hide its videos from the feed. */
 export const HIDE_WEIGHT = -1;
 
+/** The weight of each tag-backed topic with a non-zero weight, by tag slug. */
+export function tagWeights(
+  topics: ReadonlyArray<{ weight: number; tag_slug?: string | null }>,
+): Map<string, number> {
+  const weights = new Map<string, number>();
+  for (const topic of topics) {
+    if (topic.tag_slug && formatWeight(topic.weight) !== "0.00") {
+      weights.set(topic.tag_slug, topic.weight);
+    }
+  }
+  return weights;
+}
+
 /** The tags the user has muted (a negative weight), alphabetically. */
 export function mutedTags(
   topics: ReadonlyArray<{

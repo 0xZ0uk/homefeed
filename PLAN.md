@@ -159,7 +159,7 @@ The worker builds the feed on a schedule and writes it to SQLite. The API reads 
 
 | Module | Public interface (sketch) | Hides |
 | --- | --- | --- |
-| `gateway` | `get_video(id)`, `get_formats(id)`, `get_related(id)`, `search(query, filters)`, `get_channel_uploads(channel_id)`, `get_featured_channels(channel_id)`, `get_captions(id)`, `get_comments(id)`, `resolve_url(url)` → normalized domain dataclasses | yt-dlp options, PO tokens, retries with backoff, rate limiting, response caching, failure recording into `extractor_events` |
+| `gateway` | `get_video(id)`, `get_formats(id)`, `get_related(id)`, `search(query, filters)`, `get_channel_uploads(channel_id)`, `get_featured_channels(channel_id)`, `get_captions(id)`, `resolve_url(url)` → normalized domain dataclasses | yt-dlp options, PO tokens, retries with backoff, rate limiting, response caching, failure recording into `extractor_events` |
 | `poller` | `poll_due_channels() -> list[VideoId]` | RSS fetching and parsing, per-channel schedule and backoff |
 | `candidates` | `generate() -> list[Candidate]`; each source implements `CandidateSource.fetch()` | Deduplication, first-seen tracking, source attribution, isolating failing sources |
 | `enricher` | `enrich(video_id) -> VideoFeatures` | Metadata, transcript excerpt (first ~5 min of captions), embedding, LLM tags, cache and version tracking |
@@ -218,7 +218,7 @@ Store the score as a number (`7.4`) and the numeric value alongside it.
 | Area | Endpoints |
 | --- | --- |
 | Feed | `GET /feed/today`, `GET /feed/{date}`, `GET /feeds` (history), `POST /feed/refresh`, `POST /feed-items/{id}/dismiss` `{reason?}` |
-| Videos | `GET /videos/{id}`, `GET /videos/{id}/manifest.mpd`, `GET /videos/{id}/media/{itag}` (Range proxy), `GET /videos/{id}/comments`, `GET /videos/{id}/segments` (SponsorBlock), `POST /resolve` `{url}` |
+| Videos | `GET /videos/{id}`, `GET /videos/{id}/manifest.mpd`, `GET /videos/{id}/media/{itag}` (Range proxy), `GET /videos/{id}/segments` (SponsorBlock), `POST /resolve` `{url}` |
 | Ratings and watching | `GET /ratings/{video_id}`, `PUT /ratings/{video_id}` `{score}`, `DELETE /ratings/{video_id}`, `POST /watch-events` `{video_id, event_type, position, duration}` |
 | Library | `GET/POST/PATCH/DELETE /queue`, `GET /history?q=`, `/playlists` CRUD |
 | Curation | `/channels` (subscribe by URL, list, update prior/pin/mute, unsubscribe), `/topics`, `/keyword-mutes`, `/saved-searches`, `/external-sources` |
@@ -232,7 +232,7 @@ Auth lives in the web app (single password, session cookie). The API binds to th
 
 `/` home feed · `/watch/$videoId` · `/queue` · `/history` · `/curation` (tabs: channels, topics, mutes, searches, sources) · `/discover` · `/insights` · `/settings` · `/status` · `/login`.
 
-Home feed items show thumbnail, channel avatar, title, channel, duration, view count, upload age, explanation (expandable to the score breakdown), and status icons (pinned, exploring, dismissed). The watch page shows chapters, description, and comments on demand, skips SponsorBlock segments, saves resume position, and ends in the rating prompt. It never shows suggested videos and never autoplays.
+Home feed items show thumbnail, channel avatar, title, channel, duration, view count, upload age, explanation (expandable to the score breakdown), and status icons (pinned, exploring, dismissed). The watch page shows chapters and description, skips SponsorBlock segments, saves resume position, and ends in the rating prompt. It never shows suggested videos and never autoplays.
 
 ## 11. Milestones
 
@@ -274,7 +274,7 @@ Each milestone ends with tests passing, lint clean, and a short summary of what 
 ### Milestone 5: library, ops, and deployment
 
 - Queue, history search, local playlists, resume positions.
-- SponsorBlock segments, comments, chapters.
+- SponsorBlock segments, chapters.
 - Status page from `extractor_events`; scheduled live smoke test of the Gateway (not in CI).
 - Full JSON export.
 - Dockerfiles (web via `turbo prune @homefeed/web --docker`; Python images via `uv sync --package <name> --frozen`) and `docker-compose.yml` with a shared data volume.

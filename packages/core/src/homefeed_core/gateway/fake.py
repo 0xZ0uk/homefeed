@@ -6,7 +6,6 @@ gateway.add_channel(channel, [make_video("aaaaaaaaaaa", channel=channel)])
 gateway.add_related("aaaaaaaaaaa", [make_video("ccccccccccc", channel=channel)])
 gateway.add_search("hand planes", [make_video("ddddddddddd", channel=channel)])
 gateway.add_featured(channel.id, [make_channel("UC" + "b" * 22, title="Carpentry")])
-gateway.add_comments("aaaaaaaaaaa", [make_comment("c1", text="Great planing tips")])
 gateway.fail("get_video", "bbbbbbbbbbb", UnavailableError("removed"))
 
 gateway.resolve_url("https://www.youtube.com/@wood")  # -> ResolvedChannel(channel)
@@ -23,11 +22,9 @@ from typing import Any
 from homefeed_core.gateway.dash import DashRanges, probe_dash_ranges
 from homefeed_core.gateway.errors import GatewayError, RangeNotSatisfiableError, UnavailableError
 from homefeed_core.gateway.interface import (
-    DEFAULT_COMMENTS_LIMIT,
     DEFAULT_RELATED_LIMIT,
     DEFAULT_SEARCH_LIMIT,
     DEFAULT_UPLOADS_LIMIT,
-    check_comments_limit,
     check_search_limit,
     normalize_search_query,
 )
@@ -38,7 +35,6 @@ from homefeed_core.gateway.models import (
     CaptionSegment,
     Channel,
     ChannelUploads,
-    Comment,
     FeaturedChannel,
     Format,
     RelatedVideo,
@@ -65,7 +61,6 @@ class FakeGateway:
         self.search_results: dict[str, list[SearchResult]] = {}
         self.searches: list[tuple[str, SearchFilters]] = []  # (query, filters) per search
         self.featured: dict[str, list[FeaturedChannel]] = {}
-        self.comments: dict[str, list[Comment]] = {}
         self.urls: dict[str, ResolvedUrl] = {}
         self.failures: dict[tuple[str, str], GatewayError] = {}
         self.media: dict[str, bytes] = {}
@@ -89,11 +84,6 @@ class FakeGateway:
         for video in videos:
             self.add_video(video)
             self.related[video_id].append(_related(video))
-
-    def add_comments(self, video_id: str, comments: Iterable[Comment]) -> None:
-        """Make `comments` the comments of `video_id`, which must be added; other videos
-        have none."""
-        self.comments[video_id] = list(comments)
 
     def add_search(self, query: str, videos: Iterable[Video]) -> None:
         """Make `videos` (added too) the results of searching `query`, whatever the
@@ -168,13 +158,6 @@ class FakeGateway:
         if video_id not in self.videos:
             raise UnavailableError(f"Video unavailable: {video_id}")
         return self.related.get(video_id, [])[:limit]
-
-    def get_comments(self, video_id: str, *, limit: int = DEFAULT_COMMENTS_LIMIT) -> list[Comment]:
-        check_comments_limit(limit)
-        self._call("get_comments", video_id)
-        if video_id not in self.videos:
-            raise UnavailableError(f"Video unavailable: {video_id}")
-        return self.comments.get(video_id, [])[:limit]
 
     def search(
         self,
@@ -276,17 +259,6 @@ def make_format(itag: str = "140", **fields: Any) -> Format:
         "bitrate": 128_000,
     }
     return Format(itag=itag, **(defaults | fields))
-
-
-def make_comment(comment_id: str = "Ugx0", **fields: Any) -> Comment:
-    defaults: dict[str, Any] = {
-        "text": f"Comment {comment_id}",
-        "author": "@viewer",
-        "like_count": 3,
-        "published_at": datetime(2026, 1, 2, tzinfo=UTC),
-        "published_text": "1 month ago",
-    }
-    return Comment(id=comment_id, **(defaults | fields))
 
 
 def make_captions(

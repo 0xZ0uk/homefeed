@@ -114,10 +114,6 @@ def _get_related(gateway: Gateway) -> None:
     expect(bool(gateway.get_related(ZOO_VIDEO, limit=5)), "no related videos")
 
 
-def _get_comments(gateway: Gateway) -> None:
-    expect(bool(gateway.get_comments(ZOO_VIDEO, limit=5)), "no comments")
-
-
 def _search(gateway: Gateway) -> None:
     expect(bool(gateway.search(SEARCH_QUERY, limit=5)), "no search results")
 
@@ -147,7 +143,6 @@ GATEWAY_CHECKS: Sequence[Check] = (
     ("get_formats", _get_formats),
     ("get_captions", _get_captions),
     ("get_related", _get_related),
-    ("get_comments", _get_comments),
     ("search", _search),
     ("get_channel_uploads", _get_channel_uploads),
     ("get_featured_channels", _get_featured_channels),

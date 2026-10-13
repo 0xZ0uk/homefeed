@@ -8,8 +8,26 @@ import {
   matchModeLabel,
   mutedTags,
   subscribedTags,
+  tagWeights,
   weightEffect,
 } from "./topics";
+
+describe("tagWeights", () => {
+  it("maps tag-backed topics with a non-zero weight by slug", () => {
+    const weights = tagWeights([
+      { weight: 0.5, tag_slug: "rust" },
+      { weight: -0.5, tag_slug: "cooking" },
+      { weight: 0, tag_slug: "zero" },
+      { weight: 0.001, tag_slug: "tiny" },
+      { weight: 0.7, tag_slug: null },
+      { weight: 0.7 },
+    ]);
+    expect([...weights]).toEqual([
+      ["rust", 0.5],
+      ["cooking", -0.5],
+    ]);
+  });
+});
 
 describe("clampWeight", () => {
   it("rounds to the slider step", () => {

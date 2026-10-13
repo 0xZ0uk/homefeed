@@ -25,11 +25,9 @@ from homefeed_core.gateway.errors import (
 )
 from homefeed_core.gateway.events import EventRecorder, ExtractorEvent
 from homefeed_core.gateway.interface import (
-    DEFAULT_COMMENTS_LIMIT,
     DEFAULT_RELATED_LIMIT,
     DEFAULT_SEARCH_LIMIT,
     DEFAULT_UPLOADS_LIMIT,
-    check_comments_limit,
     check_search_limit,
     normalize_search_query,
 )
@@ -38,7 +36,6 @@ from homefeed_core.gateway.models import (
     ByteRange,
     Captions,
     ChannelUploads,
-    Comment,
     FeaturedChannel,
     Format,
     RelatedVideo,
@@ -54,7 +51,6 @@ from homefeed_core.gateway.normalize import (
     captions_from_info,
     channel_from_info,
     channel_uploads_from_info,
-    comments_from_info,
     dash_ranges,
     featured_channels_from_info,
     formats_from_info,
@@ -84,16 +80,14 @@ class ExtractRequest:
     `captions` returns a video's chosen caption track instead of its info (see
     `normalize.pick_caption_track`); `related` returns the videos suggested next to it
     (see `_download_related`); `featured` returns the channels a channel features (see
-    `_download_featured`); `comments` returns a video's top `limit` top-level comments
-    instead of its info."""
+    `_download_featured`)."""
 
     url: str
     flat: bool = False
-    limit: int | None = None  # max entries when `flat`, max comments when `comments`
+    limit: int | None = None  # max entries when `flat`
     captions: bool = False
     related: bool = False
     featured: bool = False
-    comments: bool = False
 
 
 Extract = Callable[[ExtractRequest], dict[str, Any]]
@@ -118,13 +112,6 @@ def extract_info(request: ExtractRequest) -> dict[str, Any]:
         options["extract_flat"] = "in_playlist"
         if request.limit is not None:
             options["playlistend"] = request.limit
-    if request.comments:
-        options["getcomments"] = True
-        limit = str(request.limit or DEFAULT_COMMENTS_LIMIT)
-        options["extractor_args"] = {
-            # max comments, max top-level, max replies, max replies per thread, max depth
-            "youtube": {"max_comments": [limit, limit, "0", "0", "1"], "comment_sort": ["top"]}
-        }
     try:
         with yt_dlp.YoutubeDL(options) as ydl:  # pyright: ignore[reportArgumentType]
             ydl.add_info_extractor(_DashRangesYoutubeIE())  # pyright: ignore[reportArgumentType]
@@ -133,8 +120,6 @@ def extract_info(request: ExtractRequest) -> dict[str, Any]:
             if request.featured:
                 return _download_featured(ydl, request.url)
             info = dict(ydl.sanitize_info(ydl.extract_info(request.url, download=False)) or {})
-            if request.comments:
-                return {key: info.get(key) for key in ("id", "comments")}
             return _download_captions(ydl, info) if request.captions else info
     except (DownloadError, ExtractorError) as error:
         raise classify_error(str(error)) from error
@@ -460,14 +445,6 @@ class YtDlpGateway:
         request = ExtractRequest(video_url(video_id), related=True)
         return self._run(
             "get_related", video_id, request, lambda info: related_from_info(info)[:limit]
-        )
-
-    def get_comments(self, video_id: str, *, limit: int = DEFAULT_COMMENTS_LIMIT) -> list[Comment]:
-        _check_video_id(video_id)
-        check_comments_limit(limit)
-        request = ExtractRequest(video_url(video_id), limit=limit, comments=True)
-        return self._run(
-            "get_comments", video_id, request, lambda info: comments_from_info(info)[:limit]
         )
 
     def search(

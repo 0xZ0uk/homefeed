@@ -1,7 +1,6 @@
-"""`GET /videos/{id}/segments` (SponsorBlock) and `GET /videos/{id}/comments`."""
+"""`GET /videos/{id}/segments` (SponsorBlock)."""
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -10,8 +9,7 @@ from fastapi.testclient import TestClient
 from homefeed_api.main import app, get_gateway, get_playback
 from homefeed_core.config import get_settings
 from homefeed_core.db import get_session_factory
-from homefeed_core.gateway import ExtractionError
-from homefeed_core.gateway.fake import FakeGateway, make_comment, make_video
+from homefeed_core.gateway.fake import FakeGateway, make_video
 from homefeed_core.playback import Playback
 from homefeed_core.sponsorblock import SponsorBlockError, SponsorSegment
 
@@ -97,69 +95,3 @@ def test_segments_errors(client: TestClient, sponsorblock: FakeSponsorBlock) -> 
     assert response.status_code == 502
     assert "SponsorBlock" in response.json()["detail"]
     assert client.get("/videos/not-an-id/segments").status_code == 422
-
-
-# Comments
-
-
-def test_comments(client: TestClient, gateway: FakeGateway) -> None:
-    gateway.add_comments(
-        VIDEO,
-        [
-            make_comment(
-                "c1",
-                text="Pinned by the uploader",
-                author="@wood",
-                author_channel_id="UC" + "w" * 22,
-                author_is_uploader=True,
-                is_pinned=True,
-                like_count=120,
-                published_at=datetime(2026, 9, 1, tzinfo=UTC),
-                published_text="1 month ago",
-            ),
-            make_comment("c2", published_at=None, published_text=None, like_count=None),
-        ],
-    )
-
-    response = client.get(f"/videos/{VIDEO}/comments")
-
-    assert response.status_code == 200
-    first, second = response.json()
-    assert first == {
-        "id": "c1",
-        "text": "Pinned by the uploader",
-        "author": "@wood",
-        "author_channel_id": "UC" + "w" * 22,
-        "author_thumbnail_url": None,
-        "author_is_uploader": True,
-        "like_count": 120,
-        "published_at": "2026-09-01T00:00:00.000Z",
-        "published_text": "1 month ago",
-        "is_pinned": True,
-        "is_hearted": False,
-    }
-    assert (second["id"], second["published_at"], second["like_count"]) == ("c2", None, None)
-    assert ("get_comments", VIDEO) in gateway.calls
-
-
-def test_comments_limit(client: TestClient, gateway: FakeGateway) -> None:
-    gateway.add_comments(VIDEO, [make_comment(f"c{i}") for i in range(5)])
-
-    response = client.get(f"/videos/{VIDEO}/comments", params={"limit": 2})
-
-    assert [c["id"] for c in response.json()] == ["c0", "c1"]
-    assert client.get(f"/videos/{VIDEO}/comments", params={"limit": 0}).status_code == 422
-    assert client.get(f"/videos/{VIDEO}/comments", params={"limit": 101}).status_code == 422
-
-
-def test_comments_off_is_an_empty_list(client: TestClient) -> None:
-    response = client.get("/videos/bbbbbbbbbbb/comments")
-    assert response.status_code == 200
-    assert response.json() == []
-
-
-def test_comments_errors(client: TestClient, gateway: FakeGateway) -> None:
-    assert client.get("/videos/ccccccccccc/comments").status_code == 404
-    gateway.fail("get_comments", VIDEO, ExtractionError("network down"))
-    assert client.get(f"/videos/{VIDEO}/comments").status_code == 502
-    assert client.get("/videos/not-an-id/comments").status_code == 422

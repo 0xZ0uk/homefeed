@@ -13,7 +13,6 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { AppShell } from "#/components/AppShell";
 import { Chapters } from "#/components/Chapters";
-import { Comments } from "#/components/Comments";
 import { PlayerMediaProvider } from "#/components/PlayerMedia";
 import { SaveToPlaylist } from "#/components/SaveToPlaylist";
 import { SponsorSkip } from "#/components/SponsorSkip";
@@ -32,9 +31,9 @@ import { videoQuery } from "#/server/videos";
 /**
  * The watch page: the player and the rating (prompted when the video ends or
  * when leaving, editable any time), then title, tags, channel, description,
- * chapters and comments (loaded only on demand). SponsorBlock segments are
- * skipped. It never autoplays and suggests nothing when the video ends. It
- * picks up where the last visit stopped (see `fetchResumePosition`).
+ * chapters. SponsorBlock segments are skipped. It never autoplays and suggests
+ * nothing when the video ends. It picks up where the last visit stopped (see
+ * `fetchResumePosition`).
  */
 export const Route = createFileRoute("/watch/$videoId")({
   loader: async ({ params, context: { queryClient } }) => {
@@ -81,58 +80,58 @@ function Watch() {
   const published = formatFeedDate(video.published_at?.slice(0, 10) ?? "");
 
   return (
-    <WatchShell>
-      <div className="flex min-w-0 flex-col gap-6">
-        <WatchAndRate
-          key={video.id}
-          videoId={video.id}
-          poster={video.thumbnail_url}
-          startAt={resumeAt}
-        >
-          <SponsorSkip videoId={video.id} />
-          <div className="flex flex-col gap-2">
-            <h2 className="text-xl leading-7 font-bold">{video.title}</h2>
-            <VideoTags videoId={video.id} tags={video.tags} />
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <span
-                aria-hidden="true"
-                className="flex size-10 shrink-0 items-center justify-center rounded-full font-medium text-white"
-                style={{ backgroundColor: channelColor(video.channel_id) }}
-              >
-                {video.channel_title.trim().charAt(0).toUpperCase()}
+    <WatchShell bare>
+      <WatchAndRate
+        key={video.id}
+        videoId={video.id}
+        poster={video.thumbnail_url}
+        startAt={resumeAt}
+        contentClassName={CONTENT_CLASS}
+        aside={
+          <aside className="flex min-w-0 flex-col gap-4">
+            <NextInQueue videoId={video.id} />
+            <Chapters chapters={video.chapters} />
+          </aside>
+        }
+      >
+        <SponsorSkip videoId={video.id} />
+        <div className="flex flex-col gap-2">
+          <h2 className="text-xl leading-tight font-bold">{video.title}</h2>
+          <VideoTags videoId={video.id} tags={video.tags} />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span
+              aria-hidden="true"
+              className="flex size-10 shrink-0 items-center justify-center rounded-full font-medium text-white"
+              style={{ backgroundColor: channelColor(video.channel_id) }}
+            >
+              {video.channel_title.trim().charAt(0).toUpperCase()}
+            </span>
+            <p className="flex min-w-0 flex-col">
+              <span className="truncate font-medium">
+                {video.channel_title}
               </span>
-              <p className="flex min-w-0 flex-col">
-                <span className="truncate font-medium">
-                  {video.channel_title}
+              {video.channel_handle && (
+                <span className="truncate text-xs text-muted-foreground">
+                  {video.channel_handle}
                 </span>
-                {video.channel_handle && (
-                  <span className="truncate text-xs text-muted-foreground">
-                    {video.channel_handle}
-                  </span>
-                )}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <QueueButton videoId={video.id} title={video.title} />
-              <SaveToPlaylist videoId={video.id} />
-            </div>
+              )}
+            </p>
           </div>
-          <Description
-            meta={[duration, video.published_at && published].filter(
-              (part): part is string => Boolean(part),
-            )}
-            stale={video.is_stale}
-            text={video.description}
-          />
-        </WatchAndRate>
-        <Comments videoId={video.id} />
-      </div>
-      <aside className="flex min-w-0 flex-col gap-4">
-        <NextInQueue videoId={video.id} />
-        <Chapters chapters={video.chapters} />
-      </aside>
+          <div className="flex flex-wrap items-center gap-2">
+            <QueueButton videoId={video.id} title={video.title} />
+            <SaveToPlaylist videoId={video.id} />
+          </div>
+        </div>
+        <Description
+          meta={[duration, video.published_at && published].filter(
+            (part): part is string => Boolean(part),
+          )}
+          stale={video.is_stale}
+          text={video.description}
+        />
+      </WatchAndRate>
     </WatchShell>
   );
 }
@@ -183,13 +182,25 @@ function Description({
   );
 }
 
-function WatchShell({ children }: { children: ReactNode }) {
+/** The padded, centered content area below the player (and the whole page for
+ * the not-found and error states). */
+const CONTENT_CLASS =
+  "mx-auto grid w-full max-w-6xl gap-6 px-4 pt-4 pb-24 sm:px-6 has-[>aside>*]:max-w-[110rem] xl:has-[>aside>*]:grid-cols-[minmax(0,1fr)_24rem]";
+
+/** `bare` leaves the content to span edge to edge (the player band); the
+ * children then pad themselves with `CONTENT_CLASS`. */
+function WatchShell({
+  children,
+  bare,
+}: {
+  children: ReactNode;
+  bare?: boolean;
+}) {
   return (
-    <AppShell
-      guide="drawer"
-      className="grid max-w-6xl gap-6 pt-4 has-[>aside>*]:max-w-[110rem] xl:has-[>aside>*]:grid-cols-[minmax(0,1fr)_24rem]"
-    >
-      <PlayerMediaProvider>{children}</PlayerMediaProvider>
+    <AppShell guide="drawer" className="max-w-none px-0 pt-0 pb-0 sm:px-0">
+      <PlayerMediaProvider>
+        {bare ? children : <div className={CONTENT_CLASS}>{children}</div>}
+      </PlayerMediaProvider>
     </AppShell>
   );
 }
