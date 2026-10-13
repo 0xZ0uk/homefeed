@@ -4,7 +4,6 @@ import { RefreshCw } from "lucide-react";
 import { Button } from "#/components/ui/button";
 import { cn } from "#/lib/utils";
 import {
-  feedHistoryQuery,
   feedQuery,
   rebuildFeed,
   todayFeedQuery,
@@ -29,12 +28,9 @@ export function RefreshFeedButton({
   const queryClient = useQueryClient();
   const refresh = useMutation({
     mutationFn: () => rebuildFeed(),
-    onSuccess: async (feed) => {
+    onSuccess: (feed) => {
       queryClient.setQueryData(todayFeedQuery.queryKey, feed);
       queryClient.setQueryData(feedQuery(feed.date).queryKey, feed);
-      await queryClient.invalidateQueries({
-        queryKey: feedHistoryQuery.queryKey,
-      });
     },
   });
 

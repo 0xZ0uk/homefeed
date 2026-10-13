@@ -1,15 +1,21 @@
 import type { ScoreBreakdownOut } from "@homefeed/api-client";
-import { ChevronDown, ChevronUp } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { Info } from "lucide-react";
+import { useId } from "react";
 
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "#/components/ui/popover";
 import { breakdownTerms, formatScore } from "#/lib/breakdown";
 
 /**
- * A feed item's one-line explanation, as a button that opens its full score
- * breakdown below it. A disclosure: the button reports `aria-expanded` and
- * controls the panel, which follows it in the tab order. Escape closes the
- * panel (returning focus to the button if it was inside), as does a click
- * anywhere else.
+ * An info button for the top-right of a feed card's thumbnail. Hovering it
+ * (or clicking, tapping, or pressing Enter/Space on it) opens a popover with
+ * the item's one-line explanation and its full score breakdown; Escape or
+ * moving away closes it. Like the card's menu, the button shows only on card
+ * hover on devices that hover, and always on touch screens. Its parent must
+ * be the card's `relative` thumbnail.
  */
 export function WhyThisPopover({
   explanation,
@@ -18,68 +24,32 @@ export function WhyThisPopover({
   explanation: string;
   breakdown: ScoreBreakdownOut;
 }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const panelId = useId();
   const headingId = useId();
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      if (rootRef.current?.contains(document.activeElement)) {
-        buttonRef.current?.focus();
-      }
-      setOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
-
   return (
-    <div ref={rootRef} className="relative min-w-0">
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => setOpen((value) => !value)}
-        className="rounded text-left underline decoration-dotted underline-offset-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+    <Popover>
+      <PopoverTrigger
+        openOnHover
+        delay={150}
+        closeDelay={100}
+        aria-label="Why this is here"
+        className="absolute top-1.5 right-1.5 z-10 flex size-7 items-center justify-center rounded-full bg-black/70 text-white outline-none hover:bg-black/85 focus-visible:ring-3 focus-visible:ring-ring/50 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/card:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100 [@media(hover:hover)]:data-popup-open:opacity-100"
       >
-        <span className="sr-only">Why this is here: </span>
-        {explanation}
-        {open ? (
-          <ChevronUp
-            aria-hidden="true"
-            className="ml-1 inline-block size-3.5 align-middle"
-          />
-        ) : (
-          <ChevronDown
-            aria-hidden="true"
-            className="ml-1 inline-block size-3.5 align-middle"
-          />
-        )}
-      </button>
-      <section
-        id={panelId}
-        aria-labelledby={headingId}
-        hidden={!open}
-        className="absolute top-full left-0 z-20 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-transparent bg-popover p-3 text-sm text-popover-foreground shadow-lg ring-1 ring-foreground/10"
+        <Info aria-hidden="true" className="size-4" />
+      </PopoverTrigger>
+      <PopoverContent
+        side="bottom"
+        align="end"
+        className="w-80 max-w-[calc(100vw-2rem)] gap-3 p-3"
       >
-        <h4 id={headingId} className="mb-2 text-sm font-semibold">
-          Score breakdown
-        </h4>
-        <BreakdownTable breakdown={breakdown} />
-      </section>
-    </div>
+        <p className="text-sm">{explanation}</p>
+        <section aria-labelledby={headingId}>
+          <h4 id={headingId} className="mb-2 text-sm font-semibold">
+            Score breakdown
+          </h4>
+          <BreakdownTable breakdown={breakdown} />
+        </section>
+      </PopoverContent>
+    </Popover>
   );
 }
 

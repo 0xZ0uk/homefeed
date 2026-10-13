@@ -9,8 +9,10 @@ first (and, in the worker, enriches the candidates: see homefeed_core.enricher);
 worker runs it daily at `FEED_REFRESH_TIME` and `POST /feed/refresh` can run it on
 demand. `get_feed` and `list_feeds` read feeds back with their items joined to video
 and channel info, each marked `watched` if the user has watched it since.
-`dismiss_feed_item` hides an item from the user with an optional reason; the video is
-then left out of every later feed and counts as a weak negative for training.
+`extend_feed` appends the next page of ranked picks to a stored feed (the "Show more"
+button), leaving out videos already in it. `dismiss_feed_item` hides an item from the
+user with an optional reason; the video is then left out of every later feed and counts
+as a weak negative for training.
 
 A date can have several feeds (each refresh adds one, so dismissals and what was shown
 stay on record); the feed for a date is the latest one built for it. Dates are local
@@ -163,6 +165,68 @@ def build_feed(
     settings = settings or get_settings()
     now = now or datetime.now(UTC)
     feed_date = feed_date or local_today(now)
+    slots, scored_count, model_version = _rank_and_compose(
+        session, settings=settings, rng=rng, now=now, exclude=()
+    )
+    feed_id = _create_feed(session, feed_date, model_version=model_version)
+    _store_items(session, feed_id, slots, offset=0)
+    feed = _get_feed_by_id(session, feed_id)
+    assert feed is not None
+    logger.info(
+        "Built feed for %s: %d items from %d, model version %s",
+        feed_date,
+        len(slots),
+        scored_count,
+        model_version or "none (rules-only)",
+    )
+    return feed
+
+
+def extend_feed(
+    session: Session,
+    feed_id: int,
+    *,
+    settings: Settings | None = None,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> Feed | None:
+    """Append the next `feed_size` ranked picks to a feed and return it, or None if
+    there is no such feed.
+
+    Videos already in the feed (dismissed ones included) are left out. When nothing new
+    is left the feed is returned unchanged. Only what the user asked to see is stored,
+    since insights count stored items as shown. The caller commits."""
+    feed = _get_feed_by_id(session, feed_id)
+    if feed is None:
+        return None
+    settings = settings or get_settings()
+    slots, _, _ = _rank_and_compose(
+        session,
+        settings=settings,
+        rng=rng,
+        now=now or datetime.now(UTC),
+        exclude={item.video_id for item in feed.items},
+    )
+    if not slots:
+        return feed
+    _store_items(session, feed_id, slots, offset=len(feed.items))
+    extended = _get_feed_by_id(session, feed_id)
+    assert extended is not None
+    logger.info("Extended feed %d with %d items", feed_id, len(slots))
+    return extended
+
+
+def _rank_and_compose(
+    session: Session,
+    *,
+    settings: Settings,
+    rng: random.Random | None,
+    now: datetime,
+    exclude: Collection[str],
+) -> tuple[list[FeedSlot], int, str | None]:
+    """Rank the candidate pool, drop `exclude`d videos and compose one page of
+    `feed_size` slots. Returns the slots, how many candidates were left after ranking
+    and the active model version (None when rules-only)."""
     curation = load_curation(session)
     pool = load_rank_candidates(session, since=now - timedelta(days=settings.feed_candidate_days))
     # Uploads of channels unsubscribed since they were polled no longer belong.
@@ -189,6 +253,8 @@ def build_feed(
         similarity_floor=floors.similarity_floor,
         topic_similarity_floor=floors.topic_similarity_floor,
     )
+    if exclude:
+        scored = [item for item in scored if item.candidate.video_id not in exclude]
     slots = compose(
         scored,
         curation,
@@ -197,18 +263,7 @@ def build_feed(
         videos=load_video_refs(session, referenced_video_ids(scored)),
         channel_ratings=load_channel_ratings(session),
     )
-    model_version = None if active is None else str(active.version.id)
-    feed_id = _store(session, feed_date, slots, model_version=model_version)
-    feed = _get_feed_by_id(session, feed_id)
-    assert feed is not None
-    logger.info(
-        "Built feed for %s: %d items from %d, model version %s",
-        feed_date,
-        len(slots),
-        len(scored),
-        model_version or "none (rules-only)",
-    )
-    return feed
+    return list(slots), len(scored), None if active is None else str(active.version.id)
 
 
 def _tag_confidences(
@@ -445,43 +500,46 @@ def load_rank_candidates(session: Session, *, since: datetime | None = None) -> 
     return result
 
 
-def _store(
-    session: Session, feed_date: date, slots: Sequence[FeedSlot], *, model_version: str | None
-) -> int:
-    feed_id = session.execute(
+def _create_feed(session: Session, feed_date: date, *, model_version: str | None) -> int:
+    return session.execute(
         text("INSERT INTO feeds (date, model_version) VALUES (:date, :model) RETURNING id"),
         {"date": feed_date.isoformat(), "model": model_version},
     ).scalar_one()
-    if slots:
-        session.execute(
-            text(
-                """
-                INSERT INTO feed_items (feed_id, video_id, position, source, source_detail,
-                                        score, breakdown, explanation, is_pinned,
-                                        is_exploration, selection_probability)
-                VALUES (:feed_id, :video_id, :position, :source, :source_detail,
-                        :score, :breakdown, :explanation, :is_pinned,
-                        :is_exploration, :selection_probability)
-                """
-            ),
-            [
-                {
-                    "feed_id": feed_id,
-                    "video_id": slot.item.candidate.video_id,
-                    "position": slot.position,
-                    "source": slot.item.candidate.source,
-                    "source_detail": slot.item.candidate.source_detail,
-                    "score": slot.item.score,
-                    "breakdown": json.dumps(slot.item.breakdown.to_dict()),
-                    "explanation": slot.explanation,
-                    "is_pinned": int(slot.is_pinned),
-                    "is_exploration": int(slot.is_exploration),
-                    "selection_probability": slot.selection_probability,
-                }
-                for slot in slots
-            ],
-        )
-    return feed_id
+
+
+def _store_items(session: Session, feed_id: int, slots: Sequence[FeedSlot], *, offset: int) -> None:
+    """Insert `slots` into a feed, their positions shifted by `offset` (the number of
+    items already there) so positions stay contiguous."""
+    if not slots:
+        return
+    session.execute(
+        text(
+            """
+            INSERT INTO feed_items (feed_id, video_id, position, source, source_detail,
+                                    score, breakdown, explanation, is_pinned,
+                                    is_exploration, selection_probability)
+            VALUES (:feed_id, :video_id, :position, :source, :source_detail,
+                    :score, :breakdown, :explanation, :is_pinned,
+                    :is_exploration, :selection_probability)
+            """
+        ),
+        [
+            {
+                "feed_id": feed_id,
+                "video_id": slot.item.candidate.video_id,
+                "position": offset + slot.position,
+                "source": slot.item.candidate.source,
+                "source_detail": slot.item.candidate.source_detail,
+                "score": slot.item.score,
+                "breakdown": json.dumps(slot.item.breakdown.to_dict()),
+                "explanation": slot.explanation,
+                "is_pinned": int(slot.is_pinned),
+                "is_exploration": int(slot.is_exploration),
+                "selection_probability": slot.selection_probability,
+            }
+            for slot in slots
+        ],
+    )
 
 
 _ITEM_SELECT = """

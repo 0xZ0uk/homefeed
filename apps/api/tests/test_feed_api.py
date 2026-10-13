@@ -324,3 +324,47 @@ def test_dismiss_rejects_bad_input(client: TestClient) -> None:
     assert client.post("/feed-items/0/dismiss").status_code == 422
     assert client.post("/feed-items/abc/dismiss").status_code == 422
     assert client.get("/feed/today").json()["items"][0]["dismissed_at"] is None
+
+
+def test_more_appends_new_picks_to_the_feed(client: TestClient) -> None:
+    seed()
+    feed = client.post("/feed/refresh").json()
+    with get_session_factory().begin() as session:
+        session.execute(
+            text(
+                "INSERT INTO videos (id, channel_id, title, published_at) "
+                "VALUES ('fresh000001', :channel, 'Fresh', :published)"
+            ),
+            {"channel": WOOD, "published": datetime.now(UTC).isoformat()},
+        )
+        record(session, ["fresh000001"], source=SUBSCRIPTION, source_detail=WOOD)
+
+    response = client.post(f"/feeds/{feed['id']}/more")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["id"] == feed["id"]
+    assert [item["position"] for item in body["items"]] == [0, 1, 2, 3, 4]
+    assert [item["video_id"] for item in body["items"][:4]] == [
+        item["video_id"] for item in feed["items"]
+    ]
+    assert body["items"][4]["video_id"] == "fresh000001"
+    assert client.get("/feed/today").json() == body
+
+
+def test_more_returns_the_feed_unchanged_when_nothing_is_left(client: TestClient) -> None:
+    seed()
+    feed = client.post("/feed/refresh").json()
+
+    response = client.post(f"/feeds/{feed['id']}/more")
+
+    assert response.status_code == 200
+    assert response.json() == feed
+
+
+def test_more_is_404_for_a_missing_feed(client: TestClient) -> None:
+    response = client.post("/feeds/999/more")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "No such feed"}
+    assert client.post("/feeds/0/more").status_code == 422

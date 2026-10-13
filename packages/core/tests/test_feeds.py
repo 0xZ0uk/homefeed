@@ -179,6 +179,55 @@ def test_feed_size_is_exact_with_enough_candidates(sessions: sessionmaker[Sessio
     assert len(feed.items) == 3
 
 
+def extend(sessions: sessionmaker[Session], feed_id: int, size: int) -> feeds.Feed | None:
+    with sessions.begin() as session:
+        return feeds.extend_feed(
+            session,
+            feed_id,
+            settings=Settings(feed_size=size, feed_exploration_slots=0),
+            rng=random.Random(0),
+            now=NOW,
+        )
+
+
+def test_extend_feed_appends_the_next_picks(sessions: sessionmaker[Session]) -> None:
+    feed = build(sessions, settings=Settings(feed_size=5, feed_exploration_slots=0))
+
+    extended = extend(sessions, feed.id, 5)
+
+    assert extended is not None
+    assert extended.id == feed.id
+    assert [item.video_id for item in extended.items[:5]] == [i.video_id for i in feed.items]
+    assert len(extended.items) == 10
+    assert [item.position for item in extended.items] == list(range(10))
+    video_ids = [item.video_id for item in extended.items]
+    assert len(set(video_ids)) == 10
+    with sessions.begin() as session:
+        assert feeds.get_feed(session, TODAY) == extended
+
+
+def test_extend_feed_returns_the_feed_unchanged_when_the_pool_is_exhausted(
+    sessions: sessionmaker[Session],
+) -> None:
+    feed = build(sessions, settings=Settings(feed_size=5, feed_exploration_slots=0))
+    for _ in range(10):
+        extended = extend(sessions, feed.id, 5)
+        assert extended is not None
+        if extended.items == feed.items:
+            break
+        feed = extended
+    else:
+        pytest.fail("The pool never ran out")
+
+    assert extend(sessions, feed.id, 5) == feed
+    assert len({item.video_id for item in feed.items}) == len(feed.items)
+    assert [item.position for item in feed.items] == list(range(len(feed.items)))
+
+
+def test_extend_feed_of_a_missing_feed_is_none(sessions: sessionmaker[Session]) -> None:
+    assert extend(sessions, 999, 5) is None
+
+
 def test_watched_and_dismissed_are_left_out(sessions: sessionmaker[Session]) -> None:
     with sessions.begin() as session:
         set_rating(session, vid(LOVED, 3), 6.3)

@@ -41,9 +41,11 @@ import {
   type FeedSort,
   type LengthFilter,
 } from "#/lib/feed-grid";
+import { cn } from "#/lib/utils";
 import {
   dismissItem,
   feedQuery,
+  loadMoreFeed,
   todayFeedQuery,
   type Feed,
   type FeedItem,
@@ -52,14 +54,14 @@ import {
 /**
  * A feed as a fixed, ordered grid of video cards, YouTube-style, with chips
  * to narrow it by length and a menu to sort it (ranked, the feed's own order,
- * by default). Every card links to its watch page and says why it's there,
- * expandable into its score breakdown; videos already watched are greyed
- * out. There is deliberately no pagination or "load more": the feed is the
- * whole grid.
+ * by default). Every card links to its watch page and has an info button on
+ * its thumbnail saying why it's there, with its score breakdown; videos
+ * already watched are greyed out. There is deliberately no infinite scroll: today's feed ends in a
+ * "Show more" button that appends the next page of picks when pressed.
  *
- * With `dismissible`, each card's menu can dismiss it (with an optional
- * reason) and dismissed items are hidden; otherwise they're shown, marked
- * dismissed.
+ * With `dismissible` (today's feed), each card's menu can dismiss it (with an
+ * optional reason) and dismissed items are hidden, and "Show more" is offered;
+ * otherwise items are shown, marked dismissed, and the feed is fixed.
  */
 export function FeedList({
   feed,
@@ -74,6 +76,7 @@ export function FeedList({
   const [sort, setSort] = useState<FeedSort>("ranked");
   const statusRef = useRef<HTMLParagraphElement>(null);
   const { status, dismiss } = useDismiss(feed, statusRef);
+  const more = useShowMore(feed);
 
   if (feed.items.length === 0) {
     return (
@@ -148,6 +151,70 @@ export function FeedList({
             />
           ))}
         </ol>
+      )}
+      {dismissible && <ShowMore more={more} />}
+    </div>
+  );
+}
+
+/**
+ * Appending the next page of picks to a stored feed. `exhausted` is set when
+ * a press added nothing, and lasts until the feed itself is replaced.
+ */
+function useShowMore(feed: Feed) {
+  const queryClient = useQueryClient();
+  const [exhaustedFeedId, setExhaustedFeedId] = useState<number | null>(null);
+  const [added, setAdded] = useState(0);
+
+  const mutation = useMutation({
+    mutationFn: () => loadMoreFeed({ data: { feedId: feed.id } }),
+    onSuccess: (next) => {
+      const count = next.items.length - feed.items.length;
+      setAdded(count);
+      setExhaustedFeedId(count > 0 ? null : feed.id);
+      queryClient.setQueryData(todayFeedQuery.queryKey, next);
+      queryClient.setQueryData(feedQuery(feed.date).queryKey, next);
+    },
+  });
+
+  return {
+    load: () => mutation.mutate(),
+    pending: mutation.isPending,
+    failed: mutation.isError,
+    exhausted: exhaustedFeedId === feed.id,
+    added: mutation.isSuccess ? added : 0,
+  };
+}
+
+/** The "Show more" button under the grid, with its outcome announced. */
+function ShowMore({ more }: { more: ReturnType<typeof useShowMore> }) {
+  return (
+    <div className="flex flex-col items-center gap-3 pb-6">
+      <p
+        role="status"
+        className={cn(
+          "text-sm empty:hidden",
+          more.failed ? "text-destructive" : "text-muted-foreground",
+        )}
+      >
+        {more.failed
+          ? "Couldn't load more videos. Try again."
+          : more.exhausted
+            ? "That's everything for today. Refresh the feed for new picks."
+            : more.added > 0
+              ? `Added ${more.added} more ${more.added === 1 ? "video" : "videos"}.`
+              : null}
+      </p>
+      {!more.exhausted && (
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={more.pending}
+          onClick={more.load}
+          className="rounded-lg px-6"
+        >
+          {more.pending ? "Loading…" : "Show more"}
+        </Button>
       )}
     </div>
   );
@@ -251,8 +318,9 @@ function useDismiss(
 }
 
 /**
- * One feed item as a card: its status icons and why it's here above the
- * picture, and a menu of actions beside the title (see `VideoCard`).
+ * One feed item as a card: its status icons and an info button (why it's
+ * here, with its score) over the thumbnail, and a menu of actions beside the
+ * title (see `VideoCard`).
  */
 function FeedCard({
   item,
@@ -271,18 +339,18 @@ function FeedCard({
       now={now}
       faded={Boolean(item.dismissed_at)}
       top={
+        <QueueStatus
+          message={queue.message}
+          className="mt-1 text-xs empty:hidden"
+        />
+      }
+      overlay={
         <>
-          <QueueStatus
-            message={queue.message}
-            className="mt-1 text-xs empty:hidden"
+          <StatusIcons item={item} />
+          <WhyThisPopover
+            explanation={item.explanation}
+            breakdown={item.breakdown}
           />
-          <div className="relative z-10 -mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-            <StatusIcons item={item} />
-            <WhyThisPopover
-              explanation={item.explanation}
-              breakdown={item.breakdown}
-            />
-          </div>
         </>
       }
       menu={<CardMenu item={item} queue={queue} onDismiss={onDismiss} />}
@@ -291,9 +359,9 @@ function FeedCard({
 }
 
 /**
- * A card's states as small icons, each named for screen readers and in a
- * tooltip: pinned, exploring (a channel you don't follow yet), watched,
- * dismissed.
+ * A card's states as small icons in a dark pill at the thumbnail's top-left,
+ * each named for screen readers and in a tooltip: pinned, exploring (a
+ * channel you don't follow yet), watched, dismissed.
  */
 function StatusIcons({ item }: { item: FeedItem }) {
   const statuses: { icon: LucideIcon; label: string }[] = [];
@@ -310,7 +378,7 @@ function StatusIcons({ item }: { item: FeedItem }) {
   }
   if (statuses.length === 0) return null;
   return (
-    <ul className="flex h-4 shrink-0 items-center gap-1.5">
+    <ul className="absolute top-1.5 left-1.5 flex items-center gap-1.5 rounded bg-black/70 px-1.5 py-1 text-white">
       {statuses.map(({ icon: Icon, label }) => (
         <li key={label} title={label}>
           <Icon aria-hidden="true" className="size-3.5" />
