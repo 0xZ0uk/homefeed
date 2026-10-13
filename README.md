@@ -1,6 +1,6 @@
 # Homefeed
 
-A self-hosted, single-user YouTube client with a finite daily home feed ranked by a model trained on tier-list ratings. See [PLAN.md](PLAN.md) for the full design and milestones.
+A self-hosted, single-user YouTube client with a finite daily home feed ranked by a model trained on 1 to 10 ratings. See [PLAN.md](PLAN.md) for the full design and milestones.
 
 ## Development
 

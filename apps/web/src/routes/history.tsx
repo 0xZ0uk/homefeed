@@ -12,6 +12,7 @@ import {
   progressFraction,
   type HistoryParams,
 } from "#/lib/history";
+import { formatScore } from "#/lib/scores";
 import { displayPrefsQuery } from "#/server/display";
 import { historyQuery, type HistoryEntry } from "#/server/history";
 
@@ -195,7 +196,9 @@ function EntryRow({
           {duration && !thumbnails && (
             <span className="tabular-nums">· {duration}</span>
           )}
-          {entry.grade && <span>· Rated {entry.grade}</span>}
+          {entry.score != null && (
+            <span>· Rated {formatScore(entry.score)}</span>
+          )}
         </p>
         <p className="flex flex-wrap gap-x-2 text-sm text-muted-foreground">
           <span>

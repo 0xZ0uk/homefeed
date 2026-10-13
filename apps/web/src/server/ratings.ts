@@ -2,15 +2,15 @@ import { deleteRating, getRating, rateVideo } from "@homefeed/api-client";
 import { queryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 
-import { isGrade, type Grade } from "#/lib/grades";
 import { isVideoId } from "#/lib/ids";
+import { isScore } from "#/lib/scores";
 import { apiClient, apiErrorMessage } from "#/server/api";
 
 /** Server functions for a video's rating (the watch page's prompt and editor). */
 
 export interface Rating {
   video_id: string;
-  grade: Grade;
+  score: number;
   value: number;
   rated_at: string;
   updated_at: string;
@@ -49,17 +49,17 @@ export const ratingQuery = (videoId: string) =>
   });
 
 export const saveRating = createServerFn({ method: "POST" })
-  .inputValidator((data: { videoId: string; grade: Grade }) => {
-    if (!isGrade(data.grade)) {
-      throw new Error(`Unknown grade ${String(data.grade)}`);
+  .inputValidator((data: { videoId: string; score: number }) => {
+    if (!isScore(data.score)) {
+      throw new Error(`Not a score from 1 to 10: ${String(data.score)}`);
     }
-    return { ...videoIdInput(data), grade: data.grade };
+    return { ...videoIdInput(data), score: data.score };
   })
   .handler(async ({ data }): Promise<Rating> => {
     const { data: rating } = await rateVideo({
       client: apiClient(),
       path: { video_id: data.videoId },
-      body: { grade: data.grade },
+      body: { score: data.score },
       throwOnError: true,
     });
     return rating;

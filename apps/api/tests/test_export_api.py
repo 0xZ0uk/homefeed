@@ -24,7 +24,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
 
 
 def test_export_downloads_all_areas(client: TestClient) -> None:
-    assert client.put(f"/ratings/{VIDEO}", json={"grade": "B+"}).status_code == 200
+    assert client.put(f"/ratings/{VIDEO}", json={"score": 6.6}).status_code == 200
     assert client.post("/keyword-mutes", json={"keyword": "crypto"}).status_code == 201
     watch = {"video_id": VIDEO, "event_type": "play", "position": 0, "duration": 300}
     assert client.post("/watch-events", json=watch).status_code == 201
@@ -39,7 +39,7 @@ def test_export_downloads_all_areas(client: TestClient) -> None:
     data = response.json()
     assert data["format"] == "homefeed-export"
     assert {"ratings", "curation", "feeds", "library", "settings"} <= data.keys()
-    assert [(r["video_id"], r["grade"]) for r in data["ratings"]] == [(VIDEO, "B+")]
+    assert [(r["video_id"], r["score"]) for r in data["ratings"]] == [(VIDEO, 6.6)]
     assert [m["keyword"] for m in data["curation"]["keyword_mutes"]] == ["crypto"]
     assert [e["event_type"] for e in data["library"]["watch_events"]] == ["play"]
     assert data["feeds"] == []

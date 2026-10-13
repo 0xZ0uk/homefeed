@@ -82,7 +82,7 @@ def test_lists_history_newest_first(client: TestClient) -> None:
     assert plane["last_watched_at"].endswith("Z")
     assert bread["finished"] is True
     assert bread["resume_position"] is None
-    assert bread["grade"] is None
+    assert bread["score"] is None
 
 
 @pytest.mark.usefixtures("watched")

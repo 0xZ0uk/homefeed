@@ -87,7 +87,7 @@ def test_history_lists_played_videos_newest_first(sessions: sessionmaker[Session
     record(sessions, "bbbbbbbbbbb", ("play", 0), ("ended", 600), minute=2)
     record(sessions, "ccccccccccc", ("close", 0), minute=3)  # opened, never played
     with sessions.begin() as session:
-        set_rating(session, "bbbbbbbbbbb", "A")
+        set_rating(session, "bbbbbbbbbbb", 7.8)
 
     with sessions() as session:
         entries = search_history(session)
@@ -98,12 +98,12 @@ def test_history_lists_played_videos_newest_first(sessions: sessionmaker[Session
     assert bread.channel_title == "Bread Lab"
     assert bread.finished
     assert bread.resume_position is None
-    assert bread.grade == "A"
+    assert bread.score == 7.8
     assert wood.finished is False
     assert wood.position == 120
     assert wood.resume_position == 120
     assert wood.duration == 600
-    assert wood.grade is None
+    assert wood.score is None
     assert wood.first_watched_at == "2026-10-12T10:01:00.000Z"
     assert wood.last_watched_at == "2026-10-12T10:01:01.000Z"
 

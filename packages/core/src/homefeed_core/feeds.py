@@ -49,7 +49,6 @@ from homefeed_core.config import Settings, get_settings
 from homefeed_core.db import get_session_factory
 from homefeed_core.embeddings import get_embeddings
 from homefeed_core.gateway.events import format_timestamp
-from homefeed_core.grades import is_bottom_tier, is_good, is_top_tier
 from homefeed_core.llm_tags import get_tags
 from homefeed_core.ranker import (
     ChannelCuration,
@@ -63,6 +62,7 @@ from homefeed_core.ranker import (
 )
 from homefeed_core.ranking_models import load_active_model, ranker_model
 from homefeed_core.ratings import list_ratings
+from homefeed_core.scores import is_bottom_tier, is_good, is_top_tier
 
 logger = logging.getLogger(__name__)
 
@@ -334,14 +334,14 @@ def load_history(session: Session) -> History:
 
 
 def load_channel_ratings(session: Session) -> dict[str, ChannelRatings]:
-    """Good (B-- or higher) and not-good rating counts per channel, for exploration."""
+    """Good (5.5 or higher) and not-good rating counts per channel, for exploration."""
     rows = session.execute(
-        text("SELECT v.channel_id, r.grade FROM ratings AS r JOIN videos AS v ON v.id = r.video_id")
+        text("SELECT v.channel_id, r.score FROM ratings AS r JOIN videos AS v ON v.id = r.video_id")
     )
     good: Counter[str] = Counter()
     not_good: Counter[str] = Counter()
-    for channel_id, grade in rows:
-        (good if is_good(grade) else not_good)[channel_id] += 1
+    for channel_id, score in rows:
+        (good if is_good(score) else not_good)[channel_id] += 1
     return {
         channel_id: ChannelRatings(good=good[channel_id], not_good=not_good[channel_id])
         for channel_id in good.keys() | not_good.keys()
@@ -356,31 +356,31 @@ def load_rated_tiers(session: Session) -> RatedTiers:
         top={
             r.video_id: embeddings[r.video_id]
             for r in ratings
-            if is_top_tier(r.grade) and r.video_id in embeddings
+            if is_top_tier(r.score) and r.video_id in embeddings
         },
         bottom={
             r.video_id: embeddings[r.video_id]
             for r in ratings
-            if is_bottom_tier(r.grade) and r.video_id in embeddings
+            if is_bottom_tier(r.score) and r.video_id in embeddings
         },
     )
 
 
 def load_video_refs(session: Session, video_ids: Collection[str]) -> dict[str, VideoRef]:
-    """Titles and grades (if rated) of stored videos, for explanations."""
+    """Titles and scores (if rated) of stored videos, for explanations."""
     if not video_ids:
         return {}
     rows = session.execute(
         text(
             """
-            SELECT v.id, v.title, r.grade
+            SELECT v.id, v.title, r.score
             FROM videos AS v LEFT JOIN ratings AS r ON r.video_id = v.id
             WHERE v.id IN :ids
             """
         ).bindparams(bindparam("ids", expanding=True)),
         {"ids": list(video_ids)},
     )
-    return {video_id: VideoRef(title, grade) for video_id, title, grade in rows}
+    return {video_id: VideoRef(title, score) for video_id, title, score in rows}
 
 
 def load_rank_candidates(session: Session, *, since: datetime | None = None) -> list[RankCandidate]:

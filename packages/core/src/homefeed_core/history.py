@@ -22,8 +22,6 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from homefeed_core.grades import Grade
-
 # Resuming within this many seconds of the start isn't worth it: start over.
 RESUME_MIN_SECONDS = 5.0
 # Stopping within this many seconds of the end counts as finished: start over.
@@ -47,7 +45,7 @@ class HistoryEntry:
     position: float  # seconds; where the latest event left playback
     finished: bool  # played to the end at least once
     resume_position: float | None  # seconds; None to start from the beginning
-    grade: Grade | None  # the video's rating, if any
+    score: float | None  # the video's rating, if any
 
 
 def resume_position(last_event_type: str, position: float, duration: float | None) -> float | None:
@@ -80,7 +78,7 @@ _QUERY = """
     )
     SELECT w.video_id, v.title, v.channel_id, c.title, v.thumbnail_url,
            coalesce(v.duration_seconds, l.duration), w.first_at, w.last_at,
-           l.position, w.finished, l.event_type, l.duration, r.grade
+           l.position, w.finished, l.event_type, l.duration, r.score
     FROM watched AS w
     JOIN latest AS l ON l.video_id = w.video_id
     LEFT JOIN videos AS v ON v.id = w.video_id
@@ -110,7 +108,7 @@ def _entries(session: Session, video_id: str | None = None) -> list[HistoryEntry
         finished,
         last_type,
         last_duration,
-        grade,
+        score,
     ) in rows:
         entries.append(
             HistoryEntry(
@@ -127,7 +125,7 @@ def _entries(session: Session, video_id: str | None = None) -> list[HistoryEntry
                 resume_position=resume_position(
                     last_type, position, duration if duration is not None else last_duration
                 ),
-                grade=grade,
+                score=score,
             )
         )
     return entries

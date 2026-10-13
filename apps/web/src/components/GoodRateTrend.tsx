@@ -21,11 +21,11 @@ const BOX: ChartBox = {
 const GRID = [0, 0.25, 0.5, 0.75, 1];
 
 /**
- * Weekly good-tier rate as a line chart (inline SVG). Weeks without ratings
+ * Weekly good rate as a line chart (inline SVG). Weeks without ratings
  * break the line. Hovering a week shows its numbers; the same numbers are in
  * the table on the insights page for keyboard and screen-reader users.
  */
-export function GoodTierTrend({ weeks }: { weeks: readonly WeekInsights[] }) {
+export function GoodRateTrend({ weeks }: { weeks: readonly WeekInsights[] }) {
   const titleId = useId();
   const descId = useId();
   const [hovered, setHovered] = useState<number | null>(null);
@@ -50,14 +50,14 @@ export function GoodTierTrend({ weeks }: { weeks: readonly WeekInsights[] }) {
         className="h-auto w-full overflow-visible text-muted-foreground"
         onMouseLeave={() => setHovered(null)}
       >
-        <title id={titleId}>Weekly good-tier rate</title>
+        <title id={titleId}>Weekly good rate</title>
         <desc id={descId}>
           {rated.length === 0
             ? "No ratings in these weeks yet."
             : rated
                 .map(
                   ({ week }) =>
-                    `Week of ${formatWeek(week.week_start)}: ${formatPercent(week.good_tier_rate)}`,
+                    `Week of ${formatWeek(week.week_start)}: ${formatPercent(week.good_rate)}`,
                 )
                 .join("; ")}
         </desc>
@@ -138,7 +138,7 @@ export function GoodTierTrend({ weeks }: { weeks: readonly WeekInsights[] }) {
             fontWeight={600}
             className="fill-foreground"
           >
-            {formatPercent(latest.week.good_tier_rate)}
+            {formatPercent(latest.week.good_rate)}
           </text>
         )}
         {points.map(({ x, week }, index) => (
@@ -156,9 +156,9 @@ export function GoodTierTrend({ weeks }: { weeks: readonly WeekInsights[] }) {
       <p className="min-h-5 text-sm text-muted-foreground" aria-hidden="true">
         {active
           ? `Week of ${formatWeek(active.week.week_start)}: ${
-              active.week.good_tier_rate == null
+              active.week.good_rate == null
                 ? "no ratings"
-                : `${formatPercent(active.week.good_tier_rate)} good (${active.week.good_count} of ${plural(active.week.rated_count, "rating")})`
+                : `${formatPercent(active.week.good_rate)} good (${active.week.good_count} of ${plural(active.week.rated_count, "rating")})`
             }`
           : "Hover a week for its numbers."}
       </p>

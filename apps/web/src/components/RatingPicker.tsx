@@ -1,39 +1,33 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 
+import { ScoreSlider } from "#/components/ScoreSlider";
 import { Button } from "#/components/ui/button";
-import {
-  MODIFIERS,
-  TIERS,
-  composeGrade,
-  splitGrade,
-  type Grade,
-  type Tier,
-} from "#/lib/grades";
+import { formatScore } from "#/lib/scores";
 
 interface RatingPickerProps {
   title: string;
-  /** The video's current grade, highlighted. */
-  current: Grade | null;
-  /** Save a grade. Rejecting shows an error and keeps the picker open. */
-  onRate: (grade: Grade) => Promise<void>;
+  /** The video's current score, where the slider starts. */
+  current: number | null;
+  /** Save a score. Rejecting shows an error and keeps the picker open. */
+  onRate: (score: number) => Promise<void>;
   /** Close the picker: after rating (`rated`) or without rating (skip). */
   onClose: (rated: boolean) => void;
   /** Label of the button that closes without rating, e.g. "Skip". */
   skipLabel?: string;
-  /** Label of the button that closes after picking a tier, e.g. "Done". */
-  doneLabel?: string;
-  /** Move focus into the picker when it appears (for prompts). */
+  /** Label of the button that saves and closes, given the formatted score. */
+  submitLabel?: (score: string) => string;
+  /** Move focus to the slider when the picker appears (for prompts). */
   autoFocus?: boolean;
   /** An extra way out that neither rates nor skips, e.g. "Keep watching". */
   cancel?: { label: string; onCancel: () => void };
 }
 
-const BUTTON =
-  "h-10 min-w-12 px-4 font-semibold aria-pressed:bg-primary aria-pressed:text-primary-foreground disabled:opacity-60";
+/** Where the slider starts for an unrated video: the middle of the scale. */
+const UNRATED_START = 5.5;
 
 /**
- * Tier-list rating in one tap: S/A/B/C/D/F saves the plain tier right away.
- * A second, optional tap refines it with ++/+/-/-- and closes the picker.
+ * A 1 to 10 rating: pick the score on the slider, then save it, which closes
+ * the picker. Nothing is saved until then.
  */
 export function RatingPicker({
   title,
@@ -41,117 +35,75 @@ export function RatingPicker({
   onRate,
   onClose,
   skipLabel = "Skip",
-  doneLabel = "Done",
+  submitLabel = (score) => `Save ${score}`,
   autoFocus = false,
   cancel,
 }: RatingPickerProps) {
   const titleId = useId();
-  const firstButton = useRef<HTMLButtonElement>(null);
-  const [tier, setTier] = useState<Tier | null>(null);
+  const slider = useRef<HTMLInputElement>(null);
+  const [score, setScore] = useState(current ?? UNRATED_START);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const currentParts = current ? splitGrade(current) : null;
 
   useEffect(() => {
-    if (autoFocus) firstButton.current?.focus();
+    if (!autoFocus) return;
+    // The thumb stays hidden until the slider has measured where it goes, and
+    // a hidden input can't take focus, so wait a frame.
+    const frame = requestAnimationFrame(() => slider.current?.focus());
+    return () => cancelAnimationFrame(frame);
   }, [autoFocus]);
 
-  const save = async (grade: Grade): Promise<boolean> => {
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
     setSaving(true);
     setError(null);
     try {
-      await onRate(grade);
-      return true;
+      await onRate(score);
     } catch {
       setError("Couldn't save the rating. Try again.");
-      return false;
-    } finally {
       setSaving(false);
+      return;
     }
-  };
-
-  const pickTier = async (picked: Tier) => {
-    if (await save(composeGrade(picked))) setTier(picked);
-  };
-
-  const pickModifier = async (grade: Grade) => {
-    if (await save(grade)) onClose(true);
+    setSaving(false);
+    onClose(true);
   };
 
   return (
-    <section
+    <form
       aria-labelledby={titleId}
+      onSubmit={(event) => void submit(event)}
       className="flex flex-col gap-3 rounded-xl bg-secondary/60 p-4"
     >
       <h3 id={titleId} className="font-semibold">
         {title}
       </h3>
-      <div role="group" aria-label="Tier" className="flex flex-wrap gap-2">
-        {TIERS.map((t, index) => (
-          <Button
-            key={t}
-            ref={index === 0 ? firstButton : undefined}
-            type="button"
-            variant="secondary"
-            size="lg"
-            className={BUTTON}
-            disabled={saving}
-            aria-pressed={(tier ?? currentParts?.tier) === t}
-            onClick={() => void pickTier(t)}
-          >
-            {t}
-          </Button>
-        ))}
-      </div>
-      {tier && (
-        <div
-          role="group"
-          aria-label={`Refine ${tier} (optional)`}
-          className="flex flex-wrap items-center gap-2"
+      <ScoreSlider
+        value={score}
+        onValueChange={setScore}
+        label="Score"
+        disabled={saving}
+        inputRef={slider}
+        className="max-w-xl pt-6"
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="submit"
+          size="lg"
+          className="px-4 tabular-nums"
+          disabled={saving}
         >
-          {MODIFIERS.map((modifier) => {
-            const grade = composeGrade(tier, modifier);
-            return (
-              <Button
-                key={modifier}
-                type="button"
-                variant="secondary"
-                size="lg"
-                className={BUTTON}
-                disabled={saving}
-                aria-pressed={current === grade}
-                onClick={() => void pickModifier(grade)}
-              >
-                {grade}
-              </Button>
-            );
-          })}
-        </div>
-      )}
-      <div className="flex flex-wrap items-center gap-4">
-        {tier ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="lg"
-            className="px-4"
-            disabled={saving}
-            onClick={() => onClose(true)}
-          >
-            {doneLabel}
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            variant="ghost"
-            size="lg"
-            className="px-4"
-            disabled={saving}
-            onClick={() => onClose(false)}
-          >
-            {skipLabel}
-          </Button>
-        )}
+          {submitLabel(formatScore(score))}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="lg"
+          className="px-4"
+          disabled={saving}
+          onClick={() => onClose(false)}
+        >
+          {skipLabel}
+        </Button>
         {cancel && (
           <Button
             type="button"
@@ -164,11 +116,10 @@ export function RatingPicker({
             {cancel.label}
           </Button>
         )}
-        <p aria-live="polite" className="text-sm text-muted-foreground">
-          {error ??
-            (tier ? `Saved ${current ?? tier}. Add a + or - if you like.` : "")}
+        <p aria-live="polite" className="text-sm text-destructive">
+          {error}
         </p>
       </div>
-    </section>
+    </form>
   );
 }

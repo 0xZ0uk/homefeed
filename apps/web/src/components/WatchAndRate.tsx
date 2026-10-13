@@ -12,7 +12,7 @@ import {
 import { Button } from "#/components/ui/button";
 import { RatingPicker } from "#/components/RatingPicker";
 import { VideoPlayer, type VideoPlayerHandle } from "#/components/VideoPlayer";
-import type { Grade } from "#/lib/grades";
+import { formatScore } from "#/lib/scores";
 import type { WatchEvent } from "#/lib/player-events";
 import { createWatchEventReporter, sendWatchEvent } from "#/lib/watch-reporter";
 import { ratingQuery, removeRating, saveRating } from "#/server/ratings";
@@ -48,7 +48,7 @@ export function WatchAndRate({
 }: WatchAndRateProps) {
   const queryClient = useQueryClient();
   const { data: rating, isError } = useQuery(ratingQuery(videoId));
-  const grade = rating?.grade ?? null;
+  const score = rating?.score ?? null;
   const player = useRef<VideoPlayerHandle>(null);
   const [endedPrompt, setEndedPrompt] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -58,8 +58,8 @@ export function WatchAndRate({
   const rated = useRef(false);
 
   useEffect(() => {
-    rated.current = grade !== null;
-  }, [grade]);
+    rated.current = score !== null;
+  }, [score]);
 
   const reporter = useMemo(
     () =>
@@ -91,8 +91,8 @@ export function WatchAndRate({
     if (leaving) player.current?.pause();
   }, [leaving]);
 
-  const rate = async (picked: Grade) => {
-    const saved = await saveRating({ data: { videoId, grade: picked } });
+  const rate = async (picked: number) => {
+    const saved = await saveRating({ data: { videoId, score: picked } });
     queryClient.setQueryData(ratingQuery(videoId).queryKey, saved);
   };
 
@@ -113,11 +113,13 @@ export function WatchAndRate({
       <RatingPicker
         key={leaving ? "leaving" : "ended"}
         title={leaving ? "Rate it before you go?" : "How was it?"}
-        current={grade}
+        current={score}
         onRate={rate}
         onClose={closePrompt}
         skipLabel="Skip"
-        doneLabel={leaving ? "Continue" : "Done"}
+        submitLabel={
+          leaving ? (score) => `Save ${score} and continue` : undefined
+        }
         cancel={
           leaving
             ? { label: "Keep watching", onCancel: () => blocker.reset() }
@@ -129,8 +131,8 @@ export function WatchAndRate({
   } else if (editing) {
     panel = (
       <RatingPicker
-        title={grade ? "Change your rating" : "Rate this video"}
-        current={grade}
+        title={score !== null ? "Change your rating" : "Rate this video"}
+        current={score}
         onRate={rate}
         onClose={() => setEditing(false)}
         skipLabel="Cancel"
@@ -140,7 +142,7 @@ export function WatchAndRate({
   } else {
     panel = (
       <YourRating
-        grade={grade}
+        score={score}
         loadFailed={isError}
         onEdit={() => setEditing(true)}
         onRemove={remove}
@@ -164,12 +166,12 @@ export function WatchAndRate({
 }
 
 function YourRating({
-  grade,
+  score,
   loadFailed,
   onEdit,
   onRemove,
 }: {
-  grade: Grade | null;
+  score: number | null;
   loadFailed: boolean;
   onEdit: () => void;
   onRemove: () => Promise<void>;
@@ -188,9 +190,12 @@ function YourRating({
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-secondary/60 px-4 py-3">
       <p className="mr-auto">
-        {grade ? (
+        {score !== null ? (
           <>
-            Your rating: <strong className="text-lg">{grade}</strong>
+            Your rating:{" "}
+            <strong className="text-lg tabular-nums">
+              {formatScore(score)}
+            </strong>
           </>
         ) : loadFailed ? (
           "Couldn't load your rating."
@@ -205,9 +210,9 @@ function YourRating({
         className="px-4"
         onClick={onEdit}
       >
-        {grade ? "Change" : "Rate"}
+        {score !== null ? "Change" : "Rate"}
       </Button>
-      {grade && (
+      {score !== null && (
         <Button
           type="button"
           variant="ghost"

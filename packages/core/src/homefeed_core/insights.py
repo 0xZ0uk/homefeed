@@ -2,9 +2,10 @@
 
 Weeks run Monday to Sunday in local time, like feed dates. For each week:
 
-- Good-tier rate: of the videos first rated that week (by `rated_at`), the share whose
-  current grade is B-- or higher (`grades.is_good`). None when nothing was rated.
-- Tier distribution: those same ratings counted per tier (F to S).
+- Good rate: of the videos first rated that week (by `rated_at`), the share whose
+  current score is 5.5 or higher (`scores.is_good`). None when nothing was rated.
+- Score distribution: those same ratings counted per whole score, 1 to 10
+  (`scores.score_bucket`: 6.5 counts as 7).
 - Rating rate: of the distinct videos shown that week, the share that have been rated
   (at any time). "Shown" means an item of the feed of record for a date in the week, the
   latest feed built that day (as `feeds.get_feed` serves it); dismissed items count as
@@ -31,7 +32,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from homefeed_core.feeds import local_today
-from homefeed_core.grades import TIERS, Grade, is_good
+from homefeed_core.scores import is_good, score_bucket
 
 DEFAULT_WEEKS = 12
 MAX_WEEKS = 104
@@ -40,7 +41,7 @@ MAX_WEEKS = 104
 @dataclass(frozen=True)
 class RatedVideo:
     video_id: str
-    grade: Grade
+    score: float
     rated_on: date  # local date of the first rating
 
 
@@ -56,8 +57,8 @@ class ShownItem:
 
 
 @dataclass(frozen=True)
-class TierCount:
-    tier: str  # F, D, C, B, A or S
+class ScoreCount:
+    score: int  # whole score, 1 to 10
     count: int
 
 
@@ -75,8 +76,8 @@ class WeekInsights:
     week_start: date  # Monday
     rated_count: int
     good_count: int
-    good_tier_rate: float | None
-    tier_counts: list[TierCount]  # best tier (S) first
+    good_rate: float | None
+    score_counts: list[ScoreCount]  # best score (10) first
     shown_count: int  # distinct videos shown
     shown_rated_count: int
     rating_rate: float | None
@@ -110,10 +111,10 @@ def summarize_weeks(
 
 
 def _week(start: date, ratings: Sequence[RatedVideo], shown: Sequence[ShownItem]) -> WeekInsights:
-    good = sum(1 for rating in ratings if is_good(rating.grade))
-    per_tier = {tier: 0 for tier in TIERS}
+    good = sum(1 for rating in ratings if is_good(rating.score))
+    per_score = dict.fromkeys(range(10, 0, -1), 0)
     for rating in ratings:
-        per_tier[rating.grade[0]] += 1
+        per_score[score_bucket(rating.score)] += 1
     rated_by_video: dict[str, bool] = {}
     for item in shown:
         rated_by_video[item.video_id] = rated_by_video.get(item.video_id, False) or item.rated
@@ -123,8 +124,8 @@ def _week(start: date, ratings: Sequence[RatedVideo], shown: Sequence[ShownItem]
         week_start=start,
         rated_count=len(ratings),
         good_count=good,
-        good_tier_rate=good / len(ratings) if ratings else None,
-        tier_counts=[TierCount(tier, per_tier[tier]) for tier in reversed(TIERS)],
+        good_rate=good / len(ratings) if ratings else None,
+        score_counts=[ScoreCount(score, count) for score, count in per_score.items()],
         shown_count=len(rated_by_video),
         shown_rated_count=shown_rated,
         rating_rate=shown_rated / len(rated_by_video) if rated_by_video else None,
@@ -172,12 +173,12 @@ def load_rated_videos(
     """Ratings first made on or after local date `since` (and those a day before, which
     a time zone may still put on it; `summarize_weeks` drops the rest)."""
     rows = session.execute(
-        text("SELECT video_id, grade, rated_at FROM ratings WHERE rated_at >= :since"),
+        text("SELECT video_id, score, rated_at FROM ratings WHERE rated_at >= :since"),
         {"since": (since - timedelta(days=1)).isoformat()},
     )
     return [
-        RatedVideo(video_id, grade, datetime.fromisoformat(rated_at).astimezone(tz).date())
-        for video_id, grade, rated_at in rows
+        RatedVideo(video_id, score, datetime.fromisoformat(rated_at).astimezone(tz).date())
+        for video_id, score, rated_at in rows
     ]
 
 

@@ -24,7 +24,6 @@ from homefeed_core.config import Settings
 from homefeed_core.db import open_database
 from homefeed_core.gateway import ExtractionError, RateLimitedError, UnavailableError
 from homefeed_core.gateway.fake import FakeGateway, make_channel, make_video
-from homefeed_core.grades import Grade
 from homefeed_core.ratings import set_rating
 
 CHANNEL = "UC" + "c" * 22
@@ -224,10 +223,10 @@ SEED_CHANNEL = make_channel(CHANNEL, title="C")
 RELATED_CHANNEL = make_channel(OTHER, title="Other", handle="@other")
 
 
-def rate(sessions: sessionmaker[Session], ratings: dict[str, Grade]) -> None:
+def rate(sessions: sessionmaker[Session], ratings: dict[str, float]) -> None:
     with sessions.begin() as session:
-        for video_id, grade in ratings.items():
-            set_rating(session, video_id, grade)
+        for video_id, score in ratings.items():
+            set_rating(session, video_id, score)
             # Ratings made one after another, in order.
             session.execute(
                 text("UPDATE ratings SET rated_at = :at WHERE video_id = :id"),
@@ -246,14 +245,14 @@ def related_gateway(related: dict[str, list[str]]) -> FakeGateway:
     return gateway
 
 
-def test_top_tier_seeds_use_the_grade_scale(sessions: sessionmaker[Session]) -> None:
+def test_top_tier_seeds_use_the_score_scale(sessions: sessionmaker[Session]) -> None:
     rate(
         sessions,
-        {"aaaaaaaaaaa": "A--", "bbbbbbbbbbb": "B++", "ccccccccccc": "S++", "zzzzzzzzzzz": "A"},
+        {"aaaaaaaaaaa": 7.0, "bbbbbbbbbbb": 6.9, "ccccccccccc": 10.0, "zzzzzzzzzzz": 7.8},
     )
 
     with sessions() as session:
-        # Most recently rated first (the order above); B++ is just below the top tier.
+        # Most recently rated first (the order above); 6.9 is just below the top tier.
         assert top_tier_video_ids(session) == ["aaaaaaaaaaa", "ccccccccccc", "zzzzzzzzzzz"]
         assert top_tier_video_ids(session, limit=1) == ["aaaaaaaaaaa"]
 
@@ -261,7 +260,7 @@ def test_top_tier_seeds_use_the_grade_scale(sessions: sessionmaker[Session]) -> 
 def test_related_videos_of_top_tier_ratings_are_attributed_to_their_seed(
     sessions: sessionmaker[Session],
 ) -> None:
-    rate(sessions, {"aaaaaaaaaaa": "A+", "bbbbbbbbbbb": "C", "ccccccccccc": "S"})
+    rate(sessions, {"aaaaaaaaaaa": 8.1, "bbbbbbbbbbb": 4.7, "ccccccccccc": 9.4})
     gateway = related_gateway(
         {
             "aaaaaaaaaaa": ["ddddddddddd", "eeeeeeeeeee", "ccccccccccc"],  # c is rated
@@ -292,7 +291,7 @@ def test_related_videos_of_top_tier_ratings_are_attributed_to_their_seed(
 
 
 def test_related_source_skips_failing_seeds(sessions: sessionmaker[Session]) -> None:
-    rate(sessions, {"aaaaaaaaaaa": "A", "bbbbbbbbbbb": "A"})
+    rate(sessions, {"aaaaaaaaaaa": 7.8, "bbbbbbbbbbb": 7.8})
     gateway = related_gateway({"aaaaaaaaaaa": ["ddddddddddd"], "bbbbbbbbbbb": ["eeeeeeeeeee"]})
     gateway.fail("get_related", "aaaaaaaaaaa", UnavailableError("removed"))
 
@@ -302,7 +301,7 @@ def test_related_source_skips_failing_seeds(sessions: sessionmaker[Session]) -> 
 
 
 def test_related_source_fails_when_every_seed_fails(sessions: sessionmaker[Session]) -> None:
-    rate(sessions, {"aaaaaaaaaaa": "A", "bbbbbbbbbbb": "A"})
+    rate(sessions, {"aaaaaaaaaaa": 7.8, "bbbbbbbbbbb": 7.8})
     gateway = related_gateway({"aaaaaaaaaaa": ["ddddddddddd"], "bbbbbbbbbbb": ["eeeeeeeeeee"]})
     for seed in ("aaaaaaaaaaa", "bbbbbbbbbbb"):
         gateway.fail("get_related", seed, ExtractionError("blocked"))
@@ -317,7 +316,7 @@ def test_related_source_fails_when_every_seed_fails(sessions: sessionmaker[Sessi
 def test_related_source_without_top_tier_ratings_finds_nothing(
     sessions: sessionmaker[Session],
 ) -> None:
-    rate(sessions, {"aaaaaaaaaaa": "B"})
+    rate(sessions, {"aaaaaaaaaaa": 6.3})
     gateway = related_gateway({"aaaaaaaaaaa": ["ddddddddddd"]})
 
     assert RelatedVideosSource(sessions, gateway).fetch() == []
@@ -325,7 +324,7 @@ def test_related_source_without_top_tier_ratings_finds_nothing(
 
 
 def test_feed_items_keep_the_related_seed(sessions: sessionmaker[Session]) -> None:
-    rate(sessions, {"aaaaaaaaaaa": "A+"})
+    rate(sessions, {"aaaaaaaaaaa": 8.1})
     gateway = related_gateway({"aaaaaaaaaaa": ["ddddddddddd"]})
     now = datetime.now(UTC)
     generate([RelatedVideosSource(sessions, gateway)], sessions=sessions, now=now)

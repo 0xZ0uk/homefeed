@@ -3,7 +3,7 @@
 The export is one JSON object: a header (`format`, `version`, `schema_version`,
 `exported_at`) followed by the data, grouped by area:
 
-- `ratings`: every tier-list rating, with the video's title and channel when known.
+- `ratings`: every 1 to 10 rating, with the video's title and channel when known.
 - `curation`: subscribed channels with their prefs, topics, keyword mutes, saved
   searches and external sources.
 - `feeds`: every feed built, with its items (score breakdown, explanation, dismissals).
@@ -140,7 +140,7 @@ SECTIONS: list[ExportSection] = [
         ("ratings",),
         _rows(
             """
-            SELECT r.video_id, r.grade, r.value, r.rated_at, r.updated_at,
+            SELECT r.video_id, r.score, r.value, r.rated_at, r.updated_at,
                    v.title, v.channel_id, c.title AS channel_title
             FROM ratings AS r
             LEFT JOIN videos AS v ON v.id = r.video_id
