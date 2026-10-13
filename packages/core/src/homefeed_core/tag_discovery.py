@@ -26,6 +26,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
+from homefeed_core import channel_hides
 from homefeed_core.candidates import TAG, FoundVideo
 from homefeed_core.curation import list_topics
 from homefeed_core.gateway import MAX_SEARCH_LIMIT, Gateway
@@ -146,7 +147,7 @@ class TagDiscoverySource:
                     todo.append((tag, remaining))
             muted = set(
                 session.execute(text("SELECT channel_id FROM channel_prefs WHERE muted")).scalars()
-            )
+            ) | channel_hides.blocked_channel_ids(session)
             known = set(session.execute(text("SELECT id FROM videos")).scalars())
         found: list[FoundVideo] = []
         outcomes: list[SearchOutcome] = []

@@ -146,6 +146,8 @@ def channel_from_info(info: Info) -> Channel:
         url=channel_url(channel_id),
         thumbnail_url=_channel_avatar(info),
         description=_str(info, "description"),
+        banner_url=_channel_banner(info),
+        subscriber_count=_int(info, "channel_follower_count"),
     )
 
 
@@ -532,6 +534,23 @@ def _channel_avatar(info: Info) -> str | None:
             if _str(thumb, "id") == "avatar_uncropped":
                 return _str(thumb, "url")
     return None
+
+
+def _channel_banner(info: Info) -> str | None:
+    """The `banner_uncropped` thumbnail, else the widest one whose id starts with
+    "banner"."""
+    banners: list[Info] = []
+    for raw in _list(info, "thumbnails"):
+        if isinstance(raw, Mapping):
+            thumb = cast(Info, raw)
+            thumb_id = _str(thumb, "id") or ""
+            if thumb_id == "banner_uncropped":
+                return _str(thumb, "url")
+            if thumb_id.startswith("banner") and _str(thumb, "url"):
+                banners.append(thumb)
+    if not banners:
+        return None
+    return _str(max(banners, key=lambda thumb: _int(thumb, "width") or 0), "url")
 
 
 def _require_str(info: Info, key: str) -> str:

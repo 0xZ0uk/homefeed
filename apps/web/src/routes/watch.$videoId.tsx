@@ -109,9 +109,13 @@ function Watch() {
               {video.channel_title.trim().charAt(0).toUpperCase()}
             </span>
             <p className="flex min-w-0 flex-col">
-              <span className="truncate font-medium">
+              <Link
+                to="/channels/$channelId"
+                params={{ channelId: video.channel_id }}
+                className="truncate font-medium hover:underline"
+              >
                 {video.channel_title}
-              </span>
+              </Link>
               {video.channel_handle && (
                 <span className="truncate text-xs text-muted-foreground">
                   {video.channel_handle}

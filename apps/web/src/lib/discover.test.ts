@@ -4,6 +4,8 @@ import {
   channelUrl,
   featuredByText,
   formatSubscribers,
+  hiddenMessage,
+  hideKindLabel,
   isChannelId,
 } from "./discover";
 
@@ -61,5 +63,18 @@ describe("channel ids", () => {
     expect(isChannelId(id)).toBe(true);
     expect(isChannelId("@veritasium")).toBe(false);
     expect(isChannelId(`${id}/videos`)).toBe(false);
+  });
+});
+
+describe("hide texts", () => {
+  it("words the status line and the settings label per kind", () => {
+    expect(hiddenMessage("dismissed", "Veritasium")).toBe(
+      "Dismissed Veritasium.",
+    );
+    expect(hiddenMessage("blocked", "Veritasium")).toBe(
+      "Veritasium's videos won't show in your feed.",
+    );
+    expect(hideKindLabel("dismissed")).toBe("Dismissed from Discover");
+    expect(hideKindLabel("blocked")).toBe("Hidden from feed");
   });
 });

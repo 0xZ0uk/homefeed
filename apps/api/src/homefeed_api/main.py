@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from homefeed_core import (
     channel_graph,
+    channel_hides,
     curation,
     exporter,
     external_sources,
@@ -64,6 +65,7 @@ from homefeed_core.gateway import (
     SearchUploadDate,
     UnavailableError,
     UnsupportedUrlError,
+    UploadSummary,
     create_gateway,
 )
 from homefeed_core.gateway.events import format_timestamp
@@ -1841,6 +1843,64 @@ class ChannelUploadsOut(BaseModel):
     videos: list[UploadOut] = Field(description="Newest first")
 
 
+class ChannelProfileOut(BaseModel):
+    channel_id: str
+    title: str
+    handle: str | None
+    url: str | None
+    thumbnail_url: str | None
+    banner_url: str | None
+    description: str | None
+    subscriber_count: int | None
+    subscribed: bool
+    hidden: channel_hides.HideKind | None = Field(description="How I hid the channel, if I did")
+    videos: list[UploadOut] = Field(description="Newest first")
+
+
+def _upload_out(video: UploadSummary) -> UploadOut:
+    return UploadOut(
+        id=video.id,
+        title=video.title,
+        duration_seconds=video.duration_seconds,
+        view_count=video.view_count,
+        thumbnail_url=video.thumbnail_url,
+        published_at=(format_timestamp(video.published_at) if video.published_at else None),
+        live_status=video.live_status,
+    )
+
+
+@app.get("/channels/{channel_id}", tags=["discovery"], responses=CHANNEL_ERRORS)
+def get_channel_profile(
+    channel_id: ChannelId,
+    session: SessionDep,
+    gateway: GatewayDep,
+    limit: Annotated[int, Query(ge=1, le=50)] = 30,
+) -> ChannelProfileOut:
+    """A channel's profile (banner, description, subscribers) with its most recent
+    uploads, straight from YouTube, plus whether I'm subscribed or have hidden it.
+    The channel is stored, so that it can be hidden or subscribed to."""
+    try:
+        uploads = gateway.get_channel_uploads(channel_id, limit=limit)
+    except GatewayError as error:
+        raise _gateway_http_error(error) from error
+    channel = uploads.channel
+    curation.upsert_channel(session, channel)
+    hide = channel_hides.get_hide(session, channel.id)
+    return ChannelProfileOut(
+        channel_id=channel.id,
+        title=channel.title,
+        handle=channel.handle,
+        url=channel.url,
+        thumbnail_url=channel.thumbnail_url,
+        banner_url=channel.banner_url,
+        description=channel.description,
+        subscriber_count=channel.subscriber_count,
+        subscribed=curation.get_channel(session, channel.id) is not None,
+        hidden=hide.kind if hide else None,
+        videos=[_upload_out(video) for video in uploads.videos],
+    )
+
+
 @app.get("/channels/{channel_id}/uploads", tags=["discovery"], responses=CHANNEL_ERRORS)
 def get_channel_uploads(
     channel_id: ChannelId,
@@ -1863,32 +1923,94 @@ def get_channel_uploads(
             thumbnail_url=channel.thumbnail_url,
             subscribed=curation.get_channel(session, channel.id) is not None,
         ),
-        videos=[
-            UploadOut(
-                id=video.id,
-                title=video.title,
-                duration_seconds=video.duration_seconds,
-                view_count=video.view_count,
-                thumbnail_url=video.thumbnail_url,
-                published_at=(format_timestamp(video.published_at) if video.published_at else None),
-                live_status=video.live_status,
-            )
-            for video in uploads.videos
-        ],
+        videos=[_upload_out(video) for video in uploads.videos],
     )
+
+
+ExcludeQuery = Annotated[
+    list[str],
+    Query(
+        max_length=100,
+        description="Channel ids to move to the end of the list, e.g. the ones currently "
+        "shown, so the next batch prefers unseen channels. Once fewer than `limit` unseen "
+        "ones are left it wraps back to the top; nothing is left out because of it.",
+    ),
+]
 
 
 @app.get("/discover/suggested-channels", tags=["discovery"])
 def get_suggested_channels(
-    gateway: GatewayDep, limit: Annotated[int, Query(ge=1, le=50)] = 20
+    gateway: GatewayDep,
+    exclude: ExcludeQuery = [],  # noqa: B006 - FastAPI copies it; never mutated
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
 ) -> list[channel_graph.SuggestedChannel]:
     """Channels featured by channels I like (loved or liked subscriptions, channels of
-    top-tier rated videos) that I'm not subscribed to, most often featured first.
+    top-tier rated videos) that I'm not subscribed to and haven't hidden, most often
+    featured first, followed by channels featured by those suggestions (their
+    `featured_by` are the suggestions).
 
     Liked channels whose featured channels were never fetched are fetched first (a few
     per request); the daily feed job keeps the rest fresh.
     """
-    return channel_graph.suggest(get_session_factory(), gateway, limit=limit)
+    return channel_graph.suggest(
+        get_session_factory(), gateway, limit=limit, exclude=exclude, second_hop=True
+    )
+
+
+@app.post("/discover/suggested-channels/refresh", tags=["discovery"])
+def refresh_suggested_channels(
+    gateway: GatewayDep,
+    exclude: ExcludeQuery = [],  # noqa: B006
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+) -> list[channel_graph.SuggestedChannel]:
+    """Fetch the featured channels of the liked channels from YouTube again, ignoring
+    the weekly cache (up to 10 per request, least recently fetched first), and also
+    those of up to 5 suggestions not fetched yet or stale (the ones in `exclude` first),
+    which widens the pool with channels they feature. Then return
+    the suggestions like `GET /discover/suggested-channels`, with the same `exclude`
+    rotation. A channel that fails to fetch keeps its stored featured channels."""
+    return channel_graph.refresh_suggestions(
+        get_session_factory(), gateway, limit=limit, exclude=exclude, second_hop=True
+    )
+
+
+class ChannelHideInput(BaseModel):
+    kind: channel_hides.HideKind = Field(
+        description="dismissed removes the channel from Discover suggestions; blocked "
+        "also keeps all of its videos out of the feed"
+    )
+
+
+@app.get("/channel-hides", tags=["discovery"])
+def list_channel_hides(session: SessionDep) -> list[channel_hides.ChannelHide]:
+    """The hidden channels, most recently hidden first."""
+    return channel_hides.list_hides(session)
+
+
+@app.put("/channels/{channel_id}/hide", tags=["discovery"], responses=CHANNEL_NOT_FOUND)
+def hide_channel(
+    channel_id: ChannelId, body: ChannelHideInput, session: SessionDep
+) -> channel_hides.ChannelHide:
+    """Hide a channel from Discover (`dismissed`) or also from the feed (`blocked`).
+    Hiding again changes the kind. The channel must be known (subscribed, featured by a
+    channel, or fetched with `GET /channels/{channel_id}`). Subscribing clears the hide."""
+    hide = channel_hides.hide(session, channel_id, body.kind)
+    if hide is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Channel not found")
+    return hide
+
+
+@app.delete(
+    "/channels/{channel_id}/hide",
+    tags=["discovery"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={404: {"model": ErrorDetail, "description": "The channel isn't hidden"}},
+)
+def unhide_channel(channel_id: ChannelId, session: SessionDep) -> Response:
+    """Show a hidden channel again."""
+    if not channel_hides.unhide(session, channel_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Channel not hidden")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 class ExternalSourceInput(BaseModel):
