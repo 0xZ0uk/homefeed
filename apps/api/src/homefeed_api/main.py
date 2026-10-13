@@ -1,4 +1,5 @@
 import datetime as dt
+import json
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from functools import lru_cache
@@ -25,22 +26,30 @@ from sqlalchemy.orm import Session
 from homefeed_core import (
     channel_graph,
     curation,
+    exporter,
     external_sources,
+    extractor_status,
     feeds,
+    history,
     importer,
     insights,
     playback,
+    playlists,
     poller,
+    queue,
     ranking_models,
     ratings,
     saved_searches,
+    sponsorblock,
     videos,
     watch_events,
 )
 from homefeed_core.db import get_session_factory
 from homefeed_core.embeddings import EmbeddingProvider, get_embedding_provider
 from homefeed_core.gateway import (
+    DEFAULT_COMMENTS_LIMIT,
     DEFAULT_SEARCH_LIMIT,
+    MAX_COMMENTS_LIMIT,
     MAX_SEARCH_LIMIT,
     SEARCH_QUERY_MAX_LENGTH,
     Gateway,
@@ -93,7 +102,7 @@ def get_playback() -> playback.Playback:
 
     Tests override this dependency with one over a `FakeGateway`.
     """
-    return playback.Playback(get_gateway())
+    return playback.Playback(get_gateway(), sponsorblock=sponsorblock.create_sponsorblock())
 
 
 def get_embedder() -> EmbeddingProvider:
@@ -142,6 +151,77 @@ class Health(BaseModel):
 @app.get("/health")
 def health() -> Health:
     return Health(status="ok")
+
+
+ExtractorHealth = Literal["ok", "degraded", "failing", "unknown"]
+
+
+class OperationStatusOut(BaseModel):
+    operation: str = Field(description='Gateway operation, e.g. "get_video" or "search"')
+    health: ExtractorHealth = Field(
+        description="failing: its latest events all failed in a way that points at the "
+        "extractor; degraded: some such failures; ok: none (a removed video or an "
+        "unsupported URL doesn't count)"
+    )
+    total: int
+    successes: int
+    failures: int = Field(description="All failures, including ones about the target")
+    breakage_failures: int = Field(description="Failures that point at the extractor")
+    success_rate: float | None = Field(description="successes / total")
+    avg_duration_ms: int | None
+    last_at: dt.datetime
+    last_success_at: dt.datetime | None
+    last_failure_at: dt.datetime | None
+    last_error_kind: str | None = Field(description="Kind of the latest failure in the window")
+    last_error: str | None
+
+
+class FailedEventOut(BaseModel):
+    id: int
+    operation: str
+    target: str | None = Field(description="The video id, channel id, URL or query asked for")
+    error_kind: str | None
+    error: str | None
+    attempts: int
+    at: dt.datetime
+    breakage: bool = Field(
+        description="Whether the failure points at the extractor rather than the target"
+    )
+
+
+class SmokeTestRunOut(BaseModel):
+    at: dt.datetime
+    success: bool
+    error: str | None = Field(description="Which checks failed and why")
+    duration_ms: int | None
+
+
+class ExtractorStatusOut(BaseModel):
+    since: dt.datetime = Field(description="Start of the window")
+    hours: int
+    health: ExtractorHealth = Field(description="The worst of the operations' health")
+    operations: list[OperationStatusOut] = Field(description="Operations with events, by name")
+    recent_failures: list[FailedEventOut] = Field(description="Newest first")
+    last_smoke_test: SmokeTestRunOut | None = Field(
+        description="The latest live smoke test run, whenever it was; null if it never ran "
+        "(it is opt-in: GATEWAY_SMOKE_TEST_TIME)"
+    )
+
+
+@app.get("/status/extractors", tags=["status"])
+def get_extractor_status(
+    session: SessionDep,
+    hours: Annotated[
+        int,
+        Query(ge=1, le=extractor_status.MAX_HOURS, description="Window, in hours up to now"),
+    ] = extractor_status.DEFAULT_HOURS,
+) -> ExtractorStatusOut:
+    """Extraction health: the Gateway's recorded outcomes (`extractor_events`) of the
+    last `hours`, aggregated per operation, the latest failures and the latest live
+    smoke test run."""
+    return ExtractorStatusOut.model_validate(
+        extractor_status.extractor_status(session, hours=hours), from_attributes=True
+    )
 
 
 class RatingInput(BaseModel):
@@ -193,11 +273,134 @@ class WatchEventInput(BaseModel):
 def record_watch_event(body: WatchEventInput, session: SessionDep) -> watch_events.WatchEvent:
     """Record a player event (play, pause, seeked, ended or close) with its position.
 
-    A `play` marks the video as watched, so it leaves future feeds.
+    A `play` marks the video as watched, so it leaves future feeds. An `ended` removes
+    the video from the watch queue.
     """
-    return watch_events.record_watch_event(
+    event = watch_events.record_watch_event(
         session, body.video_id, body.event_type, body.position, body.duration
     )
+    if body.event_type == "ended":
+        queue.remove_video_from_queue(session, body.video_id)
+    return event
+
+
+class QueueAddInput(BaseModel):
+    video_id: str = Field(pattern=r"^[A-Za-z0-9_-]{11}$", description="YouTube video id")
+    position: int | None = Field(
+        default=None,
+        ge=0,
+        description="Where to insert it, 0 for next up; omitted or past the end: last",
+    )
+
+
+class QueueMoveInput(BaseModel):
+    position: int = Field(ge=0, description="New 0-based position; past the end: last")
+
+
+QUEUE_ITEM_NOT_FOUND: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorDetail, "description": "No such queue item"}
+}
+QueueItemId = Annotated[int, Path(ge=1, description="Queue item id")]
+
+
+@app.get("/queue", tags=["queue"])
+def list_queue(session: SessionDep) -> list[queue.QueueItem]:
+    """The watch queue in order, next up first."""
+    return queue.list_queue(session)
+
+
+@app.post(
+    "/queue",
+    tags=["queue"],
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        200: {"model": queue.QueueItem, "description": "Already queued"},
+        404: {"model": ErrorDetail, "description": "The video doesn't exist or can't be watched"},
+        502: {"model": ErrorDetail, "description": "YouTube could not be reached"},
+    },
+)
+def add_to_queue(
+    body: QueueAddInput, session: SessionDep, player: PlaybackDep, response: Response
+) -> queue.QueueItem:
+    """Add a video to the watch queue.
+
+    A video whose metadata isn't stored yet is fetched from YouTube first (404 if it
+    doesn't exist, 502 if YouTube can't be reached). Queueing a video again returns 200
+    with its existing item, which keeps its place.
+    """
+    existing = queue.find_queued_video(session, body.video_id)
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+        return existing
+    if videos.get_stored_video(session, body.video_id) is None:
+        try:
+            videos.store_video(session, player.video(body.video_id))
+        except GatewayError as error:
+            raise _gateway_http_error(error) from error
+    item, _ = queue.add_to_queue(session, body.video_id, body.position)
+    return item
+
+
+@app.patch("/queue/{item_id}", tags=["queue"], responses=QUEUE_ITEM_NOT_FOUND)
+def move_queue_item(
+    item_id: QueueItemId, body: QueueMoveInput, session: SessionDep
+) -> list[queue.QueueItem]:
+    """Move a queued video to a new position. Returns the whole queue in its new order."""
+    if queue.move_queue_item(session, item_id, body.position) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Queue item not found")
+    return queue.list_queue(session)
+
+
+@app.delete(
+    "/queue/{item_id}",
+    tags=["queue"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=QUEUE_ITEM_NOT_FOUND,
+)
+def remove_from_queue(item_id: QueueItemId, session: SessionDep) -> Response:
+    """Remove a video from the watch queue."""
+    if not queue.remove_from_queue(session, item_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Queue item not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.delete("/queue", tags=["queue"], status_code=status.HTTP_204_NO_CONTENT)
+def clear_queue(session: SessionDep) -> Response:
+    """Empty the watch queue."""
+    queue.clear_queue(session)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get("/history", tags=["watching"])
+def search_history(
+    session: SessionDep,
+    q: Annotated[
+        str | None,
+        Query(
+            max_length=history.HISTORY_QUERY_MAX_LENGTH,
+            description="Only videos whose title or channel contains every word",
+        ),
+    ] = None,
+    limit: Annotated[int, Query(ge=1, le=history.MAX_HISTORY_LIMIT)] = (
+        history.DEFAULT_HISTORY_LIMIT
+    ),
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[history.HistoryEntry]:
+    """Videos I've played, most recently watched first, each with where I left off."""
+    return history.search_history(session, q, limit=limit, offset=offset)
+
+
+@app.get(
+    "/history/{video_id}",
+    tags=["watching"],
+    responses={404: {"model": ErrorDetail, "description": "The video was never played"}},
+)
+def get_history_entry(video_id: VideoId, session: SessionDep) -> history.HistoryEntry:
+    """A video's history entry; `resume_position` is where the watch page picks up."""
+    entry = history.get_history_entry(session, video_id)
+    if entry is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not in the watch history")
+    return entry
 
 
 class SubscribeInput(BaseModel):
@@ -664,6 +867,187 @@ def delete_saved_search(search_id: SavedSearchId, session: SessionDep) -> Respon
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+PlaylistName = Annotated[
+    str, Field(min_length=1, max_length=playlists.NAME_MAX_LENGTH, description="Playlist name")
+]
+PlaylistDescription = Annotated[str, Field(max_length=playlists.DESCRIPTION_MAX_LENGTH)]
+
+
+class PlaylistInput(BaseModel):
+    name: PlaylistName
+    description: PlaylistDescription = ""
+
+
+class PlaylistUpdateInput(BaseModel):
+    """Fields to change; omitted fields keep their current value."""
+
+    name: PlaylistName | None = None
+    description: PlaylistDescription | None = None
+
+
+class PlaylistItemInput(BaseModel):
+    position: int | None = Field(
+        default=None, ge=0, description="0-based place to insert at; omitted: at the end"
+    )
+
+
+class PlaylistItemMoveInput(BaseModel):
+    position: int = Field(ge=0, description="0-based place to move to (clamped to the end)")
+
+
+class PlaylistDetail(BaseModel):
+    playlist: playlists.Playlist
+    items: list[playlists.PlaylistItem] = Field(description="The playlist's videos, in order")
+
+
+PLAYLIST_NOT_FOUND: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorDetail, "description": "No such playlist"}
+}
+PLAYLIST_NAME_TAKEN: dict[int | str, dict[str, Any]] = {
+    409: {"model": ErrorDetail, "description": "Another playlist has this name"}
+}
+PlaylistId = Annotated[int, Path(ge=1, description="Playlist id")]
+
+
+@app.get("/playlists", tags=["playlists"])
+def list_playlists(
+    session: SessionDep,
+    video_id: Annotated[
+        str | None,
+        Query(
+            pattern=r"^[A-Za-z0-9_-]{11}$",
+            description="Fill each playlist's `contains_video` for this video",
+        ),
+    ] = None,
+) -> list[playlists.Playlist]:
+    """All local playlists, alphabetically by name."""
+    return playlists.list_playlists(session, video_id=video_id)
+
+
+@app.post(
+    "/playlists",
+    tags=["playlists"],
+    status_code=status.HTTP_201_CREATED,
+    responses=PLAYLIST_NAME_TAKEN,
+)
+def create_playlist(body: PlaylistInput, session: SessionDep) -> playlists.Playlist:
+    """Create an empty playlist. A blank name is a 422 with a string `detail`."""
+    try:
+        return playlists.create_playlist(session, body.name, body.description)
+    except playlists.DuplicatePlaylistError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+
+
+@app.get("/playlists/{playlist_id}", tags=["playlists"], responses=PLAYLIST_NOT_FOUND)
+def get_playlist(playlist_id: PlaylistId, session: SessionDep) -> PlaylistDetail:
+    """A playlist and its videos, in order. Videos whose details aren't stored yet have
+    null titles."""
+    playlist = playlists.get_playlist(session, playlist_id)
+    items = playlists.list_items(session, playlist_id)
+    if playlist is None or items is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Playlist not found")
+    return PlaylistDetail(playlist=playlist, items=items)
+
+
+@app.patch(
+    "/playlists/{playlist_id}",
+    tags=["playlists"],
+    responses={**PLAYLIST_NOT_FOUND, **PLAYLIST_NAME_TAKEN},
+)
+def update_playlist(
+    playlist_id: PlaylistId, body: PlaylistUpdateInput, session: SessionDep
+) -> playlists.Playlist:
+    """Rename a playlist or change its description."""
+    try:
+        playlist = playlists.update_playlist(
+            session, playlist_id, name=body.name, description=body.description
+        )
+    except playlists.DuplicatePlaylistError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    if playlist is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Playlist not found")
+    return playlist
+
+
+@app.delete(
+    "/playlists/{playlist_id}",
+    tags=["playlists"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=PLAYLIST_NOT_FOUND,
+)
+def delete_playlist(playlist_id: PlaylistId, session: SessionDep) -> Response:
+    """Delete a playlist and its items (the videos themselves stay)."""
+    if not playlists.delete_playlist(session, playlist_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Playlist not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.put(
+    "/playlists/{playlist_id}/items/{video_id}",
+    tags=["playlists"],
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        **PLAYLIST_NOT_FOUND,
+        200: {"model": playlists.PlaylistItem, "description": "Already in the playlist"},
+    },
+)
+def add_playlist_item(
+    playlist_id: PlaylistId,
+    video_id: VideoId,
+    session: SessionDep,
+    response: Response,
+    body: PlaylistItemInput | None = None,
+) -> playlists.PlaylistItem:
+    """Add a video to a playlist, at the end or at `position`. Adding a video that is
+    already there returns 200 and leaves it where it is."""
+    try:
+        result = playlists.add_item(
+            session, playlist_id, video_id, position=body.position if body else None
+        )
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    if result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Playlist not found")
+    item, created = result
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return item
+
+
+@app.patch(
+    "/playlists/{playlist_id}/items/{video_id}",
+    tags=["playlists"],
+    responses={404: {"model": ErrorDetail, "description": "The video isn't in the playlist"}},
+)
+def move_playlist_item(
+    playlist_id: PlaylistId, video_id: VideoId, body: PlaylistItemMoveInput, session: SessionDep
+) -> playlists.PlaylistItem:
+    """Move a video to another place in its playlist, shifting the videos in between."""
+    item = playlists.move_item(session, playlist_id, video_id, body.position)
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Video not in playlist")
+    return item
+
+
+@app.delete(
+    "/playlists/{playlist_id}/items/{video_id}",
+    tags=["playlists"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={404: {"model": ErrorDetail, "description": "The video isn't in the playlist"}},
+)
+def remove_playlist_item(
+    playlist_id: PlaylistId, video_id: VideoId, session: SessionDep
+) -> Response:
+    """Take a video out of a playlist."""
+    if not playlists.remove_item(session, playlist_id, video_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Video not in playlist")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 class ScoreBreakdownOut(BaseModel):
     """How an item's score was made:
     `alpha * model + channel + similarity + sum(topics) = final`."""
@@ -1022,6 +1406,74 @@ def get_media(
     )
 
 
+class SponsorSegmentOut(BaseModel):
+    id: str = Field(description="SponsorBlock's UUID for the segment")
+    category: str = Field(description='SponsorBlock category, e.g. "sponsor" or "selfpromo"')
+    start_seconds: float
+    end_seconds: float
+
+
+@app.get(
+    "/videos/{video_id}/segments",
+    tags=["videos"],
+    responses={502: {"model": ErrorDetail, "description": "SponsorBlock could not be reached"}},
+)
+def get_sponsor_segments(video_id: VideoId, player: PlaybackDep) -> list[SponsorSegmentOut]:
+    """The video's SponsorBlock segments for the player to skip, by start time.
+
+    Only the categories in `SPONSORBLOCK_CATEGORIES` are listed; empty when the video
+    has none (or skipping is off).
+    """
+    try:
+        segments = player.sponsor_segments(video_id)
+    except sponsorblock.SponsorBlockError as error:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(error)) from error
+    return [SponsorSegmentOut.model_validate(vars(segment)) for segment in segments]
+
+
+class CommentOut(BaseModel):
+    id: str
+    text: str
+    author: str = Field(description="Display name, usually the author's @handle")
+    author_channel_id: str | None
+    author_thumbnail_url: str | None
+    author_is_uploader: bool
+    like_count: int | None
+    published_at: str | None = Field(
+        description="Estimated from YouTube's relative time (`published_text`), ISO 8601 UTC"
+    )
+    published_text: str | None = Field(description='As YouTube shows it, e.g. "2 years ago"')
+    is_pinned: bool
+    is_hearted: bool = Field(description="Hearted by the uploader")
+
+
+@app.get("/videos/{video_id}/comments", tags=["videos"], responses=VIDEO_ERRORS)
+def get_comments(
+    video_id: VideoId,
+    gateway: GatewayDep,
+    limit: Annotated[int, Query(ge=1, le=MAX_COMMENTS_LIMIT)] = DEFAULT_COMMENTS_LIMIT,
+) -> list[CommentOut]:
+    """The video's top comments (pinned first), without replies, fetched from YouTube on
+    every call. Empty when comments are off."""
+    try:
+        comments = gateway.get_comments(video_id, limit=limit)
+    except GatewayError as error:
+        raise _gateway_http_error(error) from error
+    return [
+        CommentOut.model_validate(
+            {
+                **vars(comment),
+                "published_at": (
+                    format_timestamp(comment.published_at)
+                    if comment.published_at is not None
+                    else None
+                ),
+            }
+        )
+        for comment in comments
+    ]
+
+
 class ModelVersionOut(BaseModel):
     id: int
     kind: ranking_models.ModelKind = Field(
@@ -1312,3 +1764,29 @@ def import_takeout(
         )
     except importer.TakeoutFormatError as error:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+
+
+@app.get(
+    "/export",
+    tags=["export"],
+    response_class=Response,
+    responses={
+        200: {
+            "description": "Everything as one JSON document, sent as a file download",
+            "content": {"application/json": {"schema": {"type": "object"}}},
+        }
+    },
+)
+def export_all(session: SessionDep) -> Response:
+    """Download all data as JSON: ratings, curation, feeds, library, models and settings.
+
+    See `homefeed_core.exporter` for the document's shape. Derived data (embeddings,
+    tags, the candidate pool) is left out, as are secrets and file paths.
+    """
+    data = exporter.export_data(session)
+    filename = f"homefeed-export-{data['exported_at'][:10]}.json"
+    return Response(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

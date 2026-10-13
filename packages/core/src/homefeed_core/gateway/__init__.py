@@ -24,9 +24,11 @@ from homefeed_core.gateway.events import (
     SqlEventRecorder,
 )
 from homefeed_core.gateway.interface import (
+    DEFAULT_COMMENTS_LIMIT,
     DEFAULT_RELATED_LIMIT,
     DEFAULT_SEARCH_LIMIT,
     DEFAULT_UPLOADS_LIMIT,
+    MAX_COMMENTS_LIMIT,
     MAX_SEARCH_LIMIT,
     SEARCH_QUERY_MAX_LENGTH,
     Gateway,
@@ -40,6 +42,7 @@ from homefeed_core.gateway.models import (
     Channel,
     ChannelUploads,
     Chapter,
+    Comment,
     FeaturedChannel,
     Format,
     FormatKind,
@@ -62,9 +65,11 @@ from homefeed_core.gateway.rss import FeedFetcher, HttpFeedFetcher, channel_feed
 from homefeed_core.gateway.ytdlp import YtDlpGateway
 
 __all__ = [
+    "DEFAULT_COMMENTS_LIMIT",
     "DEFAULT_RELATED_LIMIT",
     "DEFAULT_SEARCH_LIMIT",
     "DEFAULT_UPLOADS_LIMIT",
+    "MAX_COMMENTS_LIMIT",
     "MAX_RANGE_BYTES",
     "MAX_SEARCH_LIMIT",
     "SEARCH_QUERY_MAX_LENGTH",
@@ -74,6 +79,7 @@ __all__ = [
     "Channel",
     "ChannelUploads",
     "Chapter",
+    "Comment",
     "DashRanges",
     "EventRecorder",
     "ExtractionError",

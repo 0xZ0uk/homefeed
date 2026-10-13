@@ -17,6 +17,7 @@ from homefeed_core.gateway.models import (
     Channel,
     ChannelUploads,
     Chapter,
+    Comment,
     FeaturedChannel,
     Format,
     FormatKind,
@@ -281,6 +282,49 @@ def featured_channels_from_info(info: Info) -> list[FeaturedChannel]:
             )
         )
     return featured
+
+
+# Comments. A comments request (see `ytdlp.py`) returns
+# {"id": <video id>, "comments": [...]}, yt-dlp's comment dicts
+# (id, parent, text, author, author_id, author_thumbnail, author_is_uploader,
+# like_count, timestamp, _time_text, is_pinned, is_favorited), top-level ones only.
+
+
+def comments_from_info(info: Info) -> list[Comment]:
+    """The top-level comments in a comments response, in order, without duplicates.
+    Replies and entries without an id or text are skipped."""
+    comments: list[Comment] = []
+    seen: set[str] = set()
+    for raw in _list(info, "comments"):
+        if not isinstance(raw, Mapping):
+            continue
+        entry = cast(Info, raw)
+        comment_id, text = _str(entry, "id"), _str(entry, "text")
+        if comment_id is None or text is None or comment_id in seen:
+            continue
+        if (_str(entry, "parent") or "root") != "root":
+            continue
+        seen.add(comment_id)
+        author_id = _str(entry, "author_id")
+        timestamp = _int(entry, "timestamp")
+        comments.append(
+            Comment(
+                id=comment_id,
+                text=text,
+                author=_str(entry, "author") or "",
+                author_channel_id=author_id if author_id and CHANNEL_ID.match(author_id) else None,
+                author_thumbnail_url=_str(entry, "author_thumbnail"),
+                author_is_uploader=entry.get("author_is_uploader") is True,
+                like_count=_int(entry, "like_count"),
+                published_at=(
+                    datetime.fromtimestamp(timestamp, UTC) if timestamp is not None else None
+                ),
+                published_text=_str(entry, "_time_text"),
+                is_pinned=entry.get("is_pinned") is True,
+                is_hearted=entry.get("is_favorited") is True,
+            )
+        )
+    return comments
 
 
 # Captions. A captions request (see `ytdlp.py`) picks one track from the video's info

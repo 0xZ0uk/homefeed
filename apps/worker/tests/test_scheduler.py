@@ -1,3 +1,4 @@
+from collections.abc import Callable, Iterator
 from datetime import time, timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -7,6 +8,7 @@ from apscheduler.job import Job
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+from homefeed_core.config import get_settings
 from homefeed_worker import scheduler
 from homefeed_worker.scheduler import (
     ENRICH_CHECK_MINUTES,
@@ -16,6 +18,7 @@ from homefeed_worker.scheduler import (
     enrich_candidates,
     gather_candidates,
     poll_subscriptions,
+    run_gateway_smoke_test,
     train_model,
 )
 
@@ -162,3 +165,71 @@ def test_external_sources_job_runs_only_that_source(monkeypatch: pytest.MonkeyPa
     scheduler.fetch_external_sources()
 
     assert ran == [["external"]]
+
+
+@pytest.fixture
+def smoke_test_setting(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[str | None], None]]:
+    """Set (or unset) GATEWAY_SMOKE_TEST_TIME for `build_scheduler`."""
+
+    def set_time(value: str | None) -> None:
+        if value is None:
+            monkeypatch.delenv("GATEWAY_SMOKE_TEST_TIME", raising=False)
+        else:
+            monkeypatch.setenv("GATEWAY_SMOKE_TEST_TIME", value)
+        get_settings.cache_clear()
+
+    yield set_time
+    get_settings.cache_clear()
+
+
+def test_live_smoke_test_is_not_scheduled_by_default(
+    smoke_test_setting: Callable[[str | None], None],
+) -> None:
+    smoke_test_setting(None)
+
+    assert "gateway_smoke_test" not in jobs_by_id()
+
+
+def test_live_smoke_test_is_scheduled_when_configured(
+    smoke_test_setting: Callable[[str | None], None],
+) -> None:
+    smoke_test_setting("05:30")
+
+    job = jobs_by_id()["gateway_smoke_test"]
+
+    assert job.func is run_gateway_smoke_test
+    assert isinstance(job.trigger, CronTrigger)
+    fields = {field.name: str(field) for field in job.trigger.fields}
+    assert (fields["hour"], fields["minute"]) == ("5", "30")
+    assert job.max_instances == 1
+    assert job.coalesce is True
+
+
+def test_live_smoke_test_time_can_be_given(
+    smoke_test_setting: Callable[[str | None], None],
+) -> None:
+    smoke_test_setting(None)
+    calls: list[str] = []
+
+    job = jobs_by_id(smoke=lambda: calls.append("smoke"), gateway_smoke_test_time=time(4, 15))[
+        "gateway_smoke_test"
+    ]
+    job.func()
+
+    fields = {field.name: str(field) for field in job.trigger.fields}
+    assert (fields["hour"], fields["minute"]) == ("4", "15")
+    assert calls == ["smoke"]
+
+
+@pytest.mark.parametrize("success", [True, False])
+def test_smoke_test_job_logs_the_outcome(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, success: bool
+) -> None:
+    report = SimpleNamespace(success=success, checks=[1, 2], summary=lambda: "get_video: boom")
+    monkeypatch.setattr(scheduler.smoke_test, "run_live_smoke_test", lambda: report)
+
+    with caplog.at_level("INFO"):
+        run_gateway_smoke_test()
+
+    expected = "Gateway smoke test passed" if success else "get_video: boom"
+    assert expected in caplog.text

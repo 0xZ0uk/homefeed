@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     feed_refresh_time: time = time(6, 0)
     # Local time when the worker trains the ranking model (before the day's feed).
     model_training_time: time = time(3, 0)
+    # Local time when the worker runs the live Gateway smoke test against real YouTube
+    # (see homefeed_core.smoke_test); unset means it never runs. Opt-in: it uses the
+    # network, and its outcome shows on the status page.
+    gateway_smoke_test_time: time | None = None
     # Hard duration bounds for feed videos, in seconds; unset means no bound.
     feed_min_duration_seconds: int | None = None
     feed_max_duration_seconds: int | None = None
@@ -50,6 +54,10 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = 60.0
     # At most this many videos are tagged per enrichment run, to bound cost.
     llm_max_tags_per_run: int = 200
+    # SponsorBlock (see homefeed_core.sponsorblock): the server, and the comma-separated
+    # categories the watch page skips (empty turns skipping off).
+    sponsorblock_url: str = "https://sponsor.ajay.app"
+    sponsorblock_categories: str = "sponsor,selfpromo,interaction"
 
 
 @lru_cache

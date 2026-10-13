@@ -12,6 +12,8 @@ import { ratingQuery, removeRating, saveRating } from "#/server/ratings";
 interface WatchAndRateProps {
   videoId: string;
   poster?: string | null;
+  /** Where to resume, in seconds, or null to start from the beginning. */
+  startAt?: number | null;
 }
 
 /**
@@ -28,7 +30,7 @@ interface WatchAndRateProps {
  * own "leave site?" dialog, which would nag); the `close` event is still
  * recorded, and the rating stays editable here later.
  */
-export function WatchAndRate({ videoId, poster }: WatchAndRateProps) {
+export function WatchAndRate({ videoId, poster, startAt }: WatchAndRateProps) {
   const queryClient = useQueryClient();
   const { data: rating, isError } = useQuery(ratingQuery(videoId));
   const grade = rating?.grade ?? null;
@@ -137,6 +139,7 @@ export function WatchAndRate({ videoId, poster }: WatchAndRateProps) {
         ref={player}
         videoId={videoId}
         poster={poster}
+        startAt={startAt}
         onWatchEvent={onWatchEvent}
       />
       {panel}

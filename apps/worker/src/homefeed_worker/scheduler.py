@@ -10,7 +10,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.util import undefined
 
-from homefeed_core import candidates, enricher, feeds, poller, trainer
+from homefeed_core import candidates, enricher, feeds, poller, smoke_test, trainer
 from homefeed_core.config import get_settings
 from homefeed_core.db import get_session_factory
 from homefeed_core.external_sources import ExternalSourcesSource
@@ -99,25 +99,40 @@ def train_model() -> None:
     trainer.run_nightly_training()
 
 
+def run_gateway_smoke_test() -> None:
+    """Run the live Gateway smoke test against real YouTube; the outcome is recorded in
+    `extractor_events` for the status page (see homefeed_core.smoke_test)."""
+    report = smoke_test.run_live_smoke_test()
+    if report.success:
+        logger.info("Gateway smoke test passed (%d checks)", len(report.checks))
+    else:
+        logger.warning("Gateway smoke test failed: %s", report.summary())
+
+
 def build_scheduler(
     poll: Callable[[], None] = poll_subscriptions,
     enrich: Callable[[], None] = enrich_candidates,
     build_feed: Callable[[], None] = build_daily_feed,
     train: Callable[[], None] = train_model,
+    smoke: Callable[[], None] = run_gateway_smoke_test,
     *,
     feed_refresh_time: time | None = None,
     model_training_time: time | None = None,
+    gateway_smoke_test_time: time | None = None,
     build_feed_now: bool = False,
 ) -> BlockingScheduler:
     """Create the scheduler with all worker jobs registered.
 
     The daily feed runs at `feed_refresh_time` (default `FEED_REFRESH_TIME`) and model
     training at `model_training_time` (default `MODEL_TRAINING_TIME`), both in the
-    process's local time zone; `build_feed_now` also builds the feed right away.
+    process's local time zone; `build_feed_now` also builds the feed right away. The
+    live Gateway smoke test is opt-in: it runs daily at `gateway_smoke_test_time`
+    (default `GATEWAY_SMOKE_TEST_TIME`) and isn't scheduled when neither is set.
     """
     settings = get_settings()
     refresh = feed_refresh_time or settings.feed_refresh_time
     training = model_training_time or settings.model_training_time
+    smoke_time = gateway_smoke_test_time or settings.gateway_smoke_test_time
     scheduler = BlockingScheduler(timezone=UTC)
     scheduler.add_job(
         poll,
@@ -166,6 +181,16 @@ def build_scheduler(
         coalesce=True,
         misfire_grace_time=None,
     )
+    if smoke_time is not None:
+        scheduler.add_job(
+            smoke,
+            CronTrigger(hour=smoke_time.hour, minute=smoke_time.minute),  # local time zone
+            id="gateway_smoke_test",
+            name="Live Gateway smoke test",
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=None,
+        )
     return scheduler
 
 

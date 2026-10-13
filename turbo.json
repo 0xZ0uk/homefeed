@@ -26,6 +26,11 @@
     "check-types": {
       "dependsOn": ["^generate"]
     },
+    "e2e": {
+      "dependsOn": ["^generate"],
+      "passThroughEnv": ["PLAYWRIGHT_*", "E2E_*", "CI", "TMPDIR"],
+      "cache": false
+    },
     "dev": {
       "dependsOn": ["^generate"],
       "env": ["API_URL", "APP_PASSWORD", "SESSION_SECRET"],

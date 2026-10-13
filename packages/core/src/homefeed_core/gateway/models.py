@@ -215,3 +215,21 @@ class ResolvedPlaylist:
 
 
 ResolvedUrl = ResolvedVideo | ResolvedChannel | ResolvedPlaylist
+
+
+@dataclass(frozen=True)
+class Comment:
+    """A top-level comment on a video, as YouTube lists it (replies aren't fetched)."""
+
+    id: str
+    text: str
+    author: str  # display name, usually the author's "@handle"
+    author_channel_id: str | None = None  # UC...
+    author_thumbnail_url: str | None = None
+    author_is_uploader: bool = False
+    like_count: int | None = None
+    # YouTube only says "2 years ago": `published_at` is an estimate from that text.
+    published_at: datetime | None = None
+    published_text: str | None = None
+    is_pinned: bool = False
+    is_hearted: bool = False  # hearted by the uploader

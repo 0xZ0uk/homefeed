@@ -1,0 +1,33 @@
+# Build context for the Dockerfile at the repo root. Keep it to sources + lockfiles.
+.git
+.env
+.env.*
+!.env.example
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Dependencies and build outputs (rebuilt inside the image)
+**/node_modules
+**/.turbo
+**/dist
+**/.output
+out
+.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+coverage
+
+# Generated in the image from the API (openapi stage)
+apps/api/openapi.json
+packages/api-client/src/generated
+
+# App data and local tooling
+data
+*.sqlite*
+.agents
+.claude
+**/.vscode
+**/.DS_Store
