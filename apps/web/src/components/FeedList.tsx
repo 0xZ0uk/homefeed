@@ -1,5 +1,4 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import {
   ArrowDownUp,
   CircleCheck,
@@ -14,8 +13,8 @@ import {
 import { useRef, useState, type RefObject } from "react";
 
 import { QueueStatus, useQueueToggle } from "#/components/QueueButton";
+import { VideoCard } from "#/components/VideoCard";
 import { WhyThisPopover } from "#/components/WhyThisPopover";
-import { Avatar, AvatarFallback, AvatarImage } from "#/components/ui/avatar";
 import { Button } from "#/components/ui/button";
 import {
   DropdownMenu,
@@ -36,15 +35,12 @@ import {
 import {
   FEED_SORTS,
   LENGTH_FILTERS,
-  channelColor,
   isFeedSort,
   matchesLength,
   sortFeedItems,
   type FeedSort,
   type LengthFilter,
 } from "#/lib/feed-grid";
-import { formatAge, formatDuration, formatViews } from "#/lib/format";
-import { cn } from "#/lib/utils";
 import {
   dismissItem,
   feedQuery,
@@ -142,7 +138,7 @@ export function FeedList({
           className="grid grid-cols-1 gap-x-4 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
         >
           {items.map((item) => (
-            <VideoCard
+            <FeedCard
               key={item.id}
               item={item}
               now={now}
@@ -255,14 +251,10 @@ function useDismiss(
 }
 
 /**
- * One video: its status icons and why it's here, its thumbnail (or, when it
- * has none, a placeholder in the channel's colour), then the channel's avatar
- * beside title, channel and stats, and a menu of actions. The title is the
- * card's one link, stretched over the whole card; the controls sit above it.
- * A watched video's card is faded and its pictures greyed out, so the ones
- * still to watch stand out.
+ * One feed item as a card: its status icons and why it's here above the
+ * picture, and a menu of actions beside the title (see `VideoCard`).
  */
-function VideoCard({
+function FeedCard({
   item,
   now,
   onDismiss,
@@ -272,112 +264,29 @@ function VideoCard({
   onDismiss?: (reason: string | null) => void;
 }) {
   const queue = useQueueToggle(item.video_id);
-  const duration = formatDuration(item.duration_seconds);
-  const age = formatAge(item.published_at, now);
-  const views = formatViews(item.view_count);
-  const thumbnail = item.thumbnail_url;
-  const color = channelColor(item.channel_id);
 
   return (
-    <li
-      className={cn(
-        "group/card relative flex flex-col gap-3",
-        (item.dismissed_at || item.watched) && "opacity-60",
-      )}
-    >
-      <QueueStatus
-        message={queue.message}
-        className="mt-1 text-xs empty:hidden"
-      />
-      <div className="relative z-10 -mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-        <StatusIcons item={item} />
-        <WhyThisPopover
-          explanation={item.explanation}
-          breakdown={item.breakdown}
-        />
-      </div>
-      <div
-        className={cn(
-          "relative aspect-video overflow-hidden rounded-xl bg-secondary transition-[border-radius] group-hover/card:rounded-none",
-          item.watched && "grayscale",
-        )}
-        style={thumbnail ? undefined : { backgroundColor: color }}
-      >
-        {thumbnail ? (
-          <img
-            src={thumbnail}
-            alt=""
-            loading="lazy"
-            className="size-full rounded-[inherit] object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
+    <VideoCard
+      video={item}
+      now={now}
+      faded={Boolean(item.dismissed_at)}
+      top={
+        <>
+          <QueueStatus
+            message={queue.message}
+            className="mt-1 text-xs empty:hidden"
           />
-        ) : (
-          <span
-            aria-hidden="true"
-            className="flex size-full items-center justify-center bg-linear-to-br from-white/10 to-black/30 text-7xl font-bold text-white/25"
-          >
-            {initial(item.channel_title)}
-          </span>
-        )}
-        {duration && (
-          <span className="absolute right-1.5 bottom-1.5 rounded bg-black/80 px-1 py-px text-xs font-medium text-white tabular-nums">
-            {duration}
-          </span>
-        )}
-      </div>
-      <div className="flex gap-3">
-        <Avatar
-          aria-hidden="true"
-          className={cn("size-9", item.watched && "grayscale")}
-        >
-          {item.channel_thumbnail_url && (
-            <AvatarImage
-              src={avatarUrl(item.channel_thumbnail_url)}
-              alt=""
-              loading="lazy"
-              referrerPolicy="no-referrer"
+          <div className="relative z-10 -mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+            <StatusIcons item={item} />
+            <WhyThisPopover
+              explanation={item.explanation}
+              breakdown={item.breakdown}
             />
-          )}
-          <AvatarFallback
-            className="font-medium text-white"
-            style={{ backgroundColor: color }}
-          >
-            {initial(item.channel_title)}
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex min-w-0 flex-1 flex-col">
-          <h3 className="line-clamp-2 leading-snug font-medium">
-            <Link
-              to="/watch/$videoId"
-              params={{ videoId: item.video_id }}
-              className="outline-none before:absolute before:-inset-2 before:rounded-2xl focus-visible:before:ring-3 focus-visible:before:ring-ring/50"
-            >
-              {item.title}
-            </Link>
-          </h3>
-          <p className="mt-1 truncate text-sm text-muted-foreground">
-            {item.channel_title}
-          </p>
-          <p className="flex flex-wrap gap-x-1 text-sm text-muted-foreground">
-            {[
-              views,
-              age && item.published_at && (
-                <time dateTime={item.published_at} suppressHydrationWarning>
-                  {age}
-                </time>
-              ),
-            ]
-              .filter(Boolean)
-              .map((part, index) => (
-                <span key={index} className="tabular-nums">
-                  {index > 0 && "• "}
-                  {part}
-                </span>
-              ))}
-          </p>
-        </div>
-        <CardMenu item={item} queue={queue} onDismiss={onDismiss} />
-      </div>
-    </li>
+          </div>
+        </>
+      }
+      menu={<CardMenu item={item} queue={queue} onDismiss={onDismiss} />}
+    />
   );
 }
 
@@ -472,16 +381,4 @@ function CardMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
-
-/**
- * YouTube channel avatars come at full size (`=s0`); ask for one sized for
- * the card instead (2x its 36px).
- */
-function avatarUrl(url: string): string {
-  return url.replace(/=s\d+[^/]*$/, "=s72");
-}
-
-function initial(name: string): string {
-  return name.trim().charAt(0).toUpperCase();
 }

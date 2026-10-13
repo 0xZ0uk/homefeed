@@ -5,16 +5,19 @@ import { ChannelsTab } from "#/components/ChannelsTab";
 import { MutesTab } from "#/components/MutesTab";
 import { SavedSearchesTab } from "#/components/SavedSearchesTab";
 import { SourcesTab } from "#/components/SourcesTab";
+import { TagsTab } from "#/components/TagsTab";
 import { TopicsTab } from "#/components/TopicsTab";
 import { channelsQuery } from "#/server/channels";
 import { externalSourcesQuery } from "#/server/external-sources";
 import { keywordMutesQuery } from "#/server/keyword-mutes";
 import { savedSearchesQuery } from "#/server/saved-searches";
+import { tagAdminQuery } from "#/server/tag-admin";
 import { topicsQuery } from "#/server/topics";
 
 const TABS = [
   { id: "channels", label: "Channels" },
   { id: "topics", label: "Topics" },
+  { id: "tags", label: "Tags" },
   { id: "mutes", label: "Mutes" },
   { id: "searches", label: "Searches" },
   { id: "sources", label: "Sources" },
@@ -39,6 +42,8 @@ export const Route = createFileRoute("/curation")({
       await context.queryClient.ensureQueryData(keywordMutesQuery);
     } else if (deps.tab === "topics") {
       await context.queryClient.ensureQueryData(topicsQuery);
+    } else if (deps.tab === "tags") {
+      await context.queryClient.ensureQueryData(tagAdminQuery(""));
     } else if (deps.tab === "searches") {
       await context.queryClient.ensureQueryData(savedSearchesQuery);
     } else if (deps.tab === "sources") {
@@ -75,6 +80,7 @@ function Curation() {
       <section className="mt-6">
         {tab === "channels" && <ChannelsTab />}
         {tab === "topics" && <TopicsTab />}
+        {tab === "tags" && <TagsTab />}
         {tab === "mutes" && <MutesTab />}
         {tab === "searches" && <SavedSearchesTab />}
         {tab === "sources" && <SourcesTab />}

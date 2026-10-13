@@ -1,4 +1,5 @@
-"""LLM tags for videos: a broad topic, depth, clickbait and rage-bait scores.
+"""LLM tags for videos: a broad topic, depth, clickbait and rage-bait scores, and 3 to
+8 specific tags (e.g. `rust`, `woodworking`, `f1`), each with a confidence.
 
 An `LLMProvider` answers a system prompt plus a user message with text. Two
 implementations exist: `OpenRouterProvider`, the hosted OpenRouter API (the default,
@@ -8,18 +9,25 @@ local Ollama server. `LLM_PROVIDER=none` turns tagging off. Tests use
 
 `Tagger.tag_many(video_ids)` asks the provider to tag each video from its stored
 metadata (title, channel, duration, YouTube tags, description and, once enriched, the
-transcript excerpt) and stores the answer in `video_llm_tags`. Tags are cached per
-video and `TAG_PROMPT_VERSION`: bump it whenever the prompt or the tag scale changes,
-so every video is retagged on its next run and only current tags are used. Changing
-the model alone doesn't retag.
+transcript excerpt) and stores the answer: the topic and scores in `video_llm_tags`,
+the specific tags through homefeed_core.tags (`set_llm_tags`, which resolves each to a
+canonical tag). Answers are cached per video and `TAG_PROMPT_VERSION`: bump it whenever
+the prompt or the tag scale changes, so every video is retagged on its next runs (at
+most `max_per_run` per run) and only current tags are used. Changing the model alone
+doesn't retag.
+
+Each run logs the tokens it used (as reported by the provider, and the cost when
+OpenRouter reports it), so a retagging's cost can be checked on the first runs before
+the whole library has gone through.
 
 Failures never fail the enrichment job: an answer that can't be parsed is recorded
 for that video (and retried next run), and an unreachable or refusing provider
 (network error, bad key, rate limit) stops the run until the next one. A provider
 that is enabled without an API key is skipped with a warning (`get_llm_provider`).
 
-The ranker and the trainer read the tags with `get_tags` and hand them to the model as
-features (see homefeed_core.model_features).
+The ranker and the trainer read the topic and scores with `get_scores` (which falls back
+to compatible answers of earlier prompt versions while a bump retags the library) and
+hand them to the model as features (see homefeed_core.model_features).
 """
 
 import json
@@ -37,12 +45,26 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from homefeed_core.config import Settings, get_settings
 from homefeed_core.db import get_session_factory
+from homefeed_core.embeddings import EmbeddingProvider, get_embedding_provider
 from homefeed_core.gateway.events import format_timestamp
+from homefeed_core.tags import (
+    DEFAULT_MERGE_THRESHOLD,
+    ProposedTag,
+    is_usable,
+    set_llm_tags,
+    slugify,
+    top_tag_labels,
+)
 
 logger = logging.getLogger(__name__)
 
 # Version of the tagging prompt and tag scale. Bump on change.
-TAG_PROMPT_VERSION = 1
+TAG_PROMPT_VERSION = 2
+# Oldest prompt version whose topic and scores mean the same as the current ones (v2
+# only added specific tags). The ranker and the trainer fall back to answers this old
+# while a version bump retags the library (`get_scores`); raise it when the topic list
+# or a score scale changes.
+SCORES_COMPATIBLE_SINCE = 1
 # Broad topics a video is filed under (one each); "other" catches the rest. Each is a
 # one-hot model feature, so changing the list changes the features too.
 TOPICS = (
@@ -68,6 +90,11 @@ TOPICS = (
     "lifestyle",
     "other",
 )
+# How many specific tags the prompt asks for; extra ones in an answer are dropped.
+MIN_TAGS = 3
+MAX_TAGS = 8
+# How many of the library's most-used tags the prompt lists for the model to reuse.
+TOP_TAGS_IN_PROMPT = 200
 DESCRIPTION_CHARS = 1500
 TRANSCRIPT_CHARS = 4000
 
@@ -96,13 +123,36 @@ class LLMTags:
     rage_bait: float  # 0 = calm, 1 = made to provoke outrage
 
 
+@dataclass(frozen=True)
+class TokenUsage:
+    """Tokens used by provider calls, as the provider reports them."""
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cost: float | None = None  # in OpenRouter credits (USD); None when not reported
+
+    def __add__(self, other: "TokenUsage") -> "TokenUsage":
+        costs = [cost for cost in (self.cost, other.cost) if cost is not None]
+        return TokenUsage(
+            self.prompt_tokens + other.prompt_tokens,
+            self.completion_tokens + other.completion_tokens,
+            sum(costs) if costs else None,
+        )
+
+
+@dataclass(frozen=True)
+class Completion:
+    text: str
+    usage: TokenUsage | None = None  # None when the provider doesn't report it
+
+
 class LLMProvider(Protocol):
     """Answers a system prompt and a user message with the model's text."""
 
     # Stored with the tags it produced, e.g. "openrouter:google/gemini-2.5-flash-lite".
     model: str
 
-    def complete(self, system: str, user: str) -> str: ...
+    def complete(self, system: str, user: str) -> Completion: ...
 
 
 # Posts a JSON body (url, body, headers, timeout) and returns the decoded JSON answer.
@@ -136,8 +186,9 @@ class OpenRouterProvider:
     OpenAI-compatible `POST {base_url}/chat/completions` endpoint with a bearer key.
 
     Asks for JSON mode (`response_format: json_object`); models without it still get
-    the prompt's JSON instructions, and `parse_tags` tolerates text around the object.
-    Requests carry OpenRouter's optional `X-Title` attribution header.
+    the prompt's JSON instructions, and `parse_answer` tolerates text around the object.
+    Requests carry OpenRouter's optional `X-Title` attribution header, and ask for usage
+    accounting so answers report their cost.
     """
 
     def __init__(
@@ -156,7 +207,7 @@ class OpenRouterProvider:
         self._timeout = timeout
         self._post = post
 
-    def complete(self, system: str, user: str) -> str:
+    def complete(self, system: str, user: str) -> Completion:
         answer = self._post(
             self._url,
             {
@@ -168,6 +219,7 @@ class OpenRouterProvider:
                 "response_format": {"type": "json_object"},
                 "temperature": 0,
                 "stream": False,
+                "usage": {"include": True},
             },
             {"Authorization": f"Bearer {self._api_key}", "X-Title": OPENROUTER_APP_TITLE},
             self._timeout,
@@ -181,7 +233,21 @@ class OpenRouterProvider:
             raise LLMError(f"Unexpected chat completion: {str(answer)[:300]}") from error
         if not isinstance(content, str) or not content.strip():
             raise LLMError("The chat completion has no text content")
-        return content
+        usage = answer.get("usage")
+        if not isinstance(usage, dict):
+            return Completion(content)
+        usage = cast(dict[str, Any], usage)
+        cost = usage.get("cost")
+        return Completion(
+            content,
+            TokenUsage(
+                _count(usage.get("prompt_tokens")),
+                _count(usage.get("completion_tokens")),
+                float(cost)
+                if isinstance(cost, int | float) and not isinstance(cost, bool)
+                else None,
+            ),
+        )
 
 
 class OllamaProvider:
@@ -201,7 +267,7 @@ class OllamaProvider:
         self._timeout = timeout
         self._post = post
 
-    def complete(self, system: str, user: str) -> str:
+    def complete(self, system: str, user: str) -> Completion:
         answer = self._post(
             self._url,
             {
@@ -223,34 +289,47 @@ class OllamaProvider:
             raise LLMError(f"Unexpected Ollama answer: {str(answer)[:300]}") from error
         if not isinstance(content, str) or not content.strip():
             raise LLMError("The Ollama answer has no text content")
-        return content
+        return Completion(
+            content,
+            TokenUsage(_count(answer.get("prompt_eval_count")), _count(answer.get("eval_count"))),
+        )
+
+
+def _count(value: Any) -> int:
+    """A reported token count; 0 when missing or malformed."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
 
 
 class StubLLMProvider:
-    """Answers from a function of the user message (by default, neutral tags). For
-    tests. `calls` records every (system, user) pair; `answers` overrides the answer
-    for user messages containing a key."""
+    """Answers from a function of the user message (by default, neutral tags and no
+    specific ones). For tests. `calls` records every (system, user) pair; `answers`
+    overrides the answer for user messages containing a key. Each answer reports
+    `usage` (100 prompt and 20 completion tokens unless given)."""
 
     def __init__(
         self,
         model: str = "stub-llm-v1",
         *,
         answers: Mapping[str, str | Exception] | None = None,
-        default: str = '{"topic": "other", "depth": 0.5, "clickbait": 0, "rage_bait": 0}',
+        default: str = (
+            '{"topic": "other", "depth": 0.5, "clickbait": 0, "rage_bait": 0, "tags": []}'
+        ),
+        usage: TokenUsage | None = None,
     ) -> None:
         self.model = model
         self.answers = dict(answers or {})
         self.default = default
+        self.usage = usage or TokenUsage(100, 20)
         self.calls: list[tuple[str, str]] = []
 
-    def complete(self, system: str, user: str) -> str:
+    def complete(self, system: str, user: str) -> Completion:
         self.calls.append((system, user))
         for key, answer in self.answers.items():
             if key in user:
                 if isinstance(answer, Exception):
                     raise answer
-                return answer
-        return self.default
+                return Completion(answer, self.usage)
+        return Completion(self.default, self.usage)
 
 
 def get_llm_provider(settings: Settings | None = None) -> LLMProvider | None:
@@ -290,15 +369,46 @@ SYSTEM_PROMPT = f"""You tag YouTube videos for a personal recommender. Given a v
 metadata and the start of its transcript, answer with one JSON object and nothing else:
 
 {{"topic": "<one of: {", ".join(TOPICS)}>",
- "depth": <0 to 1>, "clickbait": <0 to 1>, "rage_bait": <0 to 1>}}
+ "depth": <0 to 1>, "clickbait": <0 to 1>, "rage_bait": <0 to 1>,
+ "tags": [{{"tag": "<tag>", "confidence": <0 to 1>}}, ...]}}
 
 - topic: the single best-fitting broad topic from the list ("other" if none fits).
+- tags: {MIN_TAGS} to {MAX_TAGS} specific tags for what the video is about, most relevant
+  first, as someone would search for them: subjects, techniques, tools, games, sports,
+  people, places (e.g. "rust", "woodworking", "dovetail joints", "f1", "sourdough").
+  One to three words each, in English, lowercase except names and acronyms, no "#".
+  Not the format or tone ("tutorial", "review", "funny"). confidence: 1 = clearly
+  what the video is about, 0.5 = a side subject.
 - depth: 0 = superficial (reactions, listicles, hype), 0.5 = solid overview,
   1 = in-depth, expert, carefully researched.
 - clickbait: 0 = the title and description plainly say what the video is,
   1 = they exaggerate, withhold or misrepresent it to get clicks.
 - rage_bait: 0 = calm and fair, 1 = made to provoke anger or outrage.
 Judge the content, not whether you agree with it."""
+
+
+def system_prompt(existing_tags: Sequence[str] = ()) -> str:
+    """`SYSTEM_PROMPT`, plus the library's most-used tags (`top_tag_labels`) when there
+    are any, so the model reuses them rather than coining variants. The list comes last
+    so the fixed part stays a cacheable prefix, and the tagger builds it once per run so
+    all of a run's prompts share it. It isn't part of the answer format, so it doesn't
+    change `TAG_PROMPT_VERSION`."""
+    if not existing_tags:
+        return SYSTEM_PROMPT
+    return (
+        f"{SYSTEM_PROMPT}\n\nTags already used in this library:\n"
+        + "; ".join(existing_tags)
+        + "\nPrefer one of these, spelled exactly like this, when it fits what the video is "
+        "about. Add a new tag only when none of them does."
+    )
+
+
+@dataclass(frozen=True)
+class TagAnswer:
+    """What a model answered for one video."""
+
+    scores: LLMTags  # topic, depth, clickbait, rage-bait
+    tags: tuple[ProposedTag, ...]  # most confident first, at most MAX_TAGS
 
 
 @dataclass(frozen=True)
@@ -330,10 +440,12 @@ def tag_prompt(video: TagInput) -> str:
     return "\n\n".join(parts)
 
 
-def parse_tags(answer: str) -> LLMTags:
+def parse_answer(answer: str) -> TagAnswer:
     """The tags in a model's answer: the last JSON object in it with a "topic" (code
     fences, reasoning and other text around it are ignored). Scores are clipped to
-    [0, 1]; an unknown topic is "other". Raises LLMError when there is no usable object."""
+    [0, 1]; an unknown topic is "other". Raises LLMError when there is no usable object,
+    including one without a "tags" list; unusable entries in the list are dropped (see
+    `_proposed_tags`)."""
     decoder = json.JSONDecoder()
     data: dict[str, Any] | None = None
     for start in (i for i, char in enumerate(answer) if char == "{"):
@@ -347,12 +459,39 @@ def parse_tags(answer: str) -> LLMTags:
         raise LLMError(f"No tags object in the answer: {answer[:200]!r}")
     fields = data
     topic = str(fields.get("topic", "")).strip().lower().replace(" ", "_").replace("-", "_")
-    return LLMTags(
+    scores = LLMTags(
         topic=topic if topic in TOPICS else "other",
         depth=_score(fields, "depth"),
         clickbait=_score(fields, "clickbait"),
         rage_bait=_score(fields, "rage_bait"),
     )
+    return TagAnswer(scores, _proposed_tags(fields.get("tags")))
+
+
+def _proposed_tags(value: Any) -> tuple[ProposedTag, ...]:
+    """The usable entries of an answer's "tags": objects with a "tag" that can be a tag
+    (`homefeed_core.tags.is_usable`) and a numeric "confidence" (clipped to [0, 1]).
+    Spellings with the same slug keep the highest confidence. Fewer than MIN_TAGS is
+    fine; past MAX_TAGS the least confident are dropped."""
+    if not isinstance(value, list):
+        raise LLMError(f"Missing or non-list 'tags': {value!r}"[:200])
+    best: dict[str, ProposedTag] = {}
+    for entry in cast(list[Any], value):
+        if not isinstance(entry, dict):
+            continue
+        entry = cast(dict[str, Any], entry)
+        label = entry.get("tag")
+        if not isinstance(label, str) or not is_usable(label):
+            continue
+        try:
+            confidence = _score(entry, "confidence")
+        except LLMError:
+            continue
+        slug = slugify(label)
+        if slug not in best or best[slug].confidence < confidence:
+            best[slug] = ProposedTag(label, confidence)
+    ranked = sorted(best.values(), key=lambda tag: -tag.confidence)  # stable: ties keep order
+    return tuple(ranked[:MAX_TAGS])
 
 
 def _score(data: Mapping[str, Any], name: str) -> float:
@@ -387,6 +526,31 @@ def get_tags(
             """
         ).bindparams(bindparam("ids", expanding=True)),
         {"version": prompt_version, "ids": ids},
+    )
+    return {
+        video_id: LLMTags(topic=topic, depth=depth, clickbait=clickbait, rage_bait=rage_bait)
+        for video_id, topic, depth, clickbait, rage_bait in rows
+    }
+
+
+def get_scores(session: Session, video_ids: Iterable[str]) -> dict[str, LLMTags]:
+    """The newest stored topic and scores by video id, from any prompt version since
+    `SCORES_COMPATIBLE_SINCE`, so videos keep their features while a prompt version
+    bump retags the library. Untagged videos are left out."""
+    ids = list(dict.fromkeys(video_ids))
+    if not ids:
+        return {}
+    rows = session.execute(
+        text(
+            """
+            SELECT video_id, topic, depth, clickbait, rage_bait FROM video_llm_tags AS t
+            WHERE video_id IN :ids AND prompt_version = (
+                SELECT max(prompt_version) FROM video_llm_tags
+                WHERE video_id = t.video_id AND prompt_version BETWEEN :since AND :current
+            )
+            """
+        ).bindparams(bindparam("ids", expanding=True)),
+        {"ids": ids, "since": SCORES_COMPATIBLE_SINCE, "current": TAG_PROMPT_VERSION},
     )
     return {
         video_id: LLMTags(topic=topic, depth=depth, clickbait=clickbait, rage_bait=rage_bait)
@@ -474,6 +638,8 @@ class TagReport:
     skipped: list[str] = field(default_factory=list[str])  # no stored metadata, or over the cap
     failed: dict[str, str] = field(default_factory=dict[str, str])  # video id -> error
     stopped: str | None = None  # why the run stopped early (provider unavailable)
+    # Tokens used by this run's answers, unparseable ones included.
+    usage: TokenUsage = TokenUsage()
 
 
 class Tagger:
@@ -483,20 +649,21 @@ class Tagger:
         provider: LLMProvider,
         *,
         max_per_run: int | None = None,
+        embedder: EmbeddingProvider | None = None,
+        merge_threshold: float = DEFAULT_MERGE_THRESHOLD,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._sessions = sessions
         self._provider = provider
         self._max_per_run = max_per_run
+        # Tags are embedded and near-duplicates merged (see homefeed_core.tags) only with one.
+        self._embedder = embedder
+        self._merge_threshold = merge_threshold
         self._now = now
 
     @property
     def model(self) -> str:
         return self._provider.model
-
-    def tag(self, video: TagInput) -> LLMTags:
-        """Ask the provider for the tags of `video` (not stored). Raises LLMError."""
-        return parse_tags(self._provider.complete(SYSTEM_PROMPT, tag_prompt(video)))
 
     def tag_many(self, video_ids: Iterable[str]) -> TagReport:
         """Tag the videos without current tags, in order, at most `max_per_run` calls.
@@ -506,7 +673,9 @@ class Tagger:
         with self._sessions() as session:
             current = get_tags(session, ids)
             inputs = load_tag_inputs(session, [v for v in ids if v not in current])
+            system = system_prompt(top_tag_labels(session, TOP_TAGS_IN_PROMPT))
         calls = 0
+        usage = TokenUsage()
         for index, video_id in enumerate(ids):
             if video_id in current:
                 report.cached.append(video_id)
@@ -517,7 +686,9 @@ class Tagger:
                 continue
             calls += 1
             try:
-                tags = self.tag(video)
+                completion = self._provider.complete(system, tag_prompt(video))
+                usage += completion.usage or TokenUsage()
+                answer = parse_answer(completion.text)
             except LLMUnavailableError as error:
                 logger.warning("LLM tagging stopped (%s): %s", self.model, error)
                 report.failed[video_id] = str(error)
@@ -528,22 +699,41 @@ class Tagger:
                 logger.warning("Could not tag %s: %s", video_id, error)
                 report.failed[video_id] = str(error)
                 continue
+            now = self._now()
             with self._sessions.begin() as session:
-                store_tags(session, video_id, tags, model=self.model, now=self._now())
+                store_tags(session, video_id, answer.scores, model=self.model, now=now)
+                set_llm_tags(
+                    session,
+                    video_id,
+                    answer.tags,
+                    prompt_version=TAG_PROMPT_VERSION,
+                    embedder=self._embedder,
+                    threshold=self._merge_threshold,
+                    now=now,
+                )
             report.tagged.append(video_id)
+        report = replace(report, usage=usage)
         _log(report, self.model)
         return report
 
 
 def _log(report: TagReport, model: str) -> None:
+    usage = report.usage
+    calls = len(report.tagged) + len(report.failed)
     logger.info(
-        "LLM tagging with %s: %d tagged, %d up to date, %d skipped, %d failed%s",
+        "LLM tagging with %s (prompt v%d): %d tagged, %d up to date, %d skipped, %d failed%s; "
+        "%d calls used %d prompt + %d completion tokens%s",
         model,
+        TAG_PROMPT_VERSION,
         len(report.tagged),
         len(report.cached),
         len(report.skipped),
         len(report.failed),
         " (stopped early)" if report.stopped else "",
+        calls,
+        usage.prompt_tokens,
+        usage.completion_tokens,
+        f", cost {usage.cost:.4f}" if usage.cost is not None else "",
     )
 
 
@@ -555,4 +745,10 @@ def get_tagger() -> Tagger | None:
     provider = get_llm_provider(settings)
     if provider is None:
         return None
-    return Tagger(get_session_factory(), provider, max_per_run=settings.llm_max_tags_per_run)
+    return Tagger(
+        get_session_factory(),
+        provider,
+        max_per_run=settings.llm_max_tags_per_run,
+        embedder=get_embedding_provider(),
+        merge_threshold=settings.tag_merge_threshold,
+    )

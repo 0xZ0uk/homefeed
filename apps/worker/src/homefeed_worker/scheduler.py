@@ -15,6 +15,7 @@ from homefeed_core.config import get_settings
 from homefeed_core.db import get_session_factory
 from homefeed_core.external_sources import ExternalSourcesSource
 from homefeed_core.gateway import create_gateway
+from homefeed_core.tag_discovery import TagDiscoverySource
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,9 @@ ENRICH_CHECK_MINUTES = 30
 # How often the worker looks for external sources (subreddits, feeds, link pages) that
 # are due; each has its own schedule (hourly, daily or weekly) and backoff.
 EXTERNAL_SOURCES_CHECK_MINUTES = 15
+# How often the worker looks for subscribed tags that are due a YouTube search (once a day
+# each, capped per day; see homefeed_core.tag_discovery).
+TAG_DISCOVERY_CHECK_MINUTES = 60
 
 
 # The feed job polls too; this keeps it and the poll job from polling at the same time.
@@ -78,6 +82,21 @@ def fetch_external_sources() -> None:
     """Fetch due external sources and record the YouTube videos they link to."""
     sessions = get_session_factory()
     source = ExternalSourcesSource(sessions, create_gateway(sessions))
+    report = candidates.generate([source], sessions=sessions)
+    for name, video_ids in report.new.items():
+        logger.info("Candidate source %r found %d new candidates", name, len(video_ids))
+    for name, error in report.failed.items():
+        logger.warning("Candidate source %r failed: %s", name, error)
+
+
+def discover_tag_videos() -> None:
+    """Search YouTube for the subscribed tags that are due and record the new videos."""
+    sessions = get_session_factory()
+    source = TagDiscoverySource(
+        sessions,
+        create_gateway(sessions),
+        per_tag_per_day=get_settings().tag_discovery_per_day,
+    )
     report = candidates.generate([source], sessions=sessions)
     for name, video_ids in report.new.items():
         logger.info("Candidate source %r found %d new candidates", name, len(video_ids))
@@ -177,6 +196,15 @@ def build_scheduler(
         IntervalTrigger(minutes=EXTERNAL_SOURCES_CHECK_MINUTES, timezone=UTC),
         id="fetch_external_sources",
         name="Fetch external sources",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=None,
+    )
+    scheduler.add_job(
+        discover_tag_videos,
+        IntervalTrigger(minutes=TAG_DISCOVERY_CHECK_MINUTES, timezone=UTC),
+        id="discover_tag_videos",
+        name="Discover videos for subscribed tags",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=None,

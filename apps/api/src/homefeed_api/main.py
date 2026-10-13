@@ -42,6 +42,7 @@ from homefeed_core import (
     saved_searches,
     scores,
     sponsorblock,
+    tags,
     videos,
     watch_events,
 )
@@ -620,15 +621,37 @@ TopicWeight = Annotated[
 ]
 
 
+TopicMatchMode = Annotated[
+    curation.MatchMode,
+    Field(
+        description="What counts as a match: `embedding` (description similarity), `tag` "
+        "(the video carries the topic's tag) or `both` (the stronger of the two). The last "
+        "two need a tag."
+    ),
+]
+
+
 class TopicInput(BaseModel):
     name: TopicName
-    description: TopicDescription
+    description: TopicDescription | None = Field(
+        default=None,
+        min_length=1,
+        max_length=curation.TOPIC_DESCRIPTION_MAX_LENGTH,
+        description="Required unless the topic has a tag, whose label it defaults to",
+    )
     weight: TopicWeight
     decay: bool = Field(
         default=False,
         description=f"Halve the weight every {curation.TOPIC_HALF_LIFE_DAYS} days "
         "unless reaffirmed",
     )
+    tag: str | None = Field(
+        default=None,
+        max_length=100,
+        description="Slug (or alias) of the tag the topic is about; a tag has at most one "
+        "topic. Makes the default `match_mode` `tag`.",
+    )
+    match_mode: TopicMatchMode | None = None
 
 
 class TopicUpdateInput(BaseModel):
@@ -638,6 +661,12 @@ class TopicUpdateInput(BaseModel):
     description: TopicDescription | None = None
     weight: TopicWeight | None = None
     decay: bool | None = None
+    match_mode: TopicMatchMode | None = None
+    hide: bool | None = Field(
+        default=None,
+        description="Drop the tag's videos from the feed. Only a tag topic with weight -1 "
+        "can turn it on (422 otherwise); setting any other weight turns it off.",
+    )
 
 
 TOPIC_NOT_FOUND: dict[int | str, dict[str, Any]] = {
@@ -661,8 +690,14 @@ def list_topics(session: SessionDep) -> list[curation.Topic]:
 def add_topic(body: TopicInput, session: SessionDep, embedder: EmbedderDep) -> curation.Topic:
     """Create a topic; its description is embedded right away.
 
-    A blank name or description is a 422 with a string `detail`.
+    A blank name or description, or an unknown tag, is a 422 with a string `detail`; a
+    name or tag that already has a topic is a 409.
     """
+    tag = None
+    if body.tag is not None:
+        tag = tags.resolve_slug(session, tags.slugify(body.tag))
+        if tag is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "No such tag")
     try:
         return curation.add_topic(
             session,
@@ -671,6 +706,8 @@ def add_topic(body: TopicInput, session: SessionDep, embedder: EmbedderDep) -> c
             description=body.description,
             weight=body.weight,
             decay=body.decay,
+            tag_id=None if tag is None else tag.id,
+            match_mode=body.match_mode,
         )
     except curation.DuplicateTopicError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
@@ -693,6 +730,8 @@ def update_topic(
             description=body.description,
             weight=body.weight,
             decay=body.decay,
+            match_mode=body.match_mode,
+            hide=body.hide,
         )
     except curation.DuplicateTopicError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
@@ -723,6 +762,98 @@ def delete_topic(topic_id: TopicId, session: SessionDep) -> Response:
     if not curation.delete_topic(session, topic_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Topic not found")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+TAG_NOT_FOUND: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorDetail, "description": "No such tag"}
+}
+TagAdminId = Annotated[int, Path(ge=1, description="Tag id")]
+
+
+class TagRenameInput(BaseModel):
+    label: str = Field(
+        min_length=1,
+        max_length=tags.LABEL_MAX_LENGTH,
+        description="The new label; its slug is derived from it",
+    )
+
+
+class TagMergeInput(BaseModel):
+    target_id: int = Field(ge=1, description="The tag to merge into")
+
+
+@app.get("/tag-admin", tags=["tag-admin"])
+def list_tags_admin(
+    session: SessionDep,
+    q: Annotated[
+        str | None,
+        Query(max_length=100, description="Keep tags whose label, slug or an alias contains this"),
+    ] = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+) -> list[tags.AdminTag]:
+    """Tags for the Curation tab, with their video counts (removed links excluded) and
+    aliases, most videos first."""
+    return tags.list_admin_tags(session, q, limit=limit)
+
+
+@app.patch(
+    "/tag-admin/{tag_id}",
+    tags=["tag-admin"],
+    responses={
+        **TAG_NOT_FOUND,
+        409: {"model": ErrorDetail, "description": "Another tag has this slug: merge instead"},
+    },
+)
+def rename_tag(
+    tag_id: TagAdminId, body: TagRenameInput, session: SessionDep, embedder: EmbedderDep
+) -> tags.Tag:
+    """Rename a tag. The old slug becomes an alias of it, so old spellings still resolve.
+
+    A label that isn't usable (no letters or digits) is a 422; one whose slug belongs to
+    another tag or alias is a 409.
+    """
+    try:
+        tag = tags.rename_tag(session, tag_id, body.label, embedder=embedder)
+    except tags.DuplicateTagError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    if tag is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tag not found")
+    return tag
+
+
+@app.post("/tag-admin/{tag_id}/merge", tags=["tag-admin"], responses=TAG_NOT_FOUND)
+def merge_tag(tag_id: TagAdminId, body: TagMergeInput, session: SessionDep) -> tags.Tag:
+    """Merge this tag into the target and delete it: its slug and aliases become aliases
+    of the target and its video links move there. Returns the target. Merging a tag into
+    itself is a 422."""
+    try:
+        target = tags.merge_tags(session, tag_id, body.target_id)
+    except tags.SameTagError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tag not found")
+    return target
+
+
+@app.post(
+    "/tag-admin/aliases/{alias}/split",
+    tags=["tag-admin"],
+    status_code=status.HTTP_201_CREATED,
+    responses={404: {"model": ErrorDetail, "description": "No such alias"}},
+)
+def split_tag_alias(
+    alias: Annotated[str, Path(min_length=1, max_length=100, description="The alias (a slug)")],
+    session: SessionDep,
+    embedder: EmbedderDep,
+) -> tags.Tag:
+    """Detach an alias into a tag of its own, which no longer folds into the old tag.
+    Video links stay with the old tag. Returns the new tag."""
+    tag = tags.split_alias(session, alias, embedder=embedder)
+    if tag is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Alias not found")
+    return tag
 
 
 SearchQuery = Annotated[
@@ -1283,6 +1414,15 @@ class ChapterOut(BaseModel):
     end_seconds: float
 
 
+class VideoTagOut(BaseModel):
+    slug: str = Field(description="The tag's unique key, e.g. `dovetail-joints`")
+    label: str = Field(description="How the tag is shown, e.g. `dovetail joints`")
+    source: tags.TagSource = Field(
+        description="`llm` when proposed by the LLM tagger, `manual` when added by hand"
+    )
+    confidence: float = Field(ge=0, le=1, description="How sure the tagger is; 1 for manual")
+
+
 class VideoOut(BaseModel):
     id: str
     title: str
@@ -1295,6 +1435,9 @@ class VideoOut(BaseModel):
     thumbnail_url: str | None
     live_status: str | None
     chapters: list[ChapterOut]
+    tags: list[VideoTagOut] = Field(
+        description="Specific tags (e.g. `rust`), most confident first; empty until tagged"
+    )
     is_stale: bool = Field(
         description="True when YouTube couldn't be reached and this is the stored copy"
     )
@@ -1312,12 +1455,21 @@ def _gateway_http_error(error: GatewayError) -> HTTPException:
     return HTTPException(status.HTTP_502_BAD_GATEWAY, str(error))
 
 
+def _tags_of(session: Session, video_id: str) -> list[VideoTagOut]:
+    return [
+        VideoTagOut.model_validate(vars(tag))
+        for tag in tags.get_video_tags(session, [video_id]).get(video_id, [])
+    ]
+
+
 @app.get("/videos/{video_id}", tags=["videos"], responses=VIDEO_ERRORS)
 def get_video(video_id: VideoId, session: SessionDep, player: PlaybackDep) -> VideoOut:
-    """A video's metadata (title, channel, description, ...), stored in `videos`.
+    """A video's metadata (title, channel, description, ...), stored in `videos`, and
+    its tags.
 
     When YouTube can't be reached, the stored copy is returned with `is_stale`.
     """
+    video_tags = _tags_of(session, video_id)
     try:
         video = player.video(video_id)
     except UnavailableError as error:
@@ -1326,7 +1478,9 @@ def get_video(video_id: VideoId, session: SessionDep, player: PlaybackDep) -> Vi
         stored = videos.get_stored_video(session, video_id)
         if stored is None:
             raise _gateway_http_error(error) from error
-        return VideoOut.model_validate({**vars(stored), "chapters": [], "is_stale": True})
+        return VideoOut.model_validate(
+            {**vars(stored), "chapters": [], "tags": video_tags, "is_stale": True}
+        )
     videos.store_video(session, video)
     return VideoOut(
         id=video.id,
@@ -1342,8 +1496,70 @@ def get_video(video_id: VideoId, session: SessionDep, player: PlaybackDep) -> Vi
         thumbnail_url=video.thumbnail_url,
         live_status=video.live_status,
         chapters=[ChapterOut.model_validate(vars(chapter)) for chapter in video.chapters],
+        tags=video_tags,
         is_stale=False,
     )
+
+
+class VideoTagInput(BaseModel):
+    label: str = Field(description="The tag as typed, e.g. `dovetail joints`")
+
+
+class TagSuggestionOut(BaseModel):
+    slug: str
+    label: str
+    video_count: int = Field(description="Videos currently tagged with it")
+
+
+TAG_EDIT_ERRORS: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorDetail, "description": "The video isn't known"},
+    422: {"model": ErrorDetail, "description": "The text can't be used as a tag"},
+}
+
+
+def _require_stored_video(session: Session, video_id: str) -> None:
+    if videos.get_stored_video(session, video_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Video not found")
+
+
+@app.post("/videos/{video_id}/tags", tags=["videos"], responses=TAG_EDIT_ERRORS)
+def add_video_tag(video_id: VideoId, body: VideoTagInput, session: SessionDep) -> list[VideoTagOut]:
+    """Tag a video by hand. The text resolves to a canonical tag like the LLM's tags do
+    (an existing tag or alias, or a new tag). The tag is `manual` with confidence 1 and
+    stays through retagging; adding a removed tag brings it back. Returns the video's
+    tags."""
+    _require_stored_video(session, video_id)
+    if tags.add_manual_tag(session, video_id, body.label) is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"Tags need letters or digits and at most {tags.LABEL_MAX_LENGTH} characters",
+        )
+    return _tags_of(session, video_id)
+
+
+@app.delete(
+    "/videos/{video_id}/tags/{slug}", tags=["videos"], responses={404: TAG_EDIT_ERRORS[404]}
+)
+def remove_video_tag(video_id: VideoId, slug: str, session: SessionDep) -> list[VideoTagOut]:
+    """Remove a tag from a video. It is kept as a tombstone, so retagging never adds it
+    back. Removing a tag the video doesn't have changes nothing. Returns the video's
+    tags."""
+    _require_stored_video(session, video_id)
+    tags.remove_video_tag(session, video_id, slug)
+    return _tags_of(session, video_id)
+
+
+@app.get("/tags/suggest", tags=["tags"])
+def suggest_tags(
+    session: SessionDep,
+    q: Annotated[str, Query(max_length=100, description="What's been typed so far")] = "",
+    limit: Annotated[int, Query(ge=1, le=20)] = 8,
+) -> list[TagSuggestionOut]:
+    """Existing tags to offer while typing a tag: those matching `q` by name or alias,
+    best match first, then the most used. Without `q`, the most used tags."""
+    return [
+        TagSuggestionOut.model_validate(vars(s)) for s in tags.suggest_tags(session, q, limit=limit)
+    ]
 
 
 @app.get(
@@ -1800,3 +2016,150 @@ def export_all(session: SessionDep) -> Response:
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# Keep the tag routes last. `/tags/{slug}` matches any one-segment path, so literal routes
+# like `GET /tags/suggest` must be declared above it (routes match in declaration order).
+class TagTopic(BaseModel):
+    """The subscription to a tag: the topic backed by it."""
+
+    id: int
+    weight: float = Field(description="The slider, -1 to 1")
+    effective_weight: float = Field(description="The weight now, after decay")
+    decay: bool
+    match_mode: curation.MatchMode
+    hide: bool = Field(description="Videos with the tag are dropped from the feed")
+
+
+class TagDetail(BaseModel):
+    tag: tags.TagSummary = Field(
+        description="The canonical tag; its `slug` differs from the one asked for when that "
+        "was an alias. `video_count` is the total over all pages."
+    )
+    videos: list[tags.TagVideo] = Field(
+        description="One page of the videos carrying the tag, newest published first"
+    )
+    topic: TagTopic | None = Field(
+        description="The topic subscribing to this tag, or null when not subscribed"
+    )
+
+
+TagSlug = Annotated[str, Path(max_length=100, description="A tag's slug, or one of its aliases")]
+
+
+@app.get("/tags", tags=["tags"])
+def list_tags(
+    session: SessionDep,
+    q: Annotated[
+        str | None,
+        Query(
+            max_length=tags.TAG_QUERY_MAX_LENGTH,
+            description="Only tags whose slug or an alias contains this text (as a slug)",
+        ),
+    ] = None,
+    limit: Annotated[int, Query(ge=1, le=tags.MAX_TAG_LIMIT)] = tags.DEFAULT_TAG_LIMIT,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[tags.TagSummary]:
+    """Tags carried by at least one video, most videos first, with their video counts."""
+    return tags.list_tags(session, q, limit=limit, offset=offset)
+
+
+@app.get(
+    "/tags/{slug}",
+    tags=["tags"],
+    responses={404: {"model": ErrorDetail, "description": "No such tag"}},
+)
+def get_tag(
+    slug: TagSlug,
+    session: SessionDep,
+    limit: Annotated[
+        int, Query(ge=1, le=tags.MAX_TAG_VIDEOS_LIMIT)
+    ] = tags.DEFAULT_TAG_VIDEOS_LIMIT,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> TagDetail:
+    """A tag and a page of its videos, from any source, without removed links.
+
+    An alias resolves to its canonical tag (compare `tag.slug` with the slug asked for).
+    """
+    tag = tags.resolve_slug(session, slug)
+    if tag is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such tag")
+    return TagDetail(
+        tag=tags.TagSummary(tag.id, tag.slug, tag.label, tags.count_tag_videos(session, tag.id)),
+        videos=tags.list_tag_videos(session, tag.id, limit=limit, offset=offset),
+        topic=_tag_topic(session, tag.id),
+    )
+
+
+def _tag_topic(session: Session, tag_id: int) -> TagTopic | None:
+    topic = curation.topic_for_tag(session, tag_id)
+    if topic is None:
+        return None
+    return TagTopic(
+        id=topic.id,
+        weight=topic.weight,
+        effective_weight=topic.effective_weight,
+        decay=topic.decay,
+        match_mode=topic.match_mode,
+        hide=topic.hide,
+    )
+
+
+@app.post(
+    "/tags/{slug}/subscribe",
+    tags=["tags"],
+    responses={404: {"model": ErrorDetail, "description": "No such tag"}},
+)
+def subscribe_tag(slug: TagSlug, session: SessionDep, embedder: EmbedderDep) -> curation.Topic:
+    """Subscribe to a tag: its videos rank higher. Makes a tag-backed topic (weight +0.5,
+    matching by tag) named after the tag; change it with `PATCH /topics/{id}`. Returns the
+    existing topic if already subscribed."""
+    tag = tags.resolve_slug(session, slug)
+    if tag is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such tag")
+    topic, _ = curation.subscribe_tag(session, embedder, tag)
+    return topic
+
+
+@app.delete(
+    "/tags/{slug}/subscribe",
+    tags=["tags"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={404: {"model": ErrorDetail, "description": "No such tag, or not subscribed"}},
+)
+def unsubscribe_tag(slug: TagSlug, session: SessionDep) -> Response:
+    """Unsubscribe from a tag, deleting its topic."""
+    tag = tags.resolve_slug(session, slug)
+    if tag is None or not curation.unsubscribe_tag(session, tag.id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not subscribed to this tag")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post(
+    "/tags/{slug}/mute",
+    tags=["tags"],
+    responses={404: {"model": ErrorDetail, "description": "No such tag"}},
+)
+def mute_tag(slug: TagSlug, session: SessionDep, embedder: EmbedderDep) -> curation.Topic:
+    """Mute a tag: its videos rank lower. Makes a tag-backed topic with weight -0.5, or
+    flips an existing subscription to -0.5; a tag that is already muted keeps its weight.
+    Change the weight, or hide the videos at -1, with `PATCH /topics/{id}`."""
+    tag = tags.resolve_slug(session, slug)
+    if tag is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such tag")
+    return curation.mute_tag(session, embedder, tag)
+
+
+@app.delete(
+    "/tags/{slug}/mute",
+    tags=["tags"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={404: {"model": ErrorDetail, "description": "No such tag, or not muted"}},
+)
+def unmute_tag(slug: TagSlug, session: SessionDep) -> Response:
+    """Unmute a tag, deleting its topic. A tag with a positive weight is a subscription,
+    not a mute: that is a 404 (use `DELETE /tags/{slug}/subscribe`)."""
+    tag = tags.resolve_slug(session, slug)
+    if tag is None or not curation.unmute_tag(session, tag.id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not muting this tag")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

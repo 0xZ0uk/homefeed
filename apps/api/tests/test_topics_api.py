@@ -11,6 +11,7 @@ from homefeed_core.config import get_settings
 from homefeed_core.db import get_session_factory
 from homefeed_core.embeddings import StubEmbeddingProvider
 from homefeed_core.gateway.events import format_timestamp
+from homefeed_core.tags import resolve_tag
 
 
 @pytest.fixture
@@ -61,6 +62,11 @@ def test_create_and_list(client: TestClient, embedder: StubEmbeddingProvider) ->
         "reaffirmed_at": wood["created_at"],
         "created_at": wood["created_at"],
         "updated_at": wood["created_at"],
+        "match_mode": "embedding",
+        "tag_id": None,
+        "tag_slug": None,
+        "tag_label": None,
+        "hide": False,
     }
     assert drama["decay"] is True
     assert drama["effective_weight"] == pytest.approx(-1.0)
@@ -147,3 +153,137 @@ def test_delete(client: TestClient) -> None:
     assert client.delete(f"/topics/{wood['id']}").status_code == 404
     assert client.delete("/topics/0").status_code == 422
     assert stored() == []
+
+
+def make_tag(label: str = "Rust") -> int:
+    with get_session_factory().begin() as session:
+        tag = resolve_tag(session, label)
+        assert tag is not None
+        return tag.id
+
+
+def test_subscribe_creates_a_tag_backed_topic_and_shows_on_the_tag_page(
+    client: TestClient,
+) -> None:
+    tag_id = make_tag()
+    assert client.get("/tags/rust").json()["topic"] is None
+
+    response = client.post("/tags/rust/subscribe")
+
+    assert response.status_code == 200
+    topic = response.json()
+    assert (topic["name"], topic["description"], topic["weight"]) == ("Rust", "Rust", 0.5)
+    assert (topic["match_mode"], topic["tag_id"], topic["tag_slug"]) == ("tag", tag_id, "rust")
+    assert client.post("/tags/rust/subscribe").json()["id"] == topic["id"]  # idempotent
+    assert client.get("/tags/rust").json()["topic"] == {
+        "id": topic["id"],
+        "weight": 0.5,
+        "effective_weight": 0.5,
+        "decay": False,
+        "match_mode": "tag",
+        "hide": False,
+    }
+    assert [t["id"] for t in client.get("/topics").json()] == [topic["id"]]
+
+    updated = client.patch(
+        f"/topics/{topic['id']}", json={"weight": -0.25, "match_mode": "both", "decay": True}
+    )
+    assert updated.status_code == 200
+    assert client.get("/tags/rust").json()["topic"] == {
+        "id": topic["id"],
+        "weight": -0.25,
+        "effective_weight": pytest.approx(-0.25),
+        "decay": True,
+        "match_mode": "both",
+        "hide": False,
+    }
+
+    assert client.delete("/tags/rust/subscribe").status_code == 204
+    assert client.get("/tags/rust").json()["topic"] is None
+    assert client.get("/topics").json() == []
+    assert client.delete("/tags/rust/subscribe").status_code == 404
+
+
+def test_subscribe_through_an_alias_and_unknown_tags(client: TestClient) -> None:
+    make_tag("Rust")
+    with get_session_factory().begin() as session:
+        session.execute(
+            text(
+                "INSERT INTO tag_aliases (alias, tag_id, source) "
+                "SELECT 'rust-lang', id, 'user' FROM tags WHERE slug = 'rust'"
+            )
+        )
+
+    assert client.post("/tags/rust-lang/subscribe").json()["tag_slug"] == "rust"
+    assert client.post("/tags/nope/subscribe").status_code == 404
+    assert client.delete("/tags/nope/subscribe").status_code == 404
+
+
+def test_create_a_topic_for_a_tag(client: TestClient) -> None:
+    make_tag()
+
+    topic = create(client, name="Rust stuff", tag="rust", weight=0.3, description=None)
+
+    assert (topic["description"], topic["match_mode"], topic["tag_slug"]) == ("Rust", "tag", "rust")
+    both = client.patch(f"/topics/{topic['id']}", json={"match_mode": "both"}).json()
+    assert both["match_mode"] == "both"
+    taken = client.post("/topics", json={"name": "Other", "tag": "rust", "weight": 0.1})
+    assert taken.status_code == 409
+
+
+def test_topic_validation_for_tags_and_modes(client: TestClient) -> None:
+    make_tag()
+    plain = create(client)
+
+    for body in [
+        {"name": "x", "weight": 0.1},  # no description, no tag
+        {"name": "x", "weight": 0.1, "tag": "nope"},
+        {"name": "x", "description": "x", "weight": 0.1, "match_mode": "tag"},
+        {"name": "x", "weight": 0.1, "tag": "rust", "match_mode": "bogus"},
+    ]:
+        assert client.post("/topics", json=body).status_code == 422, body
+    assert client.patch(f"/topics/{plain['id']}", json={"match_mode": "both"}).status_code == 422
+
+
+def test_mute_and_unmute_a_tag(client: TestClient) -> None:
+    make_tag()
+
+    topic = client.post("/tags/rust/mute")
+
+    assert topic.status_code == 200
+    assert (topic.json()["weight"], topic.json()["match_mode"]) == (-0.5, "tag")
+    assert client.post("/tags/rust/mute").json()["id"] == topic.json()["id"]  # idempotent
+    assert client.get("/tags/rust").json()["topic"]["weight"] == -0.5
+
+    assert client.delete("/tags/rust/mute").status_code == 204
+    assert client.get("/tags/rust").json()["topic"] is None
+    assert client.delete("/tags/rust/mute").status_code == 404
+    assert client.post("/tags/nope/mute").status_code == 404
+    assert client.delete("/tags/nope/mute").status_code == 404
+
+
+def test_muting_flips_a_subscription_and_unmute_ignores_subscriptions(
+    client: TestClient,
+) -> None:
+    make_tag()
+    subscribed = client.post("/tags/rust/subscribe").json()
+
+    assert client.delete("/tags/rust/mute").status_code == 404  # a subscription, not a mute
+    muted = client.post("/tags/rust/mute").json()
+
+    assert muted["id"] == subscribed["id"] and muted["weight"] == -0.5
+
+
+def test_hide_a_muted_tag_at_weight_minus_one(client: TestClient) -> None:
+    make_tag()
+    plain = create(client)
+    topic = client.post("/tags/rust/mute").json()
+
+    assert client.patch(f"/topics/{topic['id']}", json={"hide": True}).status_code == 422
+    assert client.patch(f"/topics/{plain['id']}", json={"hide": True}).status_code == 422
+    hidden = client.patch(f"/topics/{topic['id']}", json={"weight": -1, "hide": True})
+    assert hidden.status_code == 200 and hidden.json()["hide"] is True
+    assert client.get("/tags/rust").json()["topic"]["hide"] is True
+
+    raised = client.patch(f"/topics/{topic['id']}", json={"weight": -0.4})
+    assert raised.json()["hide"] is False

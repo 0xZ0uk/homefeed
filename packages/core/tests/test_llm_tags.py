@@ -23,6 +23,7 @@ from homefeed_core.llm_tags import (
     SYSTEM_PROMPT,
     TAG_PROMPT_VERSION,
     TOPICS,
+    Completion,
     LLMError,
     LLMTags,
     LLMUnavailableError,
@@ -30,13 +31,17 @@ from homefeed_core.llm_tags import (
     OpenRouterProvider,
     StubLLMProvider,
     Tagger,
+    TokenUsage,
     get_llm_provider,
+    get_scores,
     get_tags,
-    parse_tags,
+    parse_answer,
     store_tags,
+    system_prompt,
 )
 from homefeed_core.model_features import FEATURE_NAMES, ModelInput, feature_row
 from homefeed_core.ratings import set_rating
+from homefeed_core.tags import ProposedTag, VideoTag, get_video_tags, set_llm_tags
 
 NOW = datetime(2026, 10, 13, 6, 0, tzinfo=UTC)
 CHANNEL = make_channel("UC" + "w" * 22, title="Woodworking", handle="@wood")
@@ -52,8 +57,15 @@ VIDEO = make_video(
 BAIT = make_video(
     "bbbbbbbbbbb", channel=CHANNEL, title="You WON'T BELIEVE this joint", duration_seconds=600
 )
-DEEP = '{"topic": "crafts_diy", "depth": 0.9, "clickbait": 0.1, "rage_bait": 0}'
-BAITY = '{"topic": "crafts_diy", "depth": 0.2, "clickbait": 0.95, "rage_bait": 0.3}'
+DEEP = (
+    '{"topic": "crafts_diy", "depth": 0.9, "clickbait": 0.1, "rage_bait": 0, "tags": ['
+    '{"tag": "woodworking", "confidence": 0.95}, {"tag": "Dovetail joints", "confidence": 0.8},'
+    ' {"tag": "hand tools", "confidence": 0.6}]}'
+)
+BAITY = (
+    '{"topic": "crafts_diy", "depth": 0.2, "clickbait": 0.95, "rage_bait": 0.3, "tags": ['
+    '{"tag": "woodworking", "confidence": 0.7}]}'
+)
 
 
 @pytest.fixture
@@ -83,11 +95,25 @@ def stored(sessions: sessionmaker[Session], *video_ids: str) -> dict[str, LLMTag
         return get_tags(session, video_ids)
 
 
+def stored_tags(sessions: sessionmaker[Session], video_id: str) -> list[tuple[str, float]]:
+    """(slug, confidence) of the video's tags, most confident first."""
+    with sessions() as session:
+        tags = get_video_tags(session, [video_id]).get(video_id, [])
+    return [(tag.slug, tag.confidence) for tag in tags]
+
+
 # Parsing
 
 
-def test_parse_tags_reads_the_json_object() -> None:
-    assert parse_tags(DEEP) == LLMTags("crafts_diy", 0.9, 0.1, 0.0)
+def test_parse_answer_reads_the_json_object() -> None:
+    answer = parse_answer(DEEP)
+
+    assert answer.scores == LLMTags("crafts_diy", 0.9, 0.1, 0.0)
+    assert answer.tags == (
+        ProposedTag("woodworking", 0.95),
+        ProposedTag("Dovetail joints", 0.8),
+        ProposedTag("hand tools", 0.6),
+    )
 
 
 @pytest.mark.parametrize(
@@ -99,18 +125,52 @@ def test_parse_tags_reads_the_json_object() -> None:
         "<think>The format is {topic, depth}; it is a woodworking video.</think>\n" + DEEP,
     ],
 )
-def test_parse_tags_ignores_text_around_the_object(answer: str) -> None:
-    assert parse_tags(answer) == LLMTags("crafts_diy", 0.9, 0.1, 0.0)
+def test_parse_answer_ignores_text_around_the_object(answer: str) -> None:
+    assert parse_answer(answer) == parse_answer(DEEP)
 
 
-def test_parse_tags_clips_scores_and_files_unknown_topics_under_other() -> None:
-    answer = '{"topic": "Basket weaving", "depth": 7, "clickbait": -1, "rage_bait": "0.4"}'
+def test_parse_answer_clips_scores_and_files_unknown_topics_under_other() -> None:
+    answer = (
+        '{"topic": "Basket weaving", "depth": 7, "clickbait": -1, "rage_bait": "0.4", "tags": []}'
+    )
 
-    assert parse_tags(answer) == LLMTags("other", 1.0, 0.0, 0.4)
+    assert parse_answer(answer).scores == LLMTags("other", 1.0, 0.0, 0.4)
 
 
-def test_parse_tags_normalizes_topic_spelling() -> None:
-    assert parse_tags(DEEP.replace("crafts_diy", "Crafts DIY")).topic == "crafts_diy"
+def test_parse_answer_normalizes_topic_spelling() -> None:
+    assert parse_answer(DEEP.replace("crafts_diy", "Crafts DIY")).scores.topic == "crafts_diy"
+
+
+def test_parse_answer_keeps_usable_tags_only() -> None:
+    tags = [
+        {"tag": "rust", "confidence": 0.9},
+        {"tag": "Rust", "confidence": 0.95},  # same slug: the more confident one stays
+        {"tag": "#embedded", "confidence": 1.4},  # clipped
+        {"tag": "cargo", "confidence": "0.5"},
+        {"tag": "no confidence"},
+        {"tag": "!!!", "confidence": 0.9},  # no slug
+        {"tag": "a tag that is really a whole sentence about the video", "confidence": 0.9},
+        {"tag": 42, "confidence": 0.9},
+        "bare string",
+    ]
+    answer = json.dumps({"topic": "programming", "depth": 1, "clickbait": 0, "rage_bait": 0})
+
+    parsed = parse_answer(answer[:-1] + ', "tags": ' + json.dumps(tags) + "}")
+
+    assert parsed.tags == (
+        ProposedTag("#embedded", 1.0),
+        ProposedTag("Rust", 0.95),
+        ProposedTag("cargo", 0.5),
+    )
+
+
+def test_parse_answer_keeps_the_most_confident_tags() -> None:
+    tags = [{"tag": f"tag {i}", "confidence": i / 10} for i in range(10)]
+    answer = {"topic": "other", "depth": 0, "clickbait": 0, "rage_bait": 0, "tags": tags}
+
+    parsed = parse_answer(json.dumps(answer))
+
+    assert [tag.label for tag in parsed.tags] == [f"tag {i}" for i in range(9, 1, -1)]
 
 
 @pytest.mark.parametrize(
@@ -121,11 +181,14 @@ def test_parse_tags_normalizes_topic_spelling() -> None:
         '{"topic": "music", "depth": "deep", "clickbait": 0, "rage_bait": 0}',
         '{"topic": "music", "depth": NaN, "clickbait": 0, "rage_bait": 0}',
         '["music", 0.5, 0, 0]',
+        # Prompt v1 answers: no tags.
+        '{"topic": "music", "depth": 0.5, "clickbait": 0, "rage_bait": 0}',
+        '{"topic": "music", "depth": 0.5, "clickbait": 0, "rage_bait": 0, "tags": "music"}',
     ],
 )
-def test_parse_tags_rejects_unusable_answers(answer: str) -> None:
+def test_parse_answer_rejects_unusable_answers(answer: str) -> None:
     with pytest.raises(LLMError):
-        parse_tags(answer)
+        parse_answer(answer)
 
 
 # Providers
@@ -145,11 +208,12 @@ class FakePost:
         return self.answer
 
 
-def chat_completion(content: str | None) -> dict[str, Any]:
+def chat_completion(content: str | None, **extra: Any) -> dict[str, Any]:
     return {
         "id": "chatcmpl-1",
         "object": "chat.completion",
         "choices": [{"index": 0, "message": {"role": "assistant", "content": content}}],
+        **extra,
     }
 
 
@@ -162,7 +226,7 @@ def test_openrouter_posts_an_openai_chat_completion() -> None:
         post=post,
     )
 
-    assert provider.complete("system prompt", "user message") == DEEP
+    assert provider.complete("system prompt", "user message") == Completion(DEEP)
 
     assert provider.model == "openrouter:mistralai/mistral-nemo"
     [(url, body, headers, timeout)] = post.requests
@@ -174,9 +238,17 @@ def test_openrouter_posts_an_openai_chat_completion() -> None:
     ]
     assert body["response_format"] == {"type": "json_object"}
     assert body["temperature"] == 0 and body["stream"] is False
+    assert body["usage"] == {"include": True}
     assert headers["Authorization"] == "Bearer sk-or-test"
     assert headers["X-Title"] == "Homefeed"
     assert timeout == 60.0
+
+
+def test_openrouter_reports_token_usage_and_cost() -> None:
+    usage = {"prompt_tokens": 1200, "completion_tokens": 90, "total_tokens": 1290, "cost": 0.0002}
+    provider = OpenRouterProvider("sk-or-test", post=FakePost(chat_completion(DEEP, usage=usage)))
+
+    assert provider.complete("system", "user").usage == TokenUsage(1200, 90, 0.0002)
 
 
 @pytest.mark.parametrize(
@@ -196,10 +268,19 @@ def test_openrouter_rejects_answers_without_text(answer: dict[str, Any]) -> None
 
 
 def test_ollama_posts_a_json_mode_chat() -> None:
-    post = FakePost({"model": "llama3.1:8b", "message": {"role": "assistant", "content": DEEP}})
+    post = FakePost(
+        {
+            "model": "llama3.1:8b",
+            "message": {"role": "assistant", "content": DEEP},
+            "prompt_eval_count": 800,
+            "eval_count": 70,
+        }
+    )
     provider = OllamaProvider(post=post)
 
-    assert provider.complete("system prompt", "user message") == DEEP
+    assert provider.complete("system prompt", "user message") == Completion(
+        DEEP, TokenUsage(800, 70)
+    )
 
     assert provider.model == "ollama:llama3.1:8b"
     [(url, body, _, _)] = post.requests
@@ -248,6 +329,11 @@ def test_tagger_tags_and_stores(sessions: sessionmaker[Session]) -> None:
 
     assert report.tagged == [VIDEO.id]
     assert stored(sessions, VIDEO.id) == {VIDEO.id: LLMTags("crafts_diy", 0.9, 0.1, 0.0)}
+    assert stored_tags(sessions, VIDEO.id) == [
+        ("woodworking", 0.95),
+        ("dovetail-joints", 0.8),
+        ("hand-tools", 0.6),
+    ]
     [(system, user)] = provider.calls
     assert system == SYSTEM_PROMPT
     assert user.startswith(f"Title: {VIDEO.id}")
@@ -256,6 +342,34 @@ def test_tagger_tags_and_stores(sessions: sessionmaker[Session]) -> None:
             text("SELECT prompt_version, model, tagged_at FROM video_llm_tags")
         ).one()
     assert tuple(row) == (TAG_PROMPT_VERSION, "stub-llm-v1", "2026-10-13T06:00:00.000Z")
+    with sessions() as session:
+        links = session.execute(
+            text("SELECT DISTINCT source, prompt_version, tagged_at FROM video_tags")
+        ).all()
+    assert [tuple(link) for link in links] == [
+        ("llm", TAG_PROMPT_VERSION, "2026-10-13T06:00:00.000Z")
+    ]
+
+
+def test_the_prompt_asks_for_specific_tags() -> None:
+    assert '"tags": [{"tag": "<tag>", "confidence": <0 to 1>}' in SYSTEM_PROMPT
+    assert "3 to 8 specific tags" in SYSTEM_PROMPT
+
+
+def test_proposed_tags_resolve_to_existing_tags(sessions: sessionmaker[Session]) -> None:
+    add_videos(sessions, VIDEO.id, BAIT.id)
+    provider = StubLLMProvider(
+        answers={BAIT.id: DEEP.replace('"woodworking"', '"Wood-Working"')}, default=DEEP
+    )
+
+    Tagger(sessions, provider).tag_many([VIDEO.id, BAIT.id])
+
+    with sessions() as session:
+        tags = get_video_tags(session, [VIDEO.id, BAIT.id])
+    assert tags[VIDEO.id][0] == tags[BAIT.id][0]
+    assert tags[BAIT.id][0] == VideoTag(
+        tags[VIDEO.id][0].tag_id, "woodworking", "woodworking", "llm", 0.95
+    )
 
 
 def test_cache_hits_skip_the_provider(sessions: sessionmaker[Session]) -> None:
@@ -283,9 +397,30 @@ def test_tags_are_cached_per_prompt_version(sessions: sessionmaker[Session]) -> 
 
     assert report.tagged == [VIDEO.id]
     assert stored(sessions, VIDEO.id)[VIDEO.id].topic == "crafts_diy"
+    assert [slug for slug, _ in stored_tags(sessions, VIDEO.id)] == [
+        "woodworking",
+        "dovetail-joints",
+        "hand-tools",
+    ]
     with sessions() as session:
         previous = get_tags(session, [VIDEO.id], prompt_version=TAG_PROMPT_VERSION - 1)
     assert previous == {VIDEO.id: old}
+
+
+def test_scores_fall_back_to_older_compatible_versions(sessions: sessionmaker[Session]) -> None:
+    add_videos(sessions, VIDEO.id, BAIT.id)
+    old = LLMTags("crafts_diy", 0.4, 0.2, 0.0)
+    new = LLMTags("crafts_diy", 0.9, 0.1, 0.0)
+    with sessions.begin() as session:
+        store_tags(session, VIDEO.id, old, model="old", prompt_version=TAG_PROMPT_VERSION - 1)
+        store_tags(session, BAIT.id, old, model="old", prompt_version=TAG_PROMPT_VERSION - 1)
+        store_tags(session, BAIT.id, new, model="new")
+
+    # Until it is retagged, a video keeps its previous answer for the ranker and trainer;
+    # once retagged, the current answer wins.
+    with sessions() as session:
+        assert get_scores(session, [VIDEO.id, BAIT.id]) == {VIDEO.id: old, BAIT.id: new}
+        assert get_tags(session, [VIDEO.id, BAIT.id]) == {BAIT.id: new}
 
 
 def test_unusable_answers_are_recorded_and_retried(sessions: sessionmaker[Session]) -> None:
@@ -298,6 +433,7 @@ def test_unusable_answers_are_recorded_and_retried(sessions: sessionmaker[Sessio
     assert report.tagged == [BAIT.id]
     assert list(report.failed) == [VIDEO.id]
     assert VIDEO.id not in stored(sessions, VIDEO.id)
+    assert stored_tags(sessions, VIDEO.id) == []
 
     provider.answers = {}
     assert tagger.tag_many([VIDEO.id, BAIT.id]).tagged == [VIDEO.id]
@@ -334,6 +470,26 @@ def test_tagging_is_capped_per_run(sessions: sessionmaker[Session]) -> None:
 
     assert report.tagged == ids[:2]
     assert report.skipped == ids[2:]
+
+
+def test_token_usage_is_logged_per_run(
+    sessions: sessionmaker[Session], caplog: pytest.LogCaptureFixture
+) -> None:
+    add_videos(sessions, VIDEO.id, BAIT.id)
+    # Unparseable answers cost tokens too.
+    provider = StubLLMProvider(
+        answers={VIDEO.id: "no idea"}, default=DEEP, usage=TokenUsage(1000, 50, 0.001)
+    )
+
+    with caplog.at_level(logging.INFO, logger="homefeed_core.llm_tags"):
+        report = Tagger(sessions, provider).tag_many([VIDEO.id, BAIT.id])
+
+    assert report.usage == TokenUsage(2000, 100, 0.002)
+    assert "2 calls used 2000 prompt + 100 completion tokens, cost 0.0020" in caplog.text
+
+
+def test_token_usage_without_reports() -> None:
+    assert TokenUsage(10, 1) + TokenUsage() == TokenUsage(10, 1, None)
 
 
 # Enrichment
@@ -377,7 +533,7 @@ def test_tagging_errors_never_fail_enrichment(
     sessions: sessionmaker[Session], gateway: FakeGateway
 ) -> None:
     class Broken(StubLLMProvider):
-        def complete(self, system: str, user: str) -> str:
+        def complete(self, system: str, user: str) -> Completion:
             raise RuntimeError("bug")
 
     add_videos(sessions, VIDEO.id)
@@ -423,3 +579,47 @@ def test_untagged_videos_have_unknown_tag_features() -> None:
 
 def test_stub_answers_are_valid_json() -> None:
     assert json.loads(StubLLMProvider().default)["topic"] in TOPICS
+
+
+def test_prompt_lists_the_most_used_tags(sessions: sessionmaker[Session]) -> None:
+    add_videos(sessions, VIDEO.id, BAIT.id, "ccccccccccc")
+    provider = StubLLMProvider(default=DEEP)
+    tagger = Tagger(sessions, provider)
+    tagger.tag_many([VIDEO.id])
+    with sessions.begin() as session:
+        set_llm_tags(session, "ccccccccccc", [ProposedTag("Rust", 0.9)], prompt_version=1)
+
+    tagger.tag_many([BAIT.id])
+
+    first, second = (system for system, _ in provider.calls)
+    assert first == SYSTEM_PROMPT
+    assert second == system_prompt(["Dovetail joints", "hand tools", "Rust", "woodworking"])
+    assert second.startswith(SYSTEM_PROMPT)
+    assert "Dovetail joints; hand tools; Rust; woodworking" in second
+
+
+def test_tagger_merges_similar_tags_with_its_embedder(sessions: sessionmaker[Session]) -> None:
+    add_videos(sessions, VIDEO.id, BAIT.id)
+    embedder = StubEmbeddingProvider(
+        dimensions=4,
+        vectors={"Rust": [1, 0, 0, 0], "rust lang": [0.95, 0.3122499, 0, 0]},
+    )
+
+    def answer(tag: str) -> str:
+        return json.dumps(
+            {
+                "topic": "other",
+                "depth": 0.5,
+                "clickbait": 0,
+                "rage_bait": 0,
+                "tags": [{"tag": tag, "confidence": 0.9}],
+            }
+        )
+
+    provider = StubLLMProvider(answers={VIDEO.id: answer("Rust")}, default=answer("rust lang"))
+    tagger = Tagger(sessions, provider, embedder=embedder)
+
+    tagger.tag_many([VIDEO.id, BAIT.id])
+
+    assert stored_tags(sessions, VIDEO.id) == [("rust", 0.9)]
+    assert stored_tags(sessions, BAIT.id) == [("rust", 0.9)]

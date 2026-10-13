@@ -407,3 +407,9 @@ def test_compose_explains_with_the_given_videos() -> None:
         "b": "New from your subscriptions · similar to Dovetails by hand (9.1)",
         "c": "New from your subscriptions",
     }
+
+
+def test_explains_tag_candidates_by_their_tag() -> None:
+    found = scored("a", channel(1), 0, source="tag", source_detail="woodworking")
+
+    assert explain(found) == "Because you follow #woodworking"

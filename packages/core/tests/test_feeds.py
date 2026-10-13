@@ -15,7 +15,7 @@ from homefeed_core import feeds
 from homefeed_core.candidates import SUBSCRIPTION, record
 from homefeed_core.composer import ChannelRatings
 from homefeed_core.config import Settings
-from homefeed_core.curation import add_keyword_mute, add_topic
+from homefeed_core.curation import add_keyword_mute, add_topic, subscribe_tag
 from homefeed_core.db import open_database
 from homefeed_core.embeddings import EMBEDDING_DIMENSIONS, StubEmbeddingProvider, store_embedding
 from homefeed_core.enricher import Enricher, enrich_candidates, get_features
@@ -24,6 +24,7 @@ from homefeed_core.model_features import FEATURE_NAMES
 from homefeed_core.ranker import SIMILARITY_WEIGHT
 from homefeed_core.ranking_models import RidgeModel, activate, record_version, save_model
 from homefeed_core.ratings import set_rating
+from homefeed_core.tags import ProposedTag, remove_video_tag, resolve_tag, set_llm_tags
 from homefeed_core.watch_events import record_watch_event
 
 NOW = datetime(2026, 10, 12, 6, 0, tzinfo=UTC)
@@ -455,6 +456,33 @@ def test_topic_boosts_reorder_and_appear_in_the_breakdown(
             text("SELECT breakdown FROM feed_items WHERE video_id = :id"), {"id": vid(PLAIN, 52)}
         ).scalar_one()
     assert json.loads(stored)["topics"] == {"Woodworking": pytest.approx(0.6)}
+
+
+def test_tag_subscriptions_boost_tagged_videos_in_the_feed(
+    sessions: sessionmaker[Session],
+) -> None:
+    embedder = StubEmbeddingProvider()
+    with sessions.begin() as session:
+        session.execute(text("DELETE FROM candidates"))
+        add_videos(session, PLAIN, range(50, 54))
+        set_llm_tags(
+            session,
+            vid(PLAIN, 50),
+            [ProposedTag("rust", 0.8), ProposedTag("go", 1.0)],
+            prompt_version=1,
+        )
+        set_llm_tags(session, vid(PLAIN, 51), [ProposedTag("rust", 0.9)], prompt_version=1)
+        remove_video_tag(session, vid(PLAIN, 51), "rust")  # a removed link does not count
+        rust = resolve_tag(session, "rust")
+        assert rust is not None
+        subscribe_tag(session, embedder, rust, weight=0.5)
+
+    feed = build(sessions, settings=Settings(feed_size=15))
+
+    plain = {item.video_id: item for item in feed.items if item.channel_id == PLAIN}
+    assert plain[vid(PLAIN, 50)].breakdown.topics == {"rust": pytest.approx(0.4)}
+    assert all(item.breakdown.topics == {} for key, item in plain.items() if key != vid(PLAIN, 50))
+    assert plain[vid(PLAIN, 50)].score == pytest.approx(0.4)
 
 
 def test_decayed_suppression(sessions: sessionmaker[Session]) -> None:

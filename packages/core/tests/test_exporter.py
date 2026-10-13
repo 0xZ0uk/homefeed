@@ -21,6 +21,7 @@ from homefeed_core.embeddings import StubEmbeddingProvider
 from homefeed_core.exporter import EXPORT_FORMAT, SECTIONS, ExportSection, export_data
 from homefeed_core.gateway import SearchFilters
 from homefeed_core.ratings import set_rating
+from homefeed_core.tags import ProposedTag, add_manual_tag, remove_video_tag, set_llm_tags
 from homefeed_core.watch_events import record_watch_event
 
 CHANNEL = "UCspaceexplained00000001"
@@ -90,6 +91,11 @@ def test_exports_every_area(sessions: sessionmaker[Session]) -> None:
         queue.add_to_queue(session, VIDEO, position=0)
         playlist = playlists.create_playlist(session, "Space", "Long watches")
         playlists.add_item(session, playlist.id, VIDEO)
+        set_llm_tags(
+            session, VIDEO, [ProposedTag("space", 0.9), ProposedTag("nasa", 0.5)], prompt_version=2
+        )
+        add_manual_tag(session, VIDEO, "black holes")
+        remove_video_tag(session, VIDEO, "nasa")
     with sessions.begin() as session:
         data = export_data(session, now=NOW)
 
@@ -142,6 +148,14 @@ def test_exports_every_area(sessions: sessionmaker[Session]) -> None:
     assert exported_playlist["name"] == "Space"
     assert [i["title"] for i in exported_playlist["items"]] == ["Black holes"]
 
+    # Only user edits: the LLM's own "space" tag is derived data.
+    assert [
+        (t["slug"], t["source"], t["confidence"], t["removed_at"] is not None) for t in data["tags"]
+    ] == [
+        ("black-holes", "manual", 1.0, False),
+        ("nasa", "llm", 0.5, True),
+    ]
+    assert {t["title"] for t in data["tags"]} == {"Black holes"}
     [model] = data["models"]
     assert model["metrics"] == {"n": 40}
 
@@ -160,6 +174,7 @@ def test_empty_database_exports_empty_sections(sessions: sessionmaker[Session]) 
         data = export_data(session)
 
     assert data["ratings"] == []
+    assert data["tags"] == []
     assert data["feeds"] == []
     assert data["library"] == {"watch_events": [], "queue": [], "playlists": []}
     assert data["settings"]["stored"] == {}

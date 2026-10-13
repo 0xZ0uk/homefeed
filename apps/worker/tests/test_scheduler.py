@@ -233,3 +233,29 @@ def test_smoke_test_job_logs_the_outcome(
 
     expected = "Gateway smoke test passed" if success else "get_video: boom"
     assert expected in caplog.text
+
+
+def test_build_scheduler_registers_the_tag_discovery_check() -> None:
+    job = jobs_by_id()["discover_tag_videos"]
+
+    assert job.func is scheduler.discover_tag_videos
+    assert isinstance(job.trigger, IntervalTrigger)
+    assert job.trigger.interval == timedelta(minutes=scheduler.TAG_DISCOVERY_CHECK_MINUTES)
+    assert job.max_instances == 1
+    assert job.coalesce is True
+
+
+def test_tag_discovery_job_runs_only_that_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    ran: list[list[str]] = []
+
+    def generate(sources: list[Any], **_kwargs: Any) -> SimpleNamespace:
+        ran.append([source.name for source in sources])
+        return SimpleNamespace(new={"tag": ["aaaaaaaaaaa"]}, failed={})
+
+    monkeypatch.setattr(scheduler, "get_session_factory", lambda: None)
+    monkeypatch.setattr(scheduler, "create_gateway", lambda _sessions: None)
+    monkeypatch.setattr(scheduler.candidates, "generate", generate)
+
+    scheduler.discover_tag_videos()
+
+    assert ran == [["tag"]]

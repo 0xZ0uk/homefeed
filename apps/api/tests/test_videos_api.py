@@ -13,6 +13,7 @@ from homefeed_core.db import get_session_factory
 from homefeed_core.gateway import ByteRange, ExtractionError, MediaUrlExpiredError
 from homefeed_core.gateway.fake import FakeGateway, make_channel, make_format, make_video
 from homefeed_core.playback import Playback
+from homefeed_core.tags import ProposedTag, set_llm_tags
 from homefeed_core.videos import get_stored_video
 
 VIDEO = "aaaaaaaaaaa"
@@ -86,10 +87,32 @@ def test_get_video_returns_and_stores_metadata(client: TestClient) -> None:
     )
     assert body["duration_seconds"] == 600
     assert body["published_at"] == "2026-01-01T00:00:00.000Z"
+    assert body["tags"] == []
     assert body["is_stale"] is False
     with get_session_factory()() as session:
         stored = get_stored_video(session, VIDEO)
     assert stored is not None and stored.title == "Planing"
+
+
+def test_get_video_returns_its_tags(client: TestClient, gateway: FakeGateway) -> None:
+    client.get(f"/videos/{VIDEO}")
+    with get_session_factory().begin() as session:
+        proposals = [ProposedTag("hand tools", 0.6), ProposedTag("Woodworking", 0.9)]
+        set_llm_tags(session, VIDEO, proposals, prompt_version=2)
+    expected = [
+        {"slug": "woodworking", "label": "Woodworking", "source": "llm", "confidence": 0.9},
+        {"slug": "hand-tools", "label": "hand tools", "source": "llm", "confidence": 0.6},
+    ]
+
+    assert client.get(f"/videos/{VIDEO}").json()["tags"] == expected
+
+    # The stored copy has them too.
+    fresh = Playback(gateway)
+    app.dependency_overrides[get_playback] = lambda: fresh
+    gateway.fail("get_video", VIDEO, ExtractionError("network down"))
+    body = client.get(f"/videos/{VIDEO}").json()
+    assert body["is_stale"] is True
+    assert body["tags"] == expected
 
 
 def test_get_video_falls_back_to_the_stored_copy(client: TestClient, gateway: FakeGateway) -> None:
@@ -196,3 +219,73 @@ def test_media_of_a_replaced_file_is_a_conflict(client: TestClient, gateway: Fak
     assert client.get(f"/videos/{VIDEO}/media/137", headers={"Range": "bytes=0-9"}).status_code == (
         409
     )
+
+
+def test_add_and_remove_tags_by_hand(client: TestClient) -> None:
+    client.get(f"/videos/{VIDEO}")
+    with get_session_factory().begin() as session:
+        set_llm_tags(
+            session,
+            VIDEO,
+            [ProposedTag("woodworking", 0.9), ProposedTag("hand tools", 0.6)],
+            prompt_version=2,
+        )
+
+    added = client.post(f"/videos/{VIDEO}/tags", json={"label": "  Dovetail Joints "})
+    assert added.status_code == 200
+    assert added.json() == [
+        {
+            "slug": "dovetail-joints",
+            "label": "Dovetail Joints",
+            "source": "manual",
+            "confidence": 1,
+        },
+        {"slug": "woodworking", "label": "woodworking", "source": "llm", "confidence": 0.9},
+        {"slug": "hand-tools", "label": "hand tools", "source": "llm", "confidence": 0.6},
+    ]
+
+    removed = client.delete(f"/videos/{VIDEO}/tags/hand-tools")
+    assert removed.status_code == 200
+    assert [tag["slug"] for tag in removed.json()] == ["dovetail-joints", "woodworking"]
+    # Removing it again, or a tag the video never had, changes nothing.
+    assert client.delete(f"/videos/{VIDEO}/tags/hand-tools").json() == removed.json()
+    assert client.delete(f"/videos/{VIDEO}/tags/nope").json() == removed.json()
+
+    # Retagging neither drops the manual tag nor brings back the removed one.
+    with get_session_factory().begin() as session:
+        proposals = [ProposedTag("hand tools", 0.9), ProposedTag("dovetail joints", 0.5)]
+        set_llm_tags(session, VIDEO, proposals, prompt_version=3)
+    tags = client.get(f"/videos/{VIDEO}").json()["tags"]
+    assert [(tag["slug"], tag["source"]) for tag in tags] == [("dovetail-joints", "manual")]
+
+    # Adding a removed tag brings it back.
+    again = client.post(f"/videos/{VIDEO}/tags", json={"label": "hand tools"})
+    assert "hand-tools" in [tag["slug"] for tag in again.json()]
+
+
+def test_tag_edits_reject_unknown_videos_and_unusable_text(client: TestClient) -> None:
+    assert client.post("/videos/zzzzzzzzzzz/tags", json={"label": "rust"}).status_code == 404
+    assert client.delete("/videos/zzzzzzzzzzz/tags/rust").status_code == 404
+    client.get(f"/videos/{VIDEO}")
+
+    for label in ["", "  ", "***", "x" * 60]:
+        response = client.post(f"/videos/{VIDEO}/tags", json={"label": label})
+        assert response.status_code == 422, label
+    assert client.post(f"/videos/{VIDEO}/tags", json={}).status_code == 422
+    assert client.get(f"/videos/{VIDEO}").json()["tags"] == []
+
+
+def test_suggest_tags(client: TestClient) -> None:
+    client.get(f"/videos/{VIDEO}")
+    for label in ["rust", "rustacean", "woodworking"]:
+        client.post(f"/videos/{VIDEO}/tags", json={"label": label})
+    client.delete(f"/videos/{VIDEO}/tags/rustacean")
+
+    body = client.get("/tags/suggest", params={"q": "Rus"}).json()
+    assert body == [
+        {"slug": "rust", "label": "rust", "video_count": 1},
+        {"slug": "rustacean", "label": "rustacean", "video_count": 0},
+    ]
+    assert [t["slug"] for t in client.get("/tags/suggest", params={"limit": 1}).json()] == ["rust"]
+    assert client.get("/tags/suggest", params={"q": "zzz"}).json() == []
+    assert client.get("/tags/suggest", params={"limit": 0}).status_code == 422

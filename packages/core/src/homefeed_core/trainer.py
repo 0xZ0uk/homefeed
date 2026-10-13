@@ -55,7 +55,7 @@ from homefeed_core.config import Settings, get_settings
 from homefeed_core.curation import DEFAULT_PRIOR, Prior
 from homefeed_core.db import get_session_factory
 from homefeed_core.embeddings import Embedding, get_embeddings
-from homefeed_core.llm_tags import get_tags
+from homefeed_core.llm_tags import get_scores
 from homefeed_core.model_features import ModelInput, feature_matrix, upload_age_days
 from homefeed_core.ranker import SimilarityFeatures, TierSimilarity, channel_score
 from homefeed_core.ranking_models import (
@@ -225,7 +225,7 @@ def build_dataset(session: Session, *, now: datetime | None = None) -> list[Exam
             channel_ratings[video[0]].append((at, rating.value))
 
     embeddings = get_embeddings(session, labels.keys() | ratings.keys())
-    tags = get_tags(session, sorted(labels))
+    tags = get_scores(session, sorted(labels))
     label_times = {video_id: label[3] for video_id, label in labels.items()}
     similarities = _as_of_similarities(
         {v: (embeddings[v], label_times[v]) for v in labels if v in embeddings},

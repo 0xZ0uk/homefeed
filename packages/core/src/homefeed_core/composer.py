@@ -31,7 +31,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from types import MappingProxyType
 
-from homefeed_core.candidates import CHANNEL_GRAPH, RELATED, SAVED_SEARCH, SUBSCRIPTION
+from homefeed_core.candidates import CHANNEL_GRAPH, RELATED, SAVED_SEARCH, SUBSCRIPTION, TAG
 from homefeed_core.external_sources import EXTERNAL
 from homefeed_core.ranker import ChannelCuration, Curation, ScoredCandidate
 from homefeed_core.scores import value_score
@@ -273,6 +273,8 @@ def _source_phrase(
         return f"From your '{query}' search", None
     if candidate.source == CHANNEL_GRAPH:
         return "Featured by a channel you like", None
+    if candidate.source == TAG and candidate.source_detail:
+        return f"Because you follow #{candidate.source_detail}", None
     if candidate.source == EXTERNAL and candidate.source_detail:
         return f"Linked from {candidate.source_detail}", None
     return f"Found via {candidate.source.replace('_', ' ')}", None

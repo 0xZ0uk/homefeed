@@ -4,16 +4,19 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { EyeOff, Tag } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import { Button } from "#/components/ui/button";
+import { HideTagCheckbox } from "#/components/HideTagCheckbox";
+import { WeightSlider } from "#/components/WeightSlider";
 import {
   HALF_LIFE_DAYS,
-  WEIGHT_STEP,
-  clampWeight,
+  MATCH_MODES,
   decayNote,
-  formatWeight,
-  weightEffect,
+  isMuted,
+  matchModeLabel,
 } from "#/lib/topics";
 import {
   createTopic,
@@ -156,55 +159,6 @@ function TopicForm() {
   );
 }
 
-function WeightSlider({
-  id,
-  label,
-  value,
-  disabled,
-  onChange,
-  onCommit,
-}: {
-  id: string;
-  label: string;
-  value: number;
-  disabled?: boolean;
-  onChange: (weight: number) => void;
-  /** Called when the user lets go of the slider (pointer up, key up or blur). */
-  onCommit?: () => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <label htmlFor={id} className="text-sm font-medium">
-        {label}
-      </label>
-      <span aria-hidden="true" className="text-xs text-muted-foreground">
-        Suppress
-      </span>
-      <input
-        id={id}
-        type="range"
-        min={-1}
-        max={1}
-        step={WEIGHT_STEP}
-        value={value}
-        disabled={disabled}
-        aria-valuetext={`${weightEffect(value)} ${formatWeight(value)}`}
-        onChange={(event) => onChange(clampWeight(Number(event.target.value)))}
-        onPointerUp={onCommit}
-        onKeyUp={onCommit}
-        onBlur={onCommit}
-        className="w-48"
-      />
-      <span aria-hidden="true" className="text-xs text-muted-foreground">
-        Boost
-      </span>
-      <output htmlFor={id} className="w-28 text-sm tabular-nums">
-        {weightEffect(value)} {formatWeight(value)}
-      </output>
-    </div>
-  );
-}
-
 function DecayCheckbox({
   checked,
   disabled,
@@ -253,8 +207,10 @@ function TopicRow({ topic }: { topic: Topic }) {
     setWeight(topic.weight);
   }
 
-  function commitWeight() {
-    if (weight !== topic.weight && !update.isPending) update.mutate({ weight });
+  function commitWeight(value: number) {
+    if (value !== topic.weight && !update.isPending) {
+      update.mutate({ weight: value });
+    }
   }
 
   const failed =
@@ -281,6 +237,46 @@ function TopicRow({ topic }: { topic: Topic }) {
           Delete
         </button>
       </div>
+      {topic.tag_slug ? (
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <Link
+            to="/tags/$slug"
+            params={{ slug: topic.tag_slug }}
+            aria-label={`Tag ${topic.tag_label}`}
+            className="inline-flex items-center gap-1 rounded-full bg-secondary px-3 py-1 hover:bg-secondary/80"
+          >
+            <Tag className="size-3.5" aria-hidden="true" />
+            {topic.tag_label}
+          </Link>
+          {isMuted(topic) && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-3 py-1 text-destructive">
+              <EyeOff className="size-3.5" aria-hidden="true" />
+              {topic.hide ? "Muted, hidden from feed" : "Muted"}
+            </span>
+          )}
+          <label className="flex items-center gap-2">
+            <span className="font-medium">Matches</span>
+            <select
+              value={topic.match_mode}
+              disabled={busy}
+              onChange={(event) =>
+                update.mutate({
+                  match_mode: MATCH_MODES.find(
+                    (mode) => mode === event.target.value,
+                  ),
+                })
+              }
+              className="rounded-lg border border-input bg-transparent px-2 py-1 dark:bg-input/30"
+            >
+              {MATCH_MODES.map((mode) => (
+                <option key={mode} value={mode}>
+                  {matchModeLabel(mode)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
       <p className="break-words text-sm text-muted-foreground">
         {topic.description}
       </p>
@@ -292,6 +288,15 @@ function TopicRow({ topic }: { topic: Topic }) {
         onChange={setWeight}
         onCommit={commitWeight}
       />
+      {topic.tag_slug && isMuted(topic) && (
+        <HideTagCheckbox
+          id={`topic-hide-${topic.id}`}
+          weight={topic.weight}
+          checked={topic.hide}
+          disabled={busy}
+          onChange={(hide) => update.mutate({ hide })}
+        />
+      )}
       <DecayCheckbox
         checked={topic.decay}
         disabled={busy}

@@ -49,7 +49,7 @@ from homefeed_core.config import Settings, get_settings
 from homefeed_core.db import get_session_factory
 from homefeed_core.embeddings import get_embeddings
 from homefeed_core.gateway.events import format_timestamp
-from homefeed_core.llm_tags import get_tags
+from homefeed_core.llm_tags import get_scores
 from homefeed_core.ranker import (
     ChannelCuration,
     DurationBounds,
@@ -63,6 +63,7 @@ from homefeed_core.ranker import (
 from homefeed_core.ranking_models import load_active_model, ranker_model
 from homefeed_core.ratings import list_ratings
 from homefeed_core.scores import is_bottom_tier, is_good, is_top_tier
+from homefeed_core.tags import get_video_tags
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +180,8 @@ def build_feed(
         topics=topics,
         embeddings=get_embeddings(session, [c.video_id for c in pool]),
         rated_tiers=load_rated_tiers(session),
-        llm_tags=get_tags(session, [c.video_id for c in pool]),
+        llm_tags=get_scores(session, [c.video_id for c in pool]),
+        video_tags=_tag_confidences(session, topics, [c.video_id for c in pool]),
         model=None if active is None else ranker_model(active.model, now=now),
     )
     slots = compose(
@@ -202,6 +204,19 @@ def build_feed(
         model_version or "none (rules-only)",
     )
     return feed
+
+
+def _tag_confidences(
+    session: Session, topics: Sequence[curation_prefs.TopicVector], video_ids: Sequence[str]
+) -> dict[str, dict[int, float]]:
+    """For tag-matched topics: each video's tags as tag id to confidence. Empty (and no
+    query) when no topic matches by tag or hides one."""
+    if not any(topic.match_mode != "embedding" or topic.hide for topic in topics):
+        return {}
+    return {
+        video_id: {tag.tag_id: tag.confidence for tag in video_tags}
+        for video_id, video_tags in get_video_tags(session, video_ids).items()
+    }
 
 
 def get_feed(session: Session, feed_date: date) -> Feed | None:

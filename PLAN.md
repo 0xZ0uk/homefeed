@@ -188,7 +188,7 @@ channel_score = (sum(rating_values) + prior * k) / (n_ratings + k),   k = 5
 priors: love = +0.8, like = +0.4, neutral = 0.0, skeptical = -0.4
 ```
 
-**Topic boosts.** Each topic has a plain-language description (embedded) and a slider weight in [−1, 1]. `topic_boost = weight * max(0, cos_sim(video, topic) - 0.3) / 0.7`. Optional decay per topic: weight halves every 30 days unless reaffirmed.
+**Topic boosts.** Each topic has a plain-language description (embedded) and a slider weight in [−1, 1]. `topic_boost = weight * max(0, cos_sim(video, topic) - 0.3) / 0.7`. Optional decay per topic: weight halves every 30 days unless reaffirmed. A topic can be backed by a tag (subscribing to it): with match mode `tag` it adds `weight * confidence` to videos carrying the tag, with `both` the larger in magnitude of the tag and embedding terms.
 
 **Combination (log-odds-like space).**
 
@@ -209,7 +209,7 @@ Before a model exists, `alpha = 0` and `model_score = 0`. Every scored item carr
 
 ## 8. Data model
 
-Tables (SQLite): `channels`, `videos`, `video_features` (embedding in a sqlite-vec virtual table, plus tags and the model/prompt versions that produced them), `video_llm_tags` (topic, depth, clickbait, rage-bait per video and prompt version, with the model that produced them), `candidates` (video, source, source_detail, first_seen), `feeds` (date, created_at, model_version), `feed_items` (feed, video, position, score breakdown JSON, explanation, is_exploration, selection_probability, dismissed_at, dismiss_reason), `ratings` (video, score, value, rated_at, updated_at), `watch_events` (video, position, event type, at), `channel_prefs` (prior, pinned, muted), `topics` (name, description, embedding, weight, decay, reaffirmed_at), `keyword_mutes`, `saved_searches` (query, filters, schedule), `external_sources` (kind, url, schedule), `queue_items`, `playlists`, `playlist_items`, `model_versions` (path, metrics JSON, created_at, active), `extractor_events` (operation, success, error, at), `settings`.
+Tables (SQLite): `channels`, `videos`, `video_features` (embedding in a sqlite-vec virtual table, plus tags and the model/prompt versions that produced them), `video_llm_tags` (topic, depth, clickbait, rage-bait per video and prompt version, with the model that produced them), `tags` (slug, label), `tag_aliases` (alias slug, tag, source auto|user), `video_tags` (video, tag, source llm|manual, confidence, prompt_version, removed_at tombstone), `candidates` (video, source, source_detail, first_seen), `tag_discovery_runs` (tag, last run), `feeds` (date, created_at, model_version), `feed_items` (feed, video, position, score breakdown JSON, explanation, is_exploration, selection_probability, dismissed_at, dismiss_reason), `ratings` (video, score, value, rated_at, updated_at), `watch_events` (video, position, event type, at), `channel_prefs` (prior, pinned, muted), `topics` (name, description, embedding, weight, decay, reaffirmed_at, tag_id, match_mode), `keyword_mutes`, `saved_searches` (query, filters, schedule), `external_sources` (kind, url, schedule), `queue_items`, `playlists`, `playlist_items`, `model_versions` (path, metrics JSON, created_at, active), `extractor_events` (operation, success, error, at), `settings`.
 
 Store the score as a number (`7.4`) and the numeric value alongside it.
 
@@ -266,9 +266,9 @@ Each milestone ends with tests passing, lint clean, and a short summary of what 
 
 ### Milestone 4: broader discovery
 
-- Candidate sources: saved searches, channel graph (featured channels of liked channels), external sources (subreddit JSON, RSS, link extraction).
+- Candidate sources: saved searches, channel graph (featured channels of liked channels), external sources (subreddit JSON, RSS, link extraction), tag discovery (a daily YouTube search per subscribed tag, capped per tag per day).
 - `importer`: Google Takeout watch history.
-- LLM tagging behind the provider interface (topic, depth, clickbait, rage-bait), cached per video and prompt version. Default provider: hosted OpenRouter (see Decisions in section 13).
+- LLM tagging behind the provider interface (topic, depth, clickbait, rage-bait, and 3–8 specific tags resolved to a canonical vocabulary through aliases), cached per video and prompt version. Default provider: hosted OpenRouter (see Decisions in section 13).
 - Web: discover page, search with filters, suggested channels, saved searches and sources UI, Takeout upload.
 
 ### Milestone 5: library, ops, and deployment

@@ -22,8 +22,8 @@ change), so topic boosts compare vectors from the same model.
 
 With an LLM provider configured (see homefeed_core.llm_tags), `enrich_candidates` then
 tags the same videos and every rated video (training uses their tags too) with topic,
-depth, clickbait and rage-bait. Tagging never fails the run: errors are logged and the
-untagged videos are tried again next time.
+depth, clickbait and rage-bait, and specific tags (homefeed_core.tags). Tagging never
+fails the run: errors are logged and the untagged videos are tried again next time.
 """
 
 import json
@@ -52,6 +52,7 @@ from homefeed_core.gateway import Gateway, GatewayError, Video, create_gateway
 from homefeed_core.gateway.events import format_timestamp
 from homefeed_core.llm_tags import Tagger, TagReport, get_tagger
 from homefeed_core.ratings import list_ratings, tier_rated_video_ids
+from homefeed_core.tags import refresh_tag_embeddings
 from homefeed_core.videos import store_video
 
 logger = logging.getLogger(__name__)
@@ -154,6 +155,15 @@ class Enricher:
             refreshed = curation.refresh_topic_embeddings(session, self._embedder)
         if refreshed:
             logger.info("Re-embedded %d topics with %s", len(refreshed), self._embedder.model)
+        return refreshed
+
+    def refresh_tag_embeddings(self) -> list[int]:
+        """Embed tags without an embedding from the current model (new ones, and all after
+        an `EMBEDDING_MODEL` change). Returns their ids."""
+        with self._sessions.begin() as session:
+            refreshed = refresh_tag_embeddings(session, self._embedder)
+        if refreshed:
+            logger.info("Embedded %d tags with %s", len(refreshed), self._embedder.model)
         return refreshed
 
     def is_current(self, features: VideoFeatures) -> bool:
@@ -321,10 +331,11 @@ def enrich_candidates(
     """Enrich the candidates the next feed will rank (first seen within
     `FEED_CANDIDATE_DAYS`), newest first, then the top-tier and bottom-tier rated videos
     the ranker compares them with. Up-to-date ones are skipped. Topics embedded by
-    another model are re-embedded first. Then, if the enricher has a tagger, those
-    videos and every other rated video are LLM-tagged (`EnrichReport.tags`)."""
+    another model are re-embedded first, and so are tags. Then, if the enricher has a
+    tagger, those videos and every other rated video are LLM-tagged (`EnrichReport.tags`)."""
     enricher = enricher or get_enricher()
     enricher.refresh_topic_embeddings()
+    enricher.refresh_tag_embeddings()
     sessions = sessions or get_session_factory()
     settings = settings or get_settings()
     since = (now or datetime.now(UTC)) - timedelta(days=settings.feed_candidate_days)
