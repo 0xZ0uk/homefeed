@@ -131,7 +131,8 @@ def test_parse_answer_ignores_text_around_the_object(answer: str) -> None:
 
 def test_parse_answer_clips_scores_and_files_unknown_topics_under_other() -> None:
     answer = (
-        '{"topic": "Basket weaving", "depth": 7, "clickbait": -1, "rage_bait": "0.4", "tags": []}'
+        '{"topic": "Basket weaving", "depth": 7, "clickbait": -1, "rage_bait": "0.4", '
+        '"tags": ["baskets"]}'
     )
 
     assert parse_answer(answer).scores == LLMTags("other", 1.0, 0.0, 0.4)
@@ -147,11 +148,10 @@ def test_parse_answer_keeps_usable_tags_only() -> None:
         {"tag": "Rust", "confidence": 0.95},  # same slug: the more confident one stays
         {"tag": "#embedded", "confidence": 1.4},  # clipped
         {"tag": "cargo", "confidence": "0.5"},
-        {"tag": "no confidence"},
         {"tag": "!!!", "confidence": 0.9},  # no slug
         {"tag": "a tag that is really a whole sentence about the video", "confidence": 0.9},
         {"tag": 42, "confidence": 0.9},
-        "bare string",
+        None,
     ]
     answer = json.dumps({"topic": "programming", "depth": 1, "clickbait": 0, "rage_bait": 0})
 
@@ -161,6 +161,21 @@ def test_parse_answer_keeps_usable_tags_only() -> None:
         ProposedTag("#embedded", 1.0),
         ProposedTag("Rust", 0.95),
         ProposedTag("cargo", 0.5),
+    )
+
+
+def test_parse_answer_accepts_bare_strings_and_missing_confidences() -> None:
+    # As small models answer: confidence by position, underscores as spaces.
+    tags = ["programming", "software_design", {"tag": "dev tools"}, {"tag": "ux", "confidence": 1}]
+    answer = {"topic": "programming", "depth": 1, "clickbait": 0, "rage_bait": 0, "tags": tags}
+
+    parsed = parse_answer(json.dumps(answer))
+
+    assert parsed.tags == (
+        ProposedTag("ux", 1.0),
+        ProposedTag("programming", 0.9),
+        ProposedTag("software design", 0.85),
+        ProposedTag("dev tools", 0.8),
     )
 
 
@@ -184,6 +199,9 @@ def test_parse_answer_keeps_the_most_confident_tags() -> None:
         # Prompt v1 answers: no tags.
         '{"topic": "music", "depth": 0.5, "clickbait": 0, "rage_bait": 0}',
         '{"topic": "music", "depth": 0.5, "clickbait": 0, "rage_bait": 0, "tags": "music"}',
+        # No usable tag: retried rather than stored without tags.
+        '{"topic": "music", "depth": 0.5, "clickbait": 0, "rage_bait": 0, "tags": []}',
+        '{"topic": "music", "depth": 0.5, "clickbait": 0, "rage_bait": 0, "tags": ["!!!"]}',
     ],
 )
 def test_parse_answer_rejects_unusable_answers(answer: str) -> None:
