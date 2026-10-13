@@ -5,7 +5,7 @@ import {
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect } from "react";
 
-import { AppHeader } from "#/components/AppHeader";
+import { AppShell } from "#/components/AppShell";
 import { formatPercent } from "#/lib/insights";
 import { formatTimestamp } from "#/lib/models";
 import {
@@ -47,8 +47,7 @@ function Status() {
   const { data } = useSuspenseQuery(extractorStatusQuery(hours));
 
   return (
-    <main className="mx-auto flex max-w-4xl flex-col gap-8 p-8">
-      <AppHeader />
+    <AppShell className="flex max-w-5xl flex-col gap-8">
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-4">
           <h2 className="text-xl font-semibold">Extractor status</h2>
@@ -75,7 +74,7 @@ function Status() {
       <SmokeTest run={data.last_smoke_test} />
       <Operations operations={data.operations} />
       <RecentFailures failures={data.recent_failures} />
-    </main>
+    </AppShell>
   );
 }
 
@@ -107,7 +106,7 @@ function SmokeTest({ run }: { run: SmokeTestRun | null }) {
         Live smoke test
       </h3>
       {run ? (
-        <div className="flex flex-col gap-1 rounded border border-gray-200 p-4">
+        <div className="flex flex-col gap-1 rounded border border-border p-4">
           <p className="flex flex-wrap items-center gap-2">
             <HealthBadge health={run.success ? "ok" : "failing"} />
             <span>
@@ -116,11 +115,11 @@ function SmokeTest({ run }: { run: SmokeTestRun | null }) {
             </span>
           </p>
           {run.error && (
-            <p className="text-sm break-words text-red-700">{run.error}</p>
+            <p className="text-sm break-words text-destructive">{run.error}</p>
           )}
         </div>
       ) : (
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-muted-foreground">
           Never run. Set <code>GATEWAY_SMOKE_TEST_TIME</code> (e.g.{" "}
           <code>05:30</code>) for the worker to check every Gateway operation
           against YouTube once a day.
@@ -140,11 +139,13 @@ function Operations({ operations }: { operations: OperationStatus[] }) {
         Operations
       </h3>
       {operations.length === 0 ? (
-        <p className="text-sm text-gray-600">No requests in this window.</p>
+        <p className="text-sm text-muted-foreground">
+          No requests in this window.
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="text-gray-600">
+            <thead className="text-muted-foreground">
               <tr>
                 <th scope="col" className="py-2 pr-4 font-medium">
                   Operation
@@ -193,7 +194,7 @@ function Operations({ operations }: { operations: OperationStatus[] }) {
                   <td className="py-2" title={op.last_error ?? undefined}>
                     <Ago iso={op.last_failure_at} />
                     {op.last_error_kind && (
-                      <span className="text-gray-600">
+                      <span className="text-muted-foreground">
                         {" "}
                         ({op.last_error_kind})
                       </span>
@@ -205,7 +206,7 @@ function Operations({ operations }: { operations: OperationStatus[] }) {
           </table>
         </div>
       )}
-      <p className="text-xs text-gray-600">
+      <p className="text-xs text-muted-foreground">
         Failures about the video or channel itself (removed, private, a URL that
         isn&apos;t YouTube&apos;s) don&apos;t count against an operation&apos;s
         health.
@@ -221,7 +222,9 @@ function RecentFailures({ failures }: { failures: FailedEvent[] }) {
         Recent failures
       </h3>
       {failures.length === 0 ? (
-        <p className="text-sm text-gray-600">No failures in this window.</p>
+        <p className="text-sm text-muted-foreground">
+          No failures in this window.
+        </p>
       ) : (
         <ul className="flex flex-col divide-y text-sm">
           {failures.map((failure) => (
@@ -233,17 +236,19 @@ function RecentFailures({ failures }: { failures: FailedEvent[] }) {
                 {failure.target && (
                   <code className="text-xs break-all">{failure.target}</code>
                 )}
-                <span className="text-gray-600">
+                <span className="text-muted-foreground">
                   {failure.error_kind ?? "error"}
                   {!failure.breakage && " (not the extractor's fault)"}
                   {failure.attempts > 1 && `, ${failure.attempts} attempts`}
                 </span>
-                <span className="ml-auto text-gray-600">
+                <span className="ml-auto text-muted-foreground">
                   <Ago iso={failure.at} />
                 </span>
               </div>
               {failure.error && (
-                <p className="break-words text-gray-700">{failure.error}</p>
+                <p className="break-words text-muted-foreground">
+                  {failure.error}
+                </p>
               )}
             </li>
           ))}
@@ -262,8 +267,7 @@ function StatusError() {
   }, [queryErrorResetBoundary]);
 
   return (
-    <main className="mx-auto max-w-4xl p-8">
-      <AppHeader />
+    <AppShell className="max-w-5xl">
       <div role="alert" className="mt-8 flex flex-col items-start gap-3">
         <p>Couldn&apos;t load the extractor status. The API may be down.</p>
         <button
@@ -274,6 +278,6 @@ function StatusError() {
           Try again
         </button>
       </div>
-    </main>
+    </AppShell>
   );
 }

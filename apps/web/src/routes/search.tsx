@@ -6,7 +6,7 @@ import {
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
-import { AppHeader } from "#/components/AppHeader";
+import { AppShell } from "#/components/AppShell";
 import { QueueButton } from "#/components/QueueButton";
 import { showsThumbnails, type DisplayPrefs } from "#/lib/display";
 import { formatDuration, formatViews } from "#/lib/format";
@@ -48,8 +48,7 @@ function Search() {
   const params = Route.useSearch();
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
-      <AppHeader />
+    <AppShell className="flex max-w-4xl flex-col gap-6">
       <h2 className="text-xl font-semibold">Search YouTube</h2>
       {/* Remount when the URL changes so the fields show the current search. */}
       <SearchForm key={JSON.stringify(params)} params={params} />
@@ -59,12 +58,12 @@ function Search() {
           <Results params={params} />
         </>
       ) : (
-        <p className="text-gray-600">
+        <p className="text-muted-foreground">
           Search for videos on YouTube. Save a search to have its newest results
           considered for your daily feed.
         </p>
       )}
-    </main>
+    </AppShell>
   );
 }
 
@@ -94,11 +93,11 @@ function SearchForm({ params }: { params: SearchParams }) {
           placeholder="e.g. hand plane restoration"
           maxLength={QUERY_MAX_LENGTH}
           required
-          className="min-w-0 flex-1 rounded border px-3 py-2"
+          className="min-w-0 flex-1 rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
         />
         <button
           type="submit"
-          className="rounded bg-black px-3 py-2 font-medium text-white"
+          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85"
         >
           Search
         </button>
@@ -149,7 +148,7 @@ function FilterSelect<T extends string>({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <label htmlFor={id} className="text-gray-700">
+      <label htmlFor={id} className="text-muted-foreground">
         {label}
       </label>
       <select
@@ -159,7 +158,7 @@ function FilterSelect<T extends string>({
           const picked = options.find((o) => o.value === event.target.value);
           if (picked) onChange(picked.value);
         }}
-        className="rounded border px-2 py-1"
+        className="rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-2 py-1"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -191,7 +190,7 @@ function SaveSearch({ params }: { params: SearchParams }) {
         <p className="min-w-0 flex-1">
           <span className="font-medium">“{params.q}”</span>
           {filters && (
-            <span className="text-sm text-gray-600"> · {filters}</span>
+            <span className="text-sm text-muted-foreground"> · {filters}</span>
           )}
         </p>
         <FilterSelect
@@ -205,22 +204,22 @@ function SaveSearch({ params }: { params: SearchParams }) {
           type="button"
           disabled={mutation.isPending}
           onClick={() => mutation.mutate()}
-          className="rounded border px-3 py-1 text-sm font-medium disabled:opacity-50"
+          className="inline-flex items-center justify-center rounded-full bg-secondary px-4 py-2 text-sm font-medium hover:bg-accent text-sm font-medium disabled:opacity-50"
         >
           {mutation.isPending ? "Saving…" : "Save search"}
         </button>
       </div>
       <p role="status" className="min-h-5 text-sm">
         {mutation.isError && (
-          <span className="text-red-600">
+          <span className="text-destructive">
             Couldn't save the search. Try again later.
           </span>
         )}
         {result?.ok === false && (
-          <span className="text-red-600">{result.message}</span>
+          <span className="text-destructive">{result.message}</span>
         )}
         {result?.ok === true && (
-          <span className="text-gray-700">
+          <span className="text-muted-foreground">
             {result.created
               ? "Saved. Its results will be considered for your feed. "
               : "This search is already saved. "}
@@ -244,14 +243,14 @@ function Results({ params }: { params: SearchParams }) {
 
   if (!outcome.ok) {
     return (
-      <p role="alert" className="text-red-600">
+      <p role="alert" className="text-destructive">
         {outcome.message}
       </p>
     );
   }
   if (outcome.results.length === 0) {
     return (
-      <p className="text-gray-600">
+      <p className="text-muted-foreground">
         No videos found. Try fewer words or looser filters.
       </p>
     );
@@ -288,7 +287,7 @@ function ResultRow({
           params={params}
           tabIndex={-1}
           aria-hidden="true"
-          className="relative aspect-video w-40 shrink-0 overflow-hidden rounded bg-gray-200"
+          className="relative aspect-video w-40 shrink-0 overflow-hidden rounded bg-secondary"
         >
           {result.thumbnail_url && (
             <img
@@ -315,7 +314,7 @@ function ResultRow({
             {result.title}
           </Link>
         </h3>
-        <p className="flex flex-wrap gap-x-2 text-sm text-gray-600">
+        <p className="flex flex-wrap gap-x-2 text-sm text-muted-foreground">
           <span>{result.channel_title}</span>
           {duration && !thumbnails && (
             <span className="tabular-nums">· {duration}</span>
@@ -328,11 +327,11 @@ function ResultRow({
           )}
         </p>
         {result.description && (
-          <p className="line-clamp-2 text-sm text-gray-500">
+          <p className="line-clamp-2 text-sm text-muted-foreground">
             {result.description}
           </p>
         )}
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted-foreground">
           <QueueButton videoId={result.id} title={result.title} />
         </p>
       </div>

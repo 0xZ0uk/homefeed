@@ -25,8 +25,10 @@ test("dismiss a feed item with a reason", async ({ page, request }) => {
   await expect(item).toBeVisible();
   const before = await feedList(page).getByRole("listitem").count();
 
-  await item.getByRole("button", { name: `Dismiss ${video.title}` }).click();
-  await item.getByRole("button", { name: "Not interested" }).click();
+  await item
+    .getByRole("button", { name: `More actions for ${video.title}` })
+    .click();
+  await page.getByRole("menuitem", { name: "Not interested" }).click();
 
   await expect(
     page.getByRole("status").filter({ hasText: "Dismissed" }),

@@ -20,7 +20,7 @@ export function MutesTab() {
     <div className="flex flex-col gap-6">
       <MuteForm />
       {mutes.length === 0 ? (
-        <p className="text-gray-600">
+        <p className="text-muted-foreground">
           No muted keywords yet. Add a word or phrase above to keep matching
           videos out of your feed.
         </p>
@@ -65,7 +65,7 @@ function MuteForm() {
       <label htmlFor="mute-keyword" className="font-medium">
         Mute a keyword
       </label>
-      <p id="mute-keyword-hint" className="text-sm text-gray-600">
+      <p id="mute-keyword-hint" className="text-sm text-muted-foreground">
         Videos whose title or description contain it, as a whole word or phrase,
         never appear in your feed. Case doesn't matter.
       </p>
@@ -80,24 +80,24 @@ function MuteForm() {
           required
           aria-invalid={result?.ok === false}
           aria-describedby="mute-keyword-hint mute-status"
-          className="min-w-0 flex-1 rounded border px-3 py-2"
+          className="min-w-0 flex-1 rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
         />
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="rounded bg-black px-3 py-2 font-medium text-white disabled:opacity-50"
+          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85 disabled:opacity-50"
         >
           {mutation.isPending ? "Muting…" : "Mute"}
         </button>
       </div>
       <p id="mute-status" role="status" className="min-h-6">
         {mutation.isError && (
-          <span className="text-red-600">
+          <span className="text-destructive">
             Couldn't mute that. Try again later.
           </span>
         )}
         {result?.ok === false && (
-          <span className="text-red-600">{result.message}</span>
+          <span className="text-destructive">{result.message}</span>
         )}
         {result?.ok === true &&
           (result.created
@@ -123,12 +123,12 @@ function MuteRow({ mute }: { mute: KeywordMute }) {
         disabled={remove.isPending}
         onClick={() => remove.mutate()}
         aria-label={`Unmute ${mute.keyword}`}
-        className="text-sm text-red-700 underline disabled:opacity-50"
+        className="text-sm text-destructive underline disabled:opacity-50"
       >
         Unmute
       </button>
       {remove.isError && (
-        <p role="alert" className="w-full text-sm text-red-600">
+        <p role="alert" className="w-full text-sm text-destructive">
           Couldn't unmute that. Try again.
         </p>
       )}

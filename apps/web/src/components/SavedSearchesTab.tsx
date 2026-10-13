@@ -31,7 +31,7 @@ export function SavedSearchesTab() {
 
   return (
     <div className="flex flex-col gap-6">
-      <p className="text-gray-600">
+      <p className="text-muted-foreground">
         Each saved search runs daily or weekly with the feed build, and its top
         results are considered for your feed, marked with the search they came
         from.{" "}
@@ -41,7 +41,7 @@ export function SavedSearchesTab() {
         to save a new one.
       </p>
       {searches.length === 0 ? (
-        <p className="rounded border border-dashed p-6 text-gray-600">
+        <p className="rounded-xl border border-dashed p-6 text-muted-foreground">
           No saved searches yet. Run a search and choose “Save search” to add
           one.
         </p>
@@ -87,7 +87,7 @@ function SavedSearchRow({ search, now }: { search: SavedSearch; now: Date }) {
             {search.query}
           </Link>
           {filters && (
-            <span className="text-sm text-gray-600"> · {filters}</span>
+            <span className="text-sm text-muted-foreground"> · {filters}</span>
           )}
         </div>
         <div className="flex items-center gap-4 text-sm">
@@ -104,7 +104,7 @@ function SavedSearchRow({ search, now }: { search: SavedSearch; now: Date }) {
               );
               if (picked) schedule.mutate(picked.value);
             }}
-            className="rounded border px-2 py-1 disabled:opacity-50"
+            className="rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-2 py-1 disabled:opacity-50"
           >
             {SCHEDULES.map((option) => (
               <option key={option.value} value={option.value}>
@@ -117,7 +117,7 @@ function SavedSearchRow({ search, now }: { search: SavedSearch; now: Date }) {
             disabled={remove.isPending}
             onClick={() => remove.mutate()}
             aria-label={`Delete saved search ${search.query}`}
-            className="text-red-700 underline disabled:opacity-50"
+            className="text-destructive underline disabled:opacity-50"
           >
             Delete
           </button>
@@ -125,14 +125,16 @@ function SavedSearchRow({ search, now }: { search: SavedSearch; now: Date }) {
       </div>
       <p
         className={
-          search.last_error ? "text-sm text-red-700" : "text-sm text-gray-600"
+          search.last_error
+            ? "text-sm text-destructive"
+            : "text-sm text-muted-foreground"
         }
         suppressHydrationWarning
       >
         {describeLastRun(search, now)}
       </p>
       {(schedule.isError || remove.isError) && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-destructive">
           {remove.isError
             ? "Couldn't delete that search. Try again."
             : "Couldn't change the schedule. Try again."}

@@ -47,7 +47,7 @@ export function GoodTierTrend({ weeks }: { weeks: readonly WeekInsights[] }) {
         role="img"
         aria-labelledby={titleId}
         aria-describedby={descId}
-        className="h-auto w-full overflow-visible text-gray-600"
+        className="h-auto w-full overflow-visible text-muted-foreground"
         onMouseLeave={() => setHovered(null)}
       >
         <title id={titleId}>Weekly good-tier rate</title>
@@ -154,7 +154,7 @@ export function GoodTierTrend({ weeks }: { weeks: readonly WeekInsights[] }) {
           />
         ))}
       </svg>
-      <p className="min-h-5 text-sm text-gray-600" aria-hidden="true">
+      <p className="min-h-5 text-sm text-muted-foreground" aria-hidden="true">
         {active
           ? `Week of ${formatWeek(active.week.week_start)}: ${
               active.week.good_tier_rate == null
@@ -163,7 +163,7 @@ export function GoodTierTrend({ weeks }: { weeks: readonly WeekInsights[] }) {
             }`
           : "Hover a week for its numbers."}
       </p>
-      <figcaption className="text-sm text-gray-600">
+      <figcaption className="text-sm text-muted-foreground">
         Share of each week's new ratings that are B-- or higher. Weeks without
         ratings leave a gap.
       </figcaption>

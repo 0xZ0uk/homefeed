@@ -52,7 +52,7 @@ export function SponsorSkip({ videoId }: { videoId: string }) {
     ...new Set(segments.map((s) => categoryLabel(s.category))),
   ];
   return (
-    <p role="status" className="text-sm text-gray-600">
+    <p role="status" className="text-sm text-muted-foreground">
       {skipped ? (
         <>
           Skipped {categoryLabel(skipped.category)} (

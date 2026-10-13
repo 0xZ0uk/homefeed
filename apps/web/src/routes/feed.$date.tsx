@@ -1,7 +1,7 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, notFound } from "@tanstack/react-router";
 
-import { AppHeader } from "#/components/AppHeader";
+import { AppShell } from "#/components/AppShell";
 import { DisplayToggles } from "#/components/DisplayToggles";
 import { FeedError } from "#/components/FeedError";
 import { FeedHistory } from "#/components/FeedHistory";
@@ -26,10 +26,9 @@ export const Route = createFileRoute("/feed/$date")({
   component: PastFeed,
   errorComponent: FeedError,
   notFoundComponent: () => (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
-      <AppHeader />
+    <AppShell className="flex max-w-4xl flex-col gap-6">
       <p>That isn't a valid date.</p>
-    </main>
+    </AppShell>
   ),
 });
 
@@ -39,16 +38,12 @@ function PastFeed() {
   const { data: display } = useSuspenseQuery(displayPrefsQuery);
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
-      <AppHeader />
-      <div className="flex flex-wrap items-baseline justify-between gap-4">
-        <h2 className="text-xl font-semibold">{formatFeedDate(date)}</h2>
-        <DisplayToggles />
-      </div>
+    <AppShell className="flex max-w-[110rem] flex-col gap-2">
+      <h2 className="pt-2 text-xl font-bold">{formatFeedDate(date)}</h2>
       {feed ? (
         <FeedList feed={feed} display={display} />
       ) : (
-        <p className="text-gray-600">
+        <p className="text-muted-foreground">
           No feed was built on this day.{" "}
           <Link to="/" className="underline">
             Go to today's feed
@@ -56,7 +51,10 @@ function PastFeed() {
           .
         </p>
       )}
-      <FeedHistory />
-    </main>
+      <footer className="mt-12 flex flex-col gap-6 border-t pt-6">
+        <DisplayToggles />
+        <FeedHistory />
+      </footer>
+    </AppShell>
   );
 }

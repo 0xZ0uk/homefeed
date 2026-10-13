@@ -1,25 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ListMinus, ListPlus } from "lucide-react";
 import { useState } from "react";
 
+import { Button } from "#/components/ui/button";
+import { cn } from "#/lib/utils";
 import { dequeue, enqueueVideo, queueQuery } from "#/server/queue";
 
+type QueueMessage = { ok: boolean; text: string };
+
 /**
- * Adds a video to the watch queue, or removes it when it's already queued.
- * The outcome is announced next to the button.
+ * Whether a video is in the watch queue, and a toggle to add or remove it.
+ * `message` is the last toggle's outcome, for a status region to announce.
  */
-export function QueueButton({
-  videoId,
-  title,
-}: {
-  videoId: string;
-  title: string;
-}) {
+export function useQueueToggle(videoId: string) {
   const queryClient = useQueryClient();
   const { data: queue } = useQuery(queueQuery);
   const queued = queue?.find((item) => item.video_id === videoId);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(
-    null,
-  );
+  const [message, setMessage] = useState<QueueMessage | null>(null);
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: queueQuery.queryKey });
 
@@ -45,28 +42,62 @@ export function QueueButton({
       }),
     onSettled: invalidate,
   });
-  const pending = add.isPending || remove.isPending;
+
+  return {
+    queued: queued !== undefined,
+    /** False while the queue loads or a toggle is in flight. */
+    ready: queue !== undefined && !add.isPending && !remove.isPending,
+    message,
+    toggle: () => (queued ? remove.mutate(queued.id) : add.mutate()),
+  };
+}
+
+/** The outcome of a queue toggle, as a polite status message. */
+export function QueueStatus({
+  message,
+  className,
+}: {
+  message: QueueMessage | null;
+  className?: string;
+}) {
+  return (
+    <span role="status" className={cn("text-muted-foreground", className)}>
+      {message && (
+        <span className={message.ok ? undefined : "text-destructive"}>
+          {message.text}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Adds a video to the watch queue, or removes it when it's already queued.
+ * The outcome is announced next to the button.
+ */
+export function QueueButton({
+  videoId,
+  title,
+}: {
+  videoId: string;
+  title: string;
+}) {
+  const { queued, ready, message, toggle } = useQueueToggle(videoId);
 
   return (
-    <span className="inline-flex flex-wrap items-baseline gap-x-2">
-      <button
-        type="button"
-        disabled={pending || queue === undefined}
-        onClick={() => (queued ? remove.mutate(queued.id) : add.mutate())}
+    <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+      <Button
+        variant="secondary"
+        disabled={!ready}
+        onClick={toggle}
         aria-label={
           queued ? `Remove ${title} from queue` : `Add ${title} to queue`
         }
-        className="underline disabled:opacity-50"
       >
+        {queued ? <ListMinus /> : <ListPlus />}
         {queued ? "Remove from queue" : "Add to queue"}
-      </button>
-      <span role="status" className="text-gray-600">
-        {message && (
-          <span className={message.ok ? undefined : "text-red-600"}>
-            {message.text}
-          </span>
-        )}
-      </span>
+      </Button>
+      <QueueStatus message={message} />
     </span>
   );
 }

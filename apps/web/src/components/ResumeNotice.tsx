@@ -23,7 +23,7 @@ export function ResumeNotice({
   };
 
   return (
-    <p className="text-sm text-gray-600">
+    <p className="text-sm text-muted-foreground">
       Resuming at{" "}
       <span className="tabular-nums">{formatDuration(startAt)}</span>.{" "}
       <button type="button" className="underline" onClick={restart}>

@@ -14,7 +14,7 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
-import { AppHeader } from "#/components/AppHeader";
+import { AppShell } from "#/components/AppShell";
 import { formatDuration } from "#/lib/format";
 import {
   PLAYLIST_DESCRIPTION_MAX_LENGTH,
@@ -77,7 +77,7 @@ function PlaylistPage() {
       <BackToPlaylists />
       <PlaylistHeading playlist={detail.playlist} />
       {detail.items.length === 0 ? (
-        <p className="rounded border border-dashed p-6 text-gray-600">
+        <p className="rounded-xl border border-dashed p-6 text-muted-foreground">
           This playlist is empty. Use “Save to playlist” on a video's watch page
           to add it here.
         </p>
@@ -143,22 +143,22 @@ function PlaylistHeading({ playlist }: { playlist: Playlist }) {
                 remove.mutate();
               }
             }}
-            className="text-red-700 underline disabled:opacity-50"
+            className="text-destructive underline disabled:opacity-50"
           >
             Delete playlist
           </button>
         </div>
       </div>
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-muted-foreground">
         {describeItemCount(playlist.item_count)}
       </p>
       {playlist.description && (
-        <p className="whitespace-pre-line break-words text-gray-800">
+        <p className="whitespace-pre-line break-words text-foreground">
           {playlist.description}
         </p>
       )}
       {remove.isError && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-destructive">
           Couldn't delete the playlist. Try again.
         </p>
       )}
@@ -214,7 +214,7 @@ function EditForm({
           onChange={(event) => setName(event.target.value)}
           maxLength={PLAYLIST_NAME_MAX_LENGTH}
           required
-          className="rounded border px-3 py-2"
+          className="rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
         />
       </div>
       <div className="flex flex-col gap-1">
@@ -230,14 +230,14 @@ function EditForm({
           onChange={(event) => setDescription(event.target.value)}
           maxLength={PLAYLIST_DESCRIPTION_MAX_LENGTH}
           rows={2}
-          className="rounded border px-3 py-2"
+          className="rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
         />
       </div>
       <div className="flex items-center gap-3">
         <button
           type="submit"
           disabled={save.isPending}
-          className="rounded bg-black px-3 py-2 font-medium text-white disabled:opacity-50"
+          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85 disabled:opacity-50"
         >
           {save.isPending ? "Saving…" : "Save"}
         </button>
@@ -245,7 +245,7 @@ function EditForm({
           Cancel
         </button>
         {problem && (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-sm text-destructive">
             {problem}
           </p>
         )}
@@ -300,7 +300,7 @@ function ItemRow({
 
   return (
     <li className="flex items-start gap-4 py-3">
-      <span className="w-6 shrink-0 text-right text-sm text-gray-500 tabular-nums">
+      <span className="w-6 shrink-0 text-right text-sm text-muted-foreground tabular-nums">
         {item.position + 1}
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -314,7 +314,7 @@ function ItemRow({
           </Link>
         </h3>
         {(item.channel_title || duration) && (
-          <p className="flex flex-wrap gap-x-2 text-sm text-gray-600">
+          <p className="flex flex-wrap gap-x-2 text-sm text-muted-foreground">
             {item.channel_title && <span>{item.channel_title}</span>}
             {duration && (
               <span className="tabular-nums">
@@ -325,7 +325,7 @@ function ItemRow({
           </p>
         )}
         {(move.isError || remove.isError) && (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-sm text-destructive">
             {remove.isError
               ? "Couldn't remove that video. Try again."
               : "Couldn't move that video. Try again."}
@@ -356,7 +356,7 @@ function ItemRow({
           disabled={busy}
           onClick={() => remove.mutate()}
           aria-label={`Remove ${title} from the playlist`}
-          className="text-red-700 underline disabled:opacity-50"
+          className="text-destructive underline disabled:opacity-50"
         >
           Remove
         </button>
@@ -367,10 +367,7 @@ function ItemRow({
 
 function Shell({ children }: { children: ReactNode }) {
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
-      <AppHeader />
-      {children}
-    </main>
+    <AppShell className="flex max-w-4xl flex-col gap-6">{children}</AppShell>
   );
 }
 

@@ -51,7 +51,7 @@ export function WhyThisPopover({
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((value) => !value)}
-        className="rounded text-left underline decoration-dotted underline-offset-2 hover:text-gray-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+        className="rounded text-left underline decoration-dotted underline-offset-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
         <span className="sr-only">Why this is here: </span>
         {explanation}
@@ -63,7 +63,7 @@ export function WhyThisPopover({
         id={panelId}
         aria-labelledby={headingId}
         hidden={!open}
-        className="absolute top-full left-0 z-10 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded border bg-white p-3 text-gray-800 shadow-lg"
+        className="absolute top-full left-0 z-20 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-xl bg-popover p-3 text-sm text-popover-foreground shadow-lg ring-1 ring-foreground/10"
       >
         <h4 id={headingId} className="mb-2 text-sm font-semibold">
           Score breakdown
@@ -89,7 +89,7 @@ function BreakdownTable({ breakdown }: { breakdown: ScoreBreakdownOut }) {
             <th scope="row" className="py-0.5 pr-3 text-left font-normal">
               {term.label}
               {term.detail && (
-                <span className="block text-xs text-gray-500">
+                <span className="block text-xs text-muted-foreground">
                   {term.detail}
                 </span>
               )}

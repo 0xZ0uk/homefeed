@@ -1,6 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { RatingPicker } from "#/components/RatingPicker";
 import { VideoPlayer, type VideoPlayerHandle } from "#/components/VideoPlayer";
@@ -14,6 +21,8 @@ interface WatchAndRateProps {
   poster?: string | null;
   /** Where to resume, in seconds, or null to start from the beginning. */
   startAt?: number | null;
+  /** Shown between the player and the rating, e.g. the video's title. */
+  children?: ReactNode;
 }
 
 /**
@@ -30,7 +39,12 @@ interface WatchAndRateProps {
  * own "leave site?" dialog, which would nag); the `close` event is still
  * recorded, and the rating stays editable here later.
  */
-export function WatchAndRate({ videoId, poster, startAt }: WatchAndRateProps) {
+export function WatchAndRate({
+  videoId,
+  poster,
+  startAt,
+  children,
+}: WatchAndRateProps) {
   const queryClient = useQueryClient();
   const { data: rating, isError } = useQuery(ratingQuery(videoId));
   const grade = rating?.grade ?? null;
@@ -142,6 +156,7 @@ export function WatchAndRate({ videoId, poster, startAt }: WatchAndRateProps) {
         startAt={startAt}
         onWatchEvent={onWatchEvent}
       />
+      {children}
       {panel}
     </div>
   );
@@ -170,8 +185,8 @@ function YourRating({
   };
 
   return (
-    <div className="flex flex-wrap items-baseline gap-4">
-      <p>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-secondary/60 px-4 py-3">
+      <p className="mr-auto">
         {grade ? (
           <>
             Your rating: <strong className="text-lg">{grade}</strong>
@@ -182,20 +197,24 @@ function YourRating({
           "Not rated yet."
         )}
       </p>
-      <button type="button" className="underline" onClick={onEdit}>
+      <button
+        type="button"
+        className="inline-flex h-9 items-center justify-center rounded-full bg-secondary px-4 text-sm font-medium hover:bg-accent disabled:opacity-50"
+        onClick={onEdit}
+      >
         {grade ? "Change" : "Rate"}
       </button>
       {grade && (
         <button
           type="button"
-          className="underline"
+          className="inline-flex h-9 items-center justify-center rounded-full px-4 text-sm font-medium hover:bg-accent"
           onClick={() => void remove()}
         >
           Remove rating
         </button>
       )}
       {error && (
-        <p role="alert" className="text-red-700">
+        <p role="alert" className="w-full text-destructive">
           {error}
         </p>
       )}

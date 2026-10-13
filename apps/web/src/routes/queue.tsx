@@ -13,7 +13,7 @@ import {
   type RefObject,
 } from "react";
 
-import { AppHeader } from "#/components/AppHeader";
+import { AppShell } from "#/components/AppShell";
 import { showsThumbnails, type DisplayPrefs } from "#/lib/display";
 import { formatDuration } from "#/lib/format";
 import { parseVideoInput, withItemMoved, withoutItem } from "#/lib/queue";
@@ -50,13 +50,12 @@ function Queue() {
   const first = items[0];
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
-      <AppHeader />
+    <AppShell className="flex max-w-4xl flex-col gap-6">
       <div className="flex flex-wrap items-baseline justify-between gap-4">
         <h2 className="text-xl font-semibold">
           Queue
           {items.length > 0 && (
-            <span className="font-normal text-gray-600">
+            <span className="font-normal text-muted-foreground">
               {" "}
               · {items.length} {items.length === 1 ? "video" : "videos"}
             </span>
@@ -66,7 +65,7 @@ function Queue() {
           <Link
             to="/watch/$videoId"
             params={{ videoId: first.video_id }}
-            className="rounded bg-black px-3 py-2 font-medium text-white"
+            className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85"
           >
             Watch next
           </Link>
@@ -81,13 +80,15 @@ function Queue() {
         className="min-h-6 text-sm focus:outline-none"
       >
         {status && (
-          <span className={status.ok ? "text-gray-600" : "text-red-600"}>
+          <span
+            className={status.ok ? "text-muted-foreground" : "text-destructive"}
+          >
             {status.message}
           </span>
         )}
       </p>
       {items.length === 0 ? (
-        <p className="text-gray-600">
+        <p className="text-muted-foreground">
           Your queue is empty. Add videos from the feed, search or a watch page,
           or paste a link above. Videos leave the queue once you watch them to
           the end.
@@ -106,7 +107,7 @@ function Queue() {
               />
             ))}
           </ol>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted-foreground">
             Videos leave the queue once you watch them to the end.
           </p>
           <ClearQueue
@@ -117,7 +118,7 @@ function Queue() {
           />
         </>
       )}
-    </main>
+    </AppShell>
   );
 }
 
@@ -246,7 +247,7 @@ function QueueRow({
   return (
     <li ref={rowRef} className="flex gap-4 py-3">
       <span
-        className="w-6 shrink-0 pt-0.5 text-right text-gray-500 tabular-nums"
+        className="w-6 shrink-0 pt-0.5 text-right text-muted-foreground tabular-nums"
         aria-hidden="true"
       >
         {index + 1}
@@ -258,7 +259,7 @@ function QueueRow({
           params={params}
           tabIndex={-1}
           aria-hidden="true"
-          className="relative aspect-video w-32 shrink-0 overflow-hidden rounded bg-gray-200"
+          className="relative aspect-video w-32 shrink-0 overflow-hidden rounded bg-secondary"
         >
           {item.thumbnail_url && (
             <img
@@ -280,7 +281,7 @@ function QueueRow({
             {title}
           </Link>
         </h3>
-        <p className="flex flex-wrap gap-x-2 text-sm text-gray-600">
+        <p className="flex flex-wrap gap-x-2 text-sm text-muted-foreground">
           {item.channel_title && <span>{item.channel_title}</span>}
           {duration && (
             <span className="tabular-nums">
@@ -328,7 +329,7 @@ function QueueRow({
             type="button"
             onClick={() => actions.remove(item)}
             aria-label={`Remove ${title} from queue`}
-            className="text-red-700 underline"
+            className="text-destructive underline"
           >
             Remove
           </button>
@@ -377,25 +378,25 @@ function AddForm() {
           required
           aria-invalid={error !== null || result?.ok === false}
           aria-describedby="queue-video-status"
-          className="min-w-0 flex-1 rounded border px-3 py-2"
+          className="min-w-0 flex-1 rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
         />
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="rounded border px-3 py-2 font-medium disabled:opacity-50"
+          className="inline-flex items-center justify-center rounded-full bg-secondary px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
         >
           {mutation.isPending ? "Adding…" : "Add"}
         </button>
       </div>
       <p id="queue-video-status" role="status" className="min-h-6 text-sm">
-        {error && <span className="text-red-600">{error}</span>}
+        {error && <span className="text-destructive">{error}</span>}
         {!error && mutation.isError && (
-          <span className="text-red-600">
+          <span className="text-destructive">
             Couldn't queue that. Try again later.
           </span>
         )}
         {!error && result?.ok === false && (
-          <span className="text-red-600">{result.message}</span>
+          <span className="text-destructive">{result.message}</span>
         )}
         {!error &&
           result?.ok === true &&
@@ -432,7 +433,7 @@ function ClearQueue({
         <button
           type="button"
           onClick={() => setConfirming(true)}
-          className="text-sm text-red-700 underline"
+          className="text-sm text-destructive underline"
         >
           Clear queue
         </button>
@@ -452,7 +453,7 @@ function ClearQueue({
         type="button"
         disabled={mutation.isPending}
         onClick={() => mutation.mutate()}
-        className="rounded bg-red-700 px-2 py-1 font-medium text-white disabled:opacity-50"
+        className="inline-flex items-center justify-center rounded-full bg-destructive px-3 py-1 text-sm font-medium text-white hover:bg-destructive/85 disabled:opacity-50"
       >
         {mutation.isPending ? "Clearing…" : "Clear queue"}
       </button>
@@ -464,7 +465,7 @@ function ClearQueue({
         Keep it
       </button>
       {mutation.isError && (
-        <span role="alert" className="text-red-600">
+        <span role="alert" className="text-destructive">
           Couldn't clear the queue. Try again.
         </span>
       )}
@@ -481,8 +482,7 @@ function QueueError() {
   }, [queryErrorResetBoundary]);
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
-      <AppHeader />
+    <AppShell className="flex max-w-4xl flex-col gap-6">
       <div role="alert" className="flex flex-col items-start gap-3">
         <p>Couldn't load your queue. The API may be down.</p>
         <button
@@ -493,6 +493,6 @@ function QueueError() {
           Try again
         </button>
       </div>
-    </main>
+    </AppShell>
   );
 }

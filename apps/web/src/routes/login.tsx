@@ -56,18 +56,18 @@ function Login() {
             autoFocus
             aria-invalid={error}
             aria-describedby={error ? "login-error" : undefined}
-            className="rounded border px-3 py-2"
+            className="rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
           />
         </label>
         {error && (
-          <p id="login-error" role="alert" className="text-red-600">
+          <p id="login-error" role="alert" className="text-destructive">
             Wrong password. Try again.
           </p>
         )}
         {redirect && <input type="hidden" name="redirect" value={redirect} />}
         <button
           type="submit"
-          className="rounded bg-black px-3 py-2 font-medium text-white"
+          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85"
         >
           Log in
         </button>

@@ -7,7 +7,7 @@ import {
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 
-import { AppHeader } from "#/components/AppHeader";
+import { AppShell } from "#/components/AppShell";
 import {
   PLAYLIST_DESCRIPTION_MAX_LENGTH,
   PLAYLIST_NAME_MAX_LENGTH,
@@ -29,12 +29,11 @@ function Playlists() {
   const { data: playlists } = useSuspenseQuery(playlistsQuery);
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
-      <AppHeader />
+    <AppShell className="flex max-w-4xl flex-col gap-6">
       <h2 className="text-xl font-semibold">Playlists</h2>
       <NewPlaylistForm />
       {playlists.length === 0 ? (
-        <p className="rounded border border-dashed p-6 text-gray-600">
+        <p className="rounded-xl border border-dashed p-6 text-muted-foreground">
           No playlists yet. Create one above, then add videos to it from their
           watch pages.
         </p>
@@ -49,7 +48,7 @@ function Playlists() {
               >
                 {playlist.name}
               </Link>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-muted-foreground">
                 {describeItemCount(playlist.item_count)}
                 {playlist.description && <> · {playlist.description}</>}
               </p>
@@ -57,7 +56,7 @@ function Playlists() {
           ))}
         </ul>
       )}
-    </main>
+    </AppShell>
   );
 }
 
@@ -106,13 +105,13 @@ function NewPlaylistForm() {
           placeholder="e.g. Weekend woodworking"
           maxLength={PLAYLIST_NAME_MAX_LENGTH}
           required
-          className="rounded border px-3 py-2"
+          className="rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
         />
       </div>
       <div className="flex flex-col gap-1">
         <label htmlFor="playlist-description" className="text-sm font-medium">
           Description{" "}
-          <span className="font-normal text-gray-500">(optional)</span>
+          <span className="font-normal text-muted-foreground">(optional)</span>
         </label>
         <textarea
           id="playlist-description"
@@ -120,19 +119,19 @@ function NewPlaylistForm() {
           onChange={(event) => setDescription(event.target.value)}
           maxLength={PLAYLIST_DESCRIPTION_MAX_LENGTH}
           rows={2}
-          className="rounded border px-3 py-2"
+          className="rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
         />
       </div>
       <div className="flex items-center gap-3">
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="rounded bg-black px-3 py-2 font-medium text-white disabled:opacity-50"
+          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85 disabled:opacity-50"
         >
           {mutation.isPending ? "Creating…" : "Create playlist"}
         </button>
         {problem && (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-sm text-destructive">
             {problem}
           </p>
         )}
@@ -150,8 +149,7 @@ function PlaylistsError() {
   }, [queryErrorResetBoundary]);
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
-      <AppHeader />
+    <AppShell className="flex max-w-4xl flex-col gap-6">
       <div role="alert" className="flex flex-col items-start gap-3">
         <p>Couldn't load your playlists. The API may be down.</p>
         <button
@@ -162,6 +160,6 @@ function PlaylistsError() {
           Try again
         </button>
       </div>
-    </main>
+    </AppShell>
   );
 }

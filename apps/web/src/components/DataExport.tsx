@@ -7,7 +7,7 @@ export function DataExport() {
       <h3 id="export-heading" className="text-lg font-semibold">
         Export your data
       </h3>
-      <p className="text-gray-600">
+      <p className="text-muted-foreground">
         Download your ratings, channels and curation, feed history, watch
         history, queue, playlists and settings as one JSON file. Cached data
         such as embeddings and tags isn't included, and neither are API keys.
@@ -16,7 +16,7 @@ export function DataExport() {
         <a
           href={EXPORT_PATH}
           download
-          className="inline-block rounded bg-black px-3 py-2 font-medium text-white"
+          className="inline-block inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85"
         >
           Download JSON
         </a>
