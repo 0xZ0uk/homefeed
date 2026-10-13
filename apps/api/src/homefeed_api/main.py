@@ -37,6 +37,7 @@ from homefeed_core import (
     history,
     importer,
     insights,
+    onboarding,
     playback,
     playlists,
     poller,
@@ -50,6 +51,7 @@ from homefeed_core import (
     user_settings,
     videos,
     watch_events,
+    ytdlp_updates,
 )
 from homefeed_core.config import LLMProviderName, get_settings
 from homefeed_core.db import get_session_factory
@@ -243,6 +245,15 @@ class SmokeTestRunOut(BaseModel):
     duration_ms: int | None
 
 
+class YtDlpVersionsOut(BaseModel):
+    bundled: str | None = Field(description="The yt-dlp that came with the install")
+    active: str | None = Field(description="The yt-dlp this server runs")
+    pending: str | None = Field(
+        description="A newer downloaded yt-dlp that takes effect on the next restart, if any "
+        "(YTDLP_AUTO_UPDATE)"
+    )
+
+
 class ExtractorStatusOut(BaseModel):
     since: dt.datetime = Field(description="Start of the window")
     hours: int
@@ -253,6 +264,7 @@ class ExtractorStatusOut(BaseModel):
         description="The latest live smoke test run, whenever it was; null if it never ran "
         "(it is opt-in: GATEWAY_SMOKE_TEST_TIME)"
     )
+    ytdlp: YtDlpVersionsOut
 
 
 @app.get("/status/extractors", tags=["status"])
@@ -266,8 +278,9 @@ def get_extractor_status(
     """Extraction health: the Gateway's recorded outcomes (`extractor_events`) of the
     last `hours`, aggregated per operation, the latest failures and the latest live
     smoke test run."""
+    report = extractor_status.extractor_status(session, hours=hours)
     return ExtractorStatusOut.model_validate(
-        extractor_status.extractor_status(session, hours=hours), from_attributes=True
+        {**vars(report), "ytdlp": ytdlp_updates.versions()}, from_attributes=True
     )
 
 
@@ -465,6 +478,26 @@ def get_history_entry(video_id: VideoId, session: SessionDep) -> history.History
     if entry is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not in the watch history")
     return entry
+
+
+class OnboardingOut(BaseModel):
+    completed: bool = Field(description="Whether setup was finished or skipped")
+    subscribed_channels: int
+    needed: bool = Field(
+        description="Whether to show first-run setup: not completed and no subscriptions"
+    )
+
+
+@app.get("/onboarding", tags=["onboarding"])
+def get_onboarding(session: SessionDep) -> OnboardingOut:
+    """Whether the first-run setup should be shown."""
+    return OnboardingOut.model_validate(onboarding.get_status(session), from_attributes=True)
+
+
+@app.post("/onboarding/complete", tags=["onboarding"])
+def complete_onboarding(session: SessionDep) -> OnboardingOut:
+    """Mark first-run setup as finished (or skipped). Repeating it changes nothing."""
+    return OnboardingOut.model_validate(onboarding.complete(session), from_attributes=True)
 
 
 class SubscribeInput(BaseModel):

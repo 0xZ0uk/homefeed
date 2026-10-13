@@ -16,6 +16,7 @@ from yt_dlp.extractor.youtube import YoutubeIE, YoutubeTabIE
 from yt_dlp.networking.exceptions import HTTPError
 from yt_dlp.utils import DownloadError, ExtractorError, parse_count
 
+from homefeed_core.config import get_settings
 from homefeed_core.gateway.dash import DashRanges, probe_dash_ranges
 from homefeed_core.gateway.errors import (
     ExtractionError,
@@ -93,6 +94,12 @@ class ExtractRequest:
 Extract = Callable[[ExtractRequest], dict[str, Any]]
 
 
+def js_runtime_options(js_runtime: str | None) -> dict[str, Any]:
+    """yt-dlp options that run its YouTube challenge solver with the Node-compatible
+    executable at `js_runtime` (`HOMEFEED_JS_RUNTIME`); none keeps yt-dlp's default."""
+    return {"js_runtimes": {"node": {"path": js_runtime}}} if js_runtime else {}
+
+
 def extract_info(request: ExtractRequest) -> dict[str, Any]:
     """Run yt-dlp for `request` and return its JSON-safe info dict.
 
@@ -107,6 +114,7 @@ def extract_info(request: ExtractRequest) -> dict[str, Any]:
         "socket_timeout": SOCKET_TIMEOUT_SECONDS,
         "extractor_retries": 1,  # the Gateway retries with its own backoff
         "logger": _YtDlpLogger(),
+        **js_runtime_options(get_settings().js_runtime),
     }
     if request.flat:
         options["extract_flat"] = "in_playlist"

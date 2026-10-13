@@ -1,0 +1,36 @@
+{
+  "name": "@homefeed/desktop",
+  "productName": "Homefeed",
+  "version": "0.1.0",
+  "description": "Homefeed desktop app",
+  "author": "Pedro Santana",
+  "homepage": "https://github.com/0xZ0uk/lenstube",
+  "private": true,
+  "type": "module",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "dev": "tsc -p tsconfig.build.json && electron .",
+    "build": "tsc -p tsconfig.build.json && node scripts/bundle-main.mjs",
+    "bundle:python": "node scripts/bundle-python.mjs",
+    "bundle:web": "node scripts/bundle-web.mjs",
+    "dist": "electron-builder --config electron-builder.config.mjs --publish never",
+    "test": "vitest run",
+    "lint": "eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@homefeed/web": "*",
+    "@repo/eslint-config": "*",
+    "@repo/typescript-config": "*",
+    "@types/node": "^24.0.0",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "electron-updater": "^6.8.9",
+    "esbuild": "^0.28.2",
+    "eslint": "10.9.1",
+    "globals": "17.12.0",
+    "srvx": "0.11.22",
+    "typescript": "7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

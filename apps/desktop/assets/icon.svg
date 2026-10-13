@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Placeholder app icon (TODO: a real one). A play button in a house. -->
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="#ff0033"/>
+  <path d="M128 48 L208 116 V200 a12 12 0 0 1 -12 12 H60 a12 12 0 0 1 -12 -12 V116 Z" fill="#fff"/>
+  <path d="M108 124 L164 156 L108 188 Z" fill="#ff0033"/>
+</svg>

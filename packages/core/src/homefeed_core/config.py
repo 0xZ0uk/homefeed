@@ -1,3 +1,4 @@
+import os
 from datetime import time
 from functools import lru_cache
 from pathlib import Path
@@ -92,6 +93,13 @@ class Settings(BaseSettings):
     # categories the watch page skips (empty turns skipping off).
     sponsorblock_url: str = "https://sponsor.ajay.app"
     sponsorblock_categories: str = "sponsor,selfpromo,interaction"
+    # A Node-compatible executable for yt-dlp's YouTube challenge solver (it needs a JS
+    # runtime; unset keeps yt-dlp's default, Deno on PATH). The desktop app points it at
+    # Electron, which acts as Node when ELECTRON_RUN_AS_NODE=1 is in the environment.
+    js_runtime: str | None = Field(default=None, validation_alias="HOMEFEED_JS_RUNTIME")
+    # Opt-in yt-dlp self-update (see homefeed_core.ytdlp_updates): the worker downloads
+    # newer releases into DATA_DIR/ytdlp, used from the next restart on.
+    ytdlp_auto_update: bool = False
 
 
 @lru_cache
@@ -100,8 +108,11 @@ def get_settings() -> Settings:
 
     Turbo runs each package's tasks from its own directory, so relative paths are
     resolved against the `.env` directory to keep api and worker on the same files.
+    HOMEFEED_NO_DOTENV=1 (set by the desktop app) skips `.env` files entirely, so a stray
+    one above the data dir (e.g. `~/.env`) can't change its configuration.
     """
-    env_file = find_dotenv(usecwd=True)
+    no_dotenv = os.environ.get("HOMEFEED_NO_DOTENV", "") not in ("", "0", "false")
+    env_file = "" if no_dotenv else find_dotenv(usecwd=True)
     # Pyright only sees the dataclass_transform fields, not BaseSettings' `_env_file` init arg.
     settings = Settings(_env_file=env_file or None)  # pyright: ignore[reportCallIssue]
     base = Path(env_file).parent if env_file else Path.cwd()

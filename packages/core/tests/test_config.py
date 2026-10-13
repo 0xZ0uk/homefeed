@@ -15,6 +15,7 @@ ENV_VARS = (
     "LLM_MODEL",
     "LLM_BASE_URL",
     "OPENROUTER_API_KEY",
+    "HOMEFEED_NO_DOTENV",
 )
 
 
@@ -69,3 +70,18 @@ def test_get_settings_reads_nearest_env_file_from_package_dir(
     assert settings.feed_size == 20
     assert settings.data_dir == tmp_path / "data"
     assert settings.database_path == Path("/abs/db.sqlite")
+
+
+def test_get_settings_ignores_env_files_with_no_dotenv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".env").write_text("FEED_SIZE=5\n")
+    data_dir = tmp_path / "Homefeed" / "data"
+    data_dir.mkdir(parents=True)
+    monkeypatch.chdir(data_dir)
+    monkeypatch.setenv("HOMEFEED_NO_DOTENV", "1")
+
+    settings = get_settings()
+
+    assert settings.feed_size == 20
+    assert settings.data_dir == data_dir / "data"

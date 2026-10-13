@@ -1,0 +1,146 @@
+# Builds the desktop installers: Homefeed-Setup-<version>.exe (Windows, NSIS) and
+# Homefeed-<version>-x86_64.AppImage (Linux), each natively on its own runner.
+#
+# - Tag `desktop-vX.Y.Z` (must equal apps/desktop/package.json's version): builds both and
+#   publishes them, with the updater's latest*.yml, as release vX.Y.Z of the public
+#   releases repo (apps/desktop/electron-builder.config.mjs; override with the
+#   HOMEFEED_RELEASES_REPO repository variable). Needs the RELEASES_TOKEN secret: a
+#   fine-grained PAT with "Contents: read and write" on that repo. The release is created
+#   as a draft and only published once both builds uploaded, so installs never see half
+#   a release.
+# - Manual run (workflow_dispatch): builds both and uploads them as workflow artifacts;
+#   publishes nothing.
+#
+# See apps/desktop/README.md, "Building installers" and "Releasing".
+name: Desktop release
+
+on:
+  push:
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Keep in sync with the Dockerfile (UV_VERSION, NUB_VERSION) and package.json
+  # (devEngines.packageManager).
+  UV_VERSION: "0.12.24"
+  NUB_VERSION: "0.9.6"
+  NODE_VERSION: "24"
+  TURBO_TELEMETRY_DISABLED: "1"
+  RELEASES_REPO: ${{ vars.HOMEFEED_RELEASES_REPO || '0xZ0uk/homefeed-releases' }}
+
+jobs:
+  prepare:
+    name: Check version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: version
+        name: Read the app version (and match it against the tag)
+        shell: bash
+        run: |
+          version=$(node -p 'require("./apps/desktop/package.json").version')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != "desktop-v$version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match apps/desktop/package.json version $version (expected desktop-v$version)"
+            exit 1
+          fi
+      - name: Create the draft release
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh release view "v$VERSION" --repo "$RELEASES_REPO" >/dev/null 2>&1; then
+            echo "Release v$VERSION already exists in $RELEASES_REPO"
+          else
+            gh release create "v$VERSION" --repo "$RELEASES_REPO" --draft \
+              --title "Homefeed $VERSION" --notes "Homefeed $VERSION"
+          fi
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: prepare
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # nub isn't on the runners. Installed with npm from outside the repo: npm refuses to
+      # run inside it because of devEngines (as in the Dockerfile).
+      - name: Install nub
+        working-directory: ${{ runner.temp }}
+        run: npm install --global "@nubjs/nub@${NUB_VERSION}"
+
+      - name: Install dependencies
+        run: |
+          nub ci
+          uv sync --all-packages --frozen
+
+      # Builds the web app and the shell (bundled main process). turbo first exports the
+      # API's OpenAPI schema (uv) and generates @homefeed/api-client from it.
+      - name: Build
+        run: nub exec turbo run build --filter=@homefeed/desktop...
+
+      - name: Bundle Python (build/python)
+        run: nub run --filter @homefeed/desktop bundle:python
+
+      - name: Bundle the web server (build/web)
+        run: nub run --filter @homefeed/desktop bundle:web
+
+      - name: Build the installer
+        working-directory: apps/desktop
+        env:
+          HOMEFEED_RELEASES_REPO: ${{ env.RELEASES_REPO }}
+          # Unsigned: no certificate to look for.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          # Only set (and only used) for tag builds, which upload to the draft release.
+          GH_TOKEN: ${{ github.ref_type == 'tag' && secrets.RELEASES_TOKEN || '' }}
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then publish=always; else publish=never; fi
+          nub exec electron-builder --config electron-builder.config.mjs --publish "$publish"
+
+      - name: Upload artifacts
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: homefeed-${{ needs.prepare.outputs.version }}-${{ runner.os }}
+          path: |
+            apps/desktop/build/release/*.exe
+            apps/desktop/build/release/*.AppImage
+            apps/desktop/build/release/*.blockmap
+            apps/desktop/build/release/latest*.yml
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish release
+    needs: [prepare, build]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the draft release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: gh release edit "v$VERSION" --repo "$RELEASES_REPO" --draft=false --latest

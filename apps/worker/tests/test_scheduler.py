@@ -424,3 +424,35 @@ def test_catch_up_uses_the_user_training_time_and_time_zone(
 
     assert scheduler.catch_up_needed() == (True, True)  # no feed yet either
     assert received == {"training_time": time(4, 20), "tz": ZoneInfo("Pacific/Auckland")}
+
+
+def test_ytdlp_update_is_not_scheduled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("YTDLP_AUTO_UPDATE", raising=False)
+    get_settings.cache_clear()
+
+    assert "update_ytdlp" not in jobs_by_id()
+
+
+def test_ytdlp_update_is_scheduled_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("YTDLP_AUTO_UPDATE", "true")
+    get_settings.cache_clear()
+    try:
+        job = jobs_by_id()["update_ytdlp"]
+    finally:
+        get_settings.cache_clear()
+
+    assert job.func is scheduler.update_ytdlp
+    assert isinstance(job.trigger, IntervalTrigger)
+    assert job.trigger.interval == timedelta(hours=scheduler.YTDLP_UPDATE_HOURS)
+    assert job.next_run_time is not None  # also once shortly after startup
+
+
+def test_ytdlp_update_job_logs_failures_instead_of_raising(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def failing() -> str:
+        raise scheduler.ytdlp_updates.YtDlpUpdateError("offline")
+
+    monkeypatch.setattr(scheduler.ytdlp_updates, "update", failing)
+
+    scheduler.update_ytdlp()
