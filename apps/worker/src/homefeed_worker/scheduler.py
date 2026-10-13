@@ -13,6 +13,8 @@ from apscheduler.util import undefined
 from homefeed_core import candidates, enricher, feeds, poller, trainer
 from homefeed_core.config import get_settings
 from homefeed_core.db import get_session_factory
+from homefeed_core.external_sources import ExternalSourcesSource
+from homefeed_core.gateway import create_gateway
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,9 @@ POLL_CHECK_MINUTES = 10
 # How often new candidates are enriched, so the daily feed build finds most of them
 # already done. The feed build enriches whatever is left before ranking.
 ENRICH_CHECK_MINUTES = 30
+# How often the worker looks for external sources (subreddits, feeds, link pages) that
+# are due; each has its own schedule (hourly, daily or weekly) and backoff.
+EXTERNAL_SOURCES_CHECK_MINUTES = 15
 
 
 # The feed job polls too; this keeps it and the poll job from polling at the same time.
@@ -40,7 +45,7 @@ def poll_subscriptions() -> None:
 
 def generate_candidates() -> None:
     """Run the candidate sources other than subscriptions (related videos of top-tier
-    ratings); a failing source is logged and skipped."""
+    ratings, due saved searches); a failing source is logged and skipped."""
     report = candidates.generate()
     for source, video_ids in report.new.items():
         logger.info("Candidate source %r found %d new candidates", source, len(video_ids))
@@ -67,6 +72,17 @@ def enrich_candidates() -> None:
         len(report.cached),
         len(report.failed),
     )
+
+
+def fetch_external_sources() -> None:
+    """Fetch due external sources and record the YouTube videos they link to."""
+    sessions = get_session_factory()
+    source = ExternalSourcesSource(sessions, create_gateway(sessions))
+    report = candidates.generate([source], sessions=sessions)
+    for name, video_ids in report.new.items():
+        logger.info("Candidate source %r found %d new candidates", name, len(video_ids))
+    for name, error in report.failed.items():
+        logger.warning("Candidate source %r failed: %s", name, error)
 
 
 def build_daily_feed() -> None:
@@ -137,6 +153,15 @@ def build_scheduler(
         CronTrigger(hour=training.hour, minute=training.minute),  # local time zone
         id="train_model",
         name="Train the ranking model",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=None,
+    )
+    scheduler.add_job(
+        fetch_external_sources,
+        IntervalTrigger(minutes=EXTERNAL_SOURCES_CHECK_MINUTES, timezone=UTC),
+        id="fetch_external_sources",
+        name="Fetch external sources",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=None,

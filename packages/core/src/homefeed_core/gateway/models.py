@@ -141,10 +141,60 @@ class RelatedVideo:
     live_status: LiveStatus | None = None
 
 
+SearchSort = Literal["relevance", "upload_date", "view_count", "rating"]
+SearchUploadDate = Literal["hour", "today", "week", "month", "year"]
+SearchDuration = Literal["short", "medium", "long"]  # < 4 min, 4-20 min, > 20 min
+
+
+@dataclass(frozen=True)
+class SearchFilters:
+    """YouTube's own search filters; the defaults are a plain search by relevance.
+
+    Results are always videos (no channels, playlists or Shorts shelves).
+    """
+
+    sort: SearchSort = "relevance"
+    upload_date: SearchUploadDate | None = None  # uploaded within the last ...
+    duration: SearchDuration | None = None
+
+    @property
+    def is_default(self) -> bool:
+        return self == SearchFilters()
+
+
+@dataclass(frozen=True)
+class SearchResult:
+    """A video in YouTube's search results; fetch `get_video` for full metadata."""
+
+    id: str
+    title: str
+    channel_id: str
+    channel_title: str
+    channel_handle: str | None = None
+    description: str | None = None  # a snippet, not the full description
+    duration_seconds: int | None = None
+    view_count: int | None = None
+    thumbnail_url: str | None = None
+    live_status: LiveStatus | None = None
+
+
 @dataclass(frozen=True)
 class ChannelUploads:
     channel: Channel
     videos: list[UploadSummary]  # newest first
+
+
+@dataclass(frozen=True)
+class FeaturedChannel:
+    """A channel another channel features on its page ("Featured channels")."""
+
+    id: str  # UC...
+    title: str
+    handle: str | None = None
+    url: str | None = None
+    thumbnail_url: str | None = None
+    subscriber_count: int | None = None  # as YouTube rounds it, e.g. 2_550_000
+    video_count: int | None = None
 
 
 @dataclass(frozen=True)

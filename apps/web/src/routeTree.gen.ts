@@ -11,10 +11,13 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CurationRouteImport } from './routes/curation'
+import { Route as DiscoverRouteImport } from './routes/discover'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LogoutRouteImport } from './routes/logout'
 import { Route as ModelsRouteImport } from './routes/models'
+import { Route as SearchRouteImport } from './routes/search'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as WatchEventsRouteImport } from './routes/watch-events'
 import { Route as FeedDateRouteImport } from './routes/feed.$date'
 import { Route as WatchVideoIdRouteImport } from './routes/watch.$videoId'
@@ -29,6 +32,11 @@ const IndexRoute = IndexRouteImport.update({
 const CurationRoute = CurationRouteImport.update({
   id: '/curation',
   path: '/curation',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DiscoverRoute = DiscoverRouteImport.update({
+  id: '/discover',
+  path: '/discover',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InsightsRoute = InsightsRouteImport.update({
@@ -49,6 +57,16 @@ const LogoutRoute = LogoutRouteImport.update({
 const ModelsRoute = ModelsRouteImport.update({
   id: '/models',
   path: '/models',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SearchRoute = SearchRouteImport.update({
+  id: '/search',
+  path: '/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WatchEventsRoute = WatchEventsRouteImport.update({
@@ -81,10 +99,13 @@ const VideosVideoIdMediaItagRoute = VideosVideoIdMediaItagRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/curation': typeof CurationRoute
+  '/discover': typeof DiscoverRoute
   '/insights': typeof InsightsRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
   '/models': typeof ModelsRoute
+  '/search': typeof SearchRoute
+  '/settings': typeof SettingsRoute
   '/watch-events': typeof WatchEventsRoute
   '/feed/$date': typeof FeedDateRoute
   '/watch/$videoId': typeof WatchVideoIdRoute
@@ -94,10 +115,13 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/curation': typeof CurationRoute
+  '/discover': typeof DiscoverRoute
   '/insights': typeof InsightsRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
   '/models': typeof ModelsRoute
+  '/search': typeof SearchRoute
+  '/settings': typeof SettingsRoute
   '/watch-events': typeof WatchEventsRoute
   '/feed/$date': typeof FeedDateRoute
   '/watch/$videoId': typeof WatchVideoIdRoute
@@ -108,10 +132,13 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/curation': typeof CurationRoute
+  '/discover': typeof DiscoverRoute
   '/insights': typeof InsightsRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
   '/models': typeof ModelsRoute
+  '/search': typeof SearchRoute
+  '/settings': typeof SettingsRoute
   '/watch-events': typeof WatchEventsRoute
   '/feed/$date': typeof FeedDateRoute
   '/watch/$videoId': typeof WatchVideoIdRoute
@@ -123,10 +150,13 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/curation'
+    | '/discover'
     | '/insights'
     | '/login'
     | '/logout'
     | '/models'
+    | '/search'
+    | '/settings'
     | '/watch-events'
     | '/feed/$date'
     | '/watch/$videoId'
@@ -136,10 +166,13 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/curation'
+    | '/discover'
     | '/insights'
     | '/login'
     | '/logout'
     | '/models'
+    | '/search'
+    | '/settings'
     | '/watch-events'
     | '/feed/$date'
     | '/watch/$videoId'
@@ -149,10 +182,13 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/curation'
+    | '/discover'
     | '/insights'
     | '/login'
     | '/logout'
     | '/models'
+    | '/search'
+    | '/settings'
     | '/watch-events'
     | '/feed/$date'
     | '/watch/$videoId'
@@ -163,10 +199,13 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CurationRoute: typeof CurationRoute
+  DiscoverRoute: typeof DiscoverRoute
   InsightsRoute: typeof InsightsRoute
   LoginRoute: typeof LoginRoute
   LogoutRoute: typeof LogoutRoute
   ModelsRoute: typeof ModelsRoute
+  SearchRoute: typeof SearchRoute
+  SettingsRoute: typeof SettingsRoute
   WatchEventsRoute: typeof WatchEventsRoute
   FeedDateRoute: typeof FeedDateRoute
   WatchVideoIdRoute: typeof WatchVideoIdRoute
@@ -188,6 +227,13 @@ declare module '@tanstack/react-router' {
       path: '/curation'
       fullPath: '/curation'
       preLoaderRoute: typeof CurationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/discover': {
+      id: '/discover'
+      path: '/discover'
+      fullPath: '/discover'
+      preLoaderRoute: typeof DiscoverRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/insights': {
@@ -216,6 +262,20 @@ declare module '@tanstack/react-router' {
       path: '/models'
       fullPath: '/models'
       preLoaderRoute: typeof ModelsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/search': {
+      id: '/search'
+      path: '/search'
+      fullPath: '/search'
+      preLoaderRoute: typeof SearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/watch-events': {
@@ -259,10 +319,13 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CurationRoute: CurationRoute,
+  DiscoverRoute: DiscoverRoute,
   InsightsRoute: InsightsRoute,
   LoginRoute: LoginRoute,
   LogoutRoute: LogoutRoute,
   ModelsRoute: ModelsRoute,
+  SearchRoute: SearchRoute,
+  SettingsRoute: SettingsRoute,
   WatchEventsRoute: WatchEventsRoute,
   FeedDateRoute: FeedDateRoute,
   WatchVideoIdRoute: WatchVideoIdRoute,

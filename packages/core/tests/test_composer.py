@@ -377,6 +377,19 @@ def test_explanations_without_titles_or_grades() -> None:
     assert explain(unrated, videos=RATED) == "Related to Some video"
     assert explain(long, videos=long_title) == f"Related to {'x' * 59}… (A)"
     assert explain(other) == "Found via saved search"
+    featured = scored("e", channel(1), 0, source="channel_graph", source_detail="UC" + "a" * 22)
+    assert explain(featured) == "Featured by a channel you like"
+
+
+def test_explains_saved_search_candidates_by_their_query() -> None:
+    found = scored("a", channel(1), 0.8, prior="love", source="saved_search", source_detail="wood")
+    long = scored("b", channel(1), 0, source="saved_search", source_detail="q" * 100)
+
+    assert explain(found) == "From your 'wood' search · channel you love"
+    assert explain(found, exploration=ChannelRatings(0, 0)) == (
+        "Exploring: new channel · from your 'wood' search"
+    )
+    assert explain(long) == f"From your '{'q' * 59}…' search"
 
 
 def test_compose_explains_with_the_given_videos() -> None:

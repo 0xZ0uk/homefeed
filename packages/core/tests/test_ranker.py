@@ -8,6 +8,7 @@ import pytest
 from homefeed_core.curation import TopicVector
 from homefeed_core.embeddings import EMBEDDING_DIMENSIONS, normalize
 from homefeed_core.grades import grade_value
+from homefeed_core.llm_tags import LLMTags
 from homefeed_core.ranker import (
     CHANNEL_PRIOR_WEIGHT,
     SIMILARITY_FLOOR,
@@ -370,6 +371,27 @@ def test_model_gets_similarity_features() -> None:
     )
 
     assert seen == {"a": similarity_features(axis(0), TIERS), "b": None}
+
+
+def test_model_gets_llm_tags() -> None:
+    tags = LLMTags("science", depth=0.9, clickbait=0.1, rage_bait=0.0)
+    seen: dict[str, LLMTags | None] = {}
+
+    def model(items: Sequence[ModelCandidate]) -> list[float]:
+        seen.update({item.candidate.video_id: item.tags for item in items})
+        return [0.0] * len(items)
+
+    scored = rank(
+        [candidate("a"), candidate("b")],
+        curation={},
+        history=NO_HISTORY,
+        llm_tags={"a": tags},
+        model=model,
+    )
+
+    assert seen == {"a": tags, "b": None}
+    # Tags reach the score only through the model.
+    assert [item.score for item in scored] == [0.0, 0.0]
 
 
 def test_model_scores_unfiltered_candidates_in_one_batch() -> None:

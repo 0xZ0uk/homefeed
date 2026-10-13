@@ -4,6 +4,8 @@ gateway = FakeGateway()
 channel = make_channel("UC" + "a" * 22, title="Woodworking", handle="@wood")
 gateway.add_channel(channel, [make_video("aaaaaaaaaaa", channel=channel)])
 gateway.add_related("aaaaaaaaaaa", [make_video("ccccccccccc", channel=channel)])
+gateway.add_search("hand planes", [make_video("ddddddddddd", channel=channel)])
+gateway.add_featured(channel.id, [make_channel("UC" + "b" * 22, title="Carpentry")])
 gateway.fail("get_video", "bbbbbbbbbbb", UnavailableError("removed"))
 
 gateway.resolve_url("https://www.youtube.com/@wood")  # -> ResolvedChannel(channel)
@@ -19,7 +21,13 @@ from typing import Any
 
 from homefeed_core.gateway.dash import DashRanges, probe_dash_ranges
 from homefeed_core.gateway.errors import GatewayError, RangeNotSatisfiableError, UnavailableError
-from homefeed_core.gateway.interface import DEFAULT_RELATED_LIMIT, DEFAULT_UPLOADS_LIMIT
+from homefeed_core.gateway.interface import (
+    DEFAULT_RELATED_LIMIT,
+    DEFAULT_SEARCH_LIMIT,
+    DEFAULT_UPLOADS_LIMIT,
+    check_search_limit,
+    normalize_search_query,
+)
 from homefeed_core.gateway.media import MediaStream, check_range
 from homefeed_core.gateway.models import (
     ByteRange,
@@ -27,10 +35,13 @@ from homefeed_core.gateway.models import (
     CaptionSegment,
     Channel,
     ChannelUploads,
+    FeaturedChannel,
     Format,
     RelatedVideo,
     ResolvedChannel,
     ResolvedUrl,
+    SearchFilters,
+    SearchResult,
     UploadSummary,
     Video,
 )
@@ -47,6 +58,9 @@ class FakeGateway:
         self.channels: dict[str, Channel] = {}
         self.uploads: dict[str, list[UploadSummary]] = {}
         self.related: dict[str, list[RelatedVideo]] = {}
+        self.search_results: dict[str, list[SearchResult]] = {}
+        self.searches: list[tuple[str, SearchFilters]] = []  # (query, filters) per search
+        self.featured: dict[str, list[FeaturedChannel]] = {}
         self.urls: dict[str, ResolvedUrl] = {}
         self.failures: dict[tuple[str, str], GatewayError] = {}
         self.media: dict[str, bytes] = {}
@@ -71,6 +85,15 @@ class FakeGateway:
             self.add_video(video)
             self.related[video_id].append(_related(video))
 
+    def add_search(self, query: str, videos: Iterable[Video]) -> None:
+        """Make `videos` (added too) the results of searching `query`, whatever the
+        filters; other queries find nothing."""
+        query = normalize_search_query(query)
+        self.search_results[query] = []
+        for video in videos:
+            self.add_video(video)
+            self.search_results[query].append(_search_result(video))
+
     def add_channel(self, channel: Channel, videos: Iterable[Video] = ()) -> None:
         """Add a channel whose uploads are `videos`, newest first (and add the videos)."""
         self.channels[channel.id] = channel
@@ -78,6 +101,23 @@ class FakeGateway:
         for video in videos:
             self.add_video(video)
             self.uploads[channel.id].append(_summary(video))
+
+    def add_featured(
+        self, channel_id: str, channels: Iterable[Channel], *, subscriber_count: int | None = None
+    ) -> None:
+        """Make `channels` the featured channels of `channel_id`, which must be added.
+        The featured channels aren't added: add them to serve their uploads."""
+        self.featured[channel_id] = [
+            FeaturedChannel(
+                id=channel.id,
+                title=channel.title,
+                handle=channel.handle,
+                url=channel.url,
+                thumbnail_url=channel.thumbnail_url,
+                subscriber_count=subscriber_count,
+            )
+            for channel in channels
+        ]
 
     def add_url(self, url: str, resolved: ResolvedUrl) -> None:
         """Make `resolve_url(url)` return `resolved`, overriding the default resolution."""
@@ -119,6 +159,19 @@ class FakeGateway:
             raise UnavailableError(f"Video unavailable: {video_id}")
         return self.related.get(video_id, [])[:limit]
 
+    def search(
+        self,
+        query: str,
+        filters: SearchFilters | None = None,
+        *,
+        limit: int = DEFAULT_SEARCH_LIMIT,
+    ) -> list[SearchResult]:
+        query = normalize_search_query(query)
+        check_search_limit(limit)
+        self._call("search", query)
+        self.searches.append((query, filters or SearchFilters()))
+        return self.search_results.get(query, [])[:limit]
+
     def get_channel_uploads(
         self, channel_id: str, *, limit: int = DEFAULT_UPLOADS_LIMIT
     ) -> ChannelUploads:
@@ -126,6 +179,12 @@ class FakeGateway:
         if channel_id not in self.channels:
             raise UnavailableError(f"This channel does not exist: {channel_id}")
         return ChannelUploads(self.channels[channel_id], self.uploads[channel_id][:limit])
+
+    def get_featured_channels(self, channel_id: str) -> list[FeaturedChannel]:
+        self._call("get_featured_channels", channel_id)
+        if channel_id not in self.channels:
+            raise UnavailableError(f"This channel does not exist: {channel_id}")
+        return list(self.featured.get(channel_id, []))
 
     def resolve_url(self, url: str) -> ResolvedUrl:
         self._call("resolve_url", url)
@@ -236,6 +295,21 @@ def _related(video: Video) -> RelatedVideo:
         channel_id=video.channel_id,
         channel_title=video.channel_title,
         channel_handle=video.channel_handle,
+        duration_seconds=video.duration_seconds,
+        view_count=video.view_count,
+        thumbnail_url=video.thumbnail_url,
+        live_status=video.live_status,
+    )
+
+
+def _search_result(video: Video) -> SearchResult:
+    return SearchResult(
+        id=video.id,
+        title=video.title,
+        channel_id=video.channel_id,
+        channel_title=video.channel_title,
+        channel_handle=video.channel_handle,
+        description=video.description,
         duration_seconds=video.duration_seconds,
         view_count=video.view_count,
         thumbnail_url=video.thumbnail_url,

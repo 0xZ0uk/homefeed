@@ -11,6 +11,12 @@ its own per-channel schedule. Every other source implements `CandidateSource`, a
 fails is logged and skipped without failing the run. Sources:
 - `related` (`RelatedVideosSource`): videos YouTube suggests next to the ones rated
   top tier, with the seed video's id as `source_detail` (for "Related to X (A+)").
+- `saved_search` (`saved_searches.SavedSearchSource`): results of the saved searches
+  that are due, with the query as `source_detail`.
+- `channel_graph` (`channel_graph.ChannelGraphSource`): new uploads of channels featured
+  by channels I like, with the featuring channel's id as `source_detail`.
+- `external` (`external_sources.ExternalSourcesSource`): YouTube videos linked from
+  due subreddits, RSS feeds and link pages, with the source's label as `source_detail`.
 """
 
 import logging
@@ -32,6 +38,10 @@ logger = logging.getLogger(__name__)
 SUBSCRIPTION = "subscription"
 # Related videos of a top-tier rated video; source_detail is that video's id (Milestone 2).
 RELATED = "related"
+# Results of a saved search; source_detail is its query (Milestone 4).
+SAVED_SEARCH = "saved_search"
+# Uploads of a channel featured by a liked channel; source_detail is the liked channel's id.
+CHANNEL_GRAPH = "channel_graph"
 
 
 @dataclass(frozen=True)
@@ -202,8 +212,19 @@ def generate(
 
 def default_sources(sessions: sessionmaker[Session] | None = None) -> list[CandidateSource]:
     """The production sources run by the daily feed job."""
+    # Sources living in their own modules import this one, so they're imported here.
+    from homefeed_core.channel_graph import ChannelGraphSource
+    from homefeed_core.external_sources import ExternalSourcesSource
+    from homefeed_core.saved_searches import SavedSearchSource
+
     sessions = sessions or get_session_factory()
-    return [RelatedVideosSource(sessions, create_gateway(sessions))]
+    gateway = create_gateway(sessions)
+    return [
+        RelatedVideosSource(sessions, gateway),
+        SavedSearchSource(sessions, gateway),
+        ChannelGraphSource(sessions, gateway),
+        ExternalSourcesSource(sessions, gateway),
+    ]
 
 
 def _record_found(

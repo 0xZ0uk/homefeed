@@ -16,11 +16,20 @@ from pathlib import Path
 from typing import Any
 
 from homefeed_core.gateway.errors import GatewayError
-from homefeed_core.gateway.ytdlp import ExtractRequest, extract_info
+from homefeed_core.gateway.models import SearchFilters
+from homefeed_core.gateway.ytdlp import ExtractRequest, extract_info, search_url
 
 FIXTURES = Path(__file__).parent.parent / "tests" / "fixtures" / "gateway"
 
 VERITASIUM = "UCHnyfMqiRRG1u-2MsSQLbXA"
+
+SEARCH_LIMIT = 5
+SEARCH_FILTERS = SearchFilters(sort="upload_date", upload_date="month", duration="long")
+
+
+def search_request(query: str, filters: SearchFilters | None = None) -> ExtractRequest:
+    return ExtractRequest(search_url(query, filters, SEARCH_LIMIT), flat=True, limit=SEARCH_LIMIT)
+
 
 REQUESTS: dict[str, ExtractRequest] = {
     "video_me_at_the_zoo": ExtractRequest("https://www.youtube.com/watch?v=jNQXAC9IVRw"),
@@ -60,6 +69,25 @@ REQUESTS: dict[str, ExtractRequest] = {
     ),
     "related_unavailable": ExtractRequest(
         "https://www.youtube.com/watch?v=xxxxxxxxxxx", related=True
+    ),
+    # Search: plain (`ytsearchN:`), filtered (results page with `sp`), and no results.
+    "search_hand_planes": search_request("woodworking hand planes"),
+    "search_filtered": search_request("woodworking", SEARCH_FILTERS),
+    "search_no_results": search_request("qxzvbnmplkjh wrtpsdfgh zzqqxx"),
+    # Featured channels from the home tab (InnerTube `browse`).
+    "featured_veritasium": ExtractRequest(
+        f"https://www.youtube.com/channel/{VERITASIUM}", featured=True
+    ),
+    # Lists one channel twice.
+    "featured_jawed": ExtractRequest(
+        "https://www.youtube.com/channel/UC4QobU6STFB0P71PMvOGN5A", featured=True
+    ),
+    # Features no channels (Veritasium en Français).
+    "featured_none": ExtractRequest(
+        "https://www.youtube.com/channel/UCin0m13qWv3-051xlWlHamA", featured=True
+    ),
+    "featured_missing": ExtractRequest(
+        "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx", featured=True
     ),
 }
 

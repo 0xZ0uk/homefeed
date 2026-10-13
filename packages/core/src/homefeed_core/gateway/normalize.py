@@ -17,14 +17,16 @@ from homefeed_core.gateway.models import (
     Channel,
     ChannelUploads,
     Chapter,
+    FeaturedChannel,
     Format,
     FormatKind,
     LiveStatus,
     RelatedVideo,
+    SearchResult,
     UploadSummary,
     Video,
 )
-from homefeed_core.gateway.urls import CHANNEL_ID, channel_url
+from homefeed_core.gateway.urls import CHANNEL_ID, VIDEO_ID, channel_url
 
 Info = Mapping[str, Any]
 
@@ -207,6 +209,78 @@ def related_from_info(info: Info) -> list[RelatedVideo]:
             )
         )
     return related
+
+
+# Search. A search request (see `ytdlp.search_url`) lists YouTube's results flat:
+# {"id": <query>, "entries": [...]}, one yt-dlp entry per video (id, title, description
+# snippet, channel_id, channel, uploader_id, duration, view_count, thumbnails,
+# live_status). Search results carry no upload time.
+
+
+def search_results_from_info(info: Info) -> list[SearchResult]:
+    """The videos in a search response, in order, without duplicates. Entries without a
+    channel id (Shorts shelves, channels, playlists) are skipped."""
+    results: list[SearchResult] = []
+    seen: set[str] = set()
+    for raw in _list(info, "entries"):
+        if not isinstance(raw, Mapping):
+            continue
+        entry = cast(Info, raw)
+        video_id, title = _str(entry, "id"), _str(entry, "title")
+        channel_id = _str(entry, "channel_id")
+        if video_id is None or title is None or video_id in seen:
+            continue
+        if not VIDEO_ID.match(video_id) or channel_id is None or not CHANNEL_ID.match(channel_id):
+            continue
+        seen.add(video_id)
+        results.append(
+            SearchResult(
+                id=video_id,
+                title=title,
+                channel_id=channel_id,
+                channel_title=_str(entry, "channel") or _str(entry, "uploader") or "",
+                channel_handle=_handle(entry),
+                description=_str(entry, "description"),
+                duration_seconds=_int(entry, "duration"),
+                view_count=_int(entry, "view_count"),
+                thumbnail_url=_best_thumbnail(entry),
+                live_status=_live_status(entry),
+            )
+        )
+    return results
+
+
+# Featured channels. A featured request (see `ytdlp.py`) reads the channel's home tab
+# and returns {"id": <channel id>, "entries": [...]}, one entry per featured channel
+# (id, title, uploader_id, thumbnails, channel_follower_count, video_count).
+
+
+def featured_channels_from_info(info: Info) -> list[FeaturedChannel]:
+    """The featured channels in a featured response, in order, without duplicates or
+    the featuring channel itself. Entries without a valid channel id are skipped."""
+    owner = _require_str(info, "id")
+    featured: list[FeaturedChannel] = []
+    seen = {owner}
+    for raw in _list(info, "entries"):
+        if not isinstance(raw, Mapping):
+            continue
+        entry = cast(Info, raw)
+        channel_id = _str(entry, "id")
+        if channel_id is None or not CHANNEL_ID.match(channel_id) or channel_id in seen:
+            continue
+        seen.add(channel_id)
+        featured.append(
+            FeaturedChannel(
+                id=channel_id,
+                title=_str(entry, "title") or "",
+                handle=_handle(entry),
+                url=channel_url(channel_id),
+                thumbnail_url=_best_thumbnail(entry),
+                subscriber_count=_int(entry, "channel_follower_count"),
+                video_count=_int(entry, "video_count"),
+            )
+        )
+    return featured
 
 
 # Captions. A captions request (see `ytdlp.py`) picks one track from the video's info

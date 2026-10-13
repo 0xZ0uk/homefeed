@@ -1,0 +1,14 @@
+{
+ "request": {
+  "url": "https://www.youtube.com/channel/UCin0m13qWv3-051xlWlHamA",
+  "flat": false,
+  "limit": null,
+  "captions": false,
+  "related": false,
+  "featured": true
+ },
+ "response": {
+  "id": "UCin0m13qWv3-051xlWlHamA",
+  "entries": []
+ }
+}

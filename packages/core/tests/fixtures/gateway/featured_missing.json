@@ -1,0 +1,11 @@
+{
+ "request": {
+  "url": "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx",
+  "flat": false,
+  "limit": null,
+  "captions": false,
+  "related": false,
+  "featured": true
+ },
+ "error": "YouTube said: This channel does not exist."
+}

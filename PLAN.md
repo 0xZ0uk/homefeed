@@ -49,7 +49,7 @@ Rating UX: when a video ends or the player is closed, show the tier buttons (one
 - **Storage:** SQLite (WAL mode) + sqlite-vec for embedding similarity. One database file shared by API and worker.
 - **YouTube:** yt-dlp as a library; channel RSS feeds (`https://www.youtube.com/feeds/videos.xml?channel_id=…`) for subscriptions.
 - **ML:** sentence-transformers with `BAAI/bge-small-en-v1.5` (384-dim) for embeddings; LightGBM regressor, with logistic/ridge regression fallback while labels are few.
-- **LLM tagging:** pluggable provider interface (Ollama or a hosted API), disabled until Milestone 4.
+- **LLM tagging:** pluggable provider interface (`LLM_PROVIDER`): the hosted **OpenRouter** API by default (OpenAI-compatible chat completions at `https://openrouter.ai/api/v1`, key in `OPENROUTER_API_KEY`; tagging is skipped while no key is set), local Ollama as the alternative, or `none`. Added in Milestone 4.
 - **Frontend:** TanStack Start (React, SSR), TanStack Router, TanStack Query, Tailwind. Server functions call the Python API, so the API is never exposed to the browser.
 - **Player:** Shaka Player.
 - **Python tooling:** uv, ruff, pyright, pytest.
@@ -207,7 +207,7 @@ Before a model exists, `alpha = 0` and `model_score = 0`. Every scored item carr
 
 ## 8. Data model
 
-Tables (SQLite): `channels`, `videos`, `video_features` (embedding in a sqlite-vec virtual table, plus tags and the model/prompt versions that produced them), `candidates` (video, source, source_detail, first_seen), `feeds` (date, created_at, model_version), `feed_items` (feed, video, position, score breakdown JSON, explanation, is_exploration, selection_probability, dismissed_at, dismiss_reason), `ratings` (video, grade, value, rated_at, updated_at), `watch_events` (video, position, event type, at), `channel_prefs` (prior, pinned, muted), `topics` (name, description, embedding, weight, decay, reaffirmed_at), `keyword_mutes`, `saved_searches` (query, filters, schedule), `external_sources` (kind, url, schedule), `queue_items`, `playlists`, `playlist_items`, `model_versions` (path, metrics JSON, created_at, active), `extractor_events` (operation, success, error, at), `settings`.
+Tables (SQLite): `channels`, `videos`, `video_features` (embedding in a sqlite-vec virtual table, plus tags and the model/prompt versions that produced them), `video_llm_tags` (topic, depth, clickbait, rage-bait per video and prompt version, with the model that produced them), `candidates` (video, source, source_detail, first_seen), `feeds` (date, created_at, model_version), `feed_items` (feed, video, position, score breakdown JSON, explanation, is_exploration, selection_probability, dismissed_at, dismiss_reason), `ratings` (video, grade, value, rated_at, updated_at), `watch_events` (video, position, event type, at), `channel_prefs` (prior, pinned, muted), `topics` (name, description, embedding, weight, decay, reaffirmed_at), `keyword_mutes`, `saved_searches` (query, filters, schedule), `external_sources` (kind, url, schedule), `queue_items`, `playlists`, `playlist_items`, `model_versions` (path, metrics JSON, created_at, active), `extractor_events` (operation, success, error, at), `settings`.
 
 Store the grade as text (`"B+"`) and the numeric value alongside it.
 
@@ -266,7 +266,7 @@ Each milestone ends with tests passing, lint clean, and a short summary of what 
 
 - Candidate sources: saved searches, channel graph (featured channels of liked channels), external sources (subreddit JSON, RSS, link extraction).
 - `importer`: Google Takeout watch history.
-- LLM tagging behind the provider interface (topic, depth, clickbait, rage-bait), cached per video and prompt version.
+- LLM tagging behind the provider interface (topic, depth, clickbait, rage-bait), cached per video and prompt version. Default provider: hosted OpenRouter (see Decisions in section 13).
 - Web: discover page, search with filters, suggested channels, saved searches and sources UI, Takeout upload.
 
 ### Milestone 5: library, ops, and deployment
@@ -301,8 +301,11 @@ Test each module through its public interface; assert behavior, not internals.
 - **Small data:** hundreds of labels, not millions. Keep models simple and lean on curation priors until about 200 ratings.
 - **Rating fatigue:** picking a tier must take one tap, the modifier is optional, and the prompt is skippable. Track the rating rate.
 
-### Open questions (ask before Milestone 4)
+### Decisions
 
-- LLM provider default: local via Ollama, or a hosted API?
+- **LLM provider default: hosted API via OpenRouter**, decided before Milestone 4. `LLM_PROVIDER=openrouter|ollama|none`, with `OPENROUTER_API_KEY`, `LLM_MODEL` (default `google/gemini-2.5-flash-lite`: cheap, fast, non-reasoning, multilingual, supports JSON mode), `LLM_BASE_URL` (default `https://openrouter.ai/api/v1`). Requests use the OpenAI-compatible `POST /chat/completions` with a bearer key, `response_format: json_object` and the optional `X-Title` attribution header. Without a key, tagging is logged and skipped; it never fails a job. Ollama remains supported for local use.
+
+### Open questions
+
 - Should topic boosts decay by default?
 - Feed size and refresh time after real use (defaults: 15 items at 06:00).

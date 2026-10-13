@@ -31,7 +31,8 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from types import MappingProxyType
 
-from homefeed_core.candidates import RELATED, SUBSCRIPTION
+from homefeed_core.candidates import CHANNEL_GRAPH, RELATED, SAVED_SEARCH, SUBSCRIPTION
+from homefeed_core.external_sources import EXTERNAL
 from homefeed_core.grades import Grade, nearest_grade
 from homefeed_core.ranker import ChannelCuration, Curation, ScoredCandidate
 
@@ -265,6 +266,15 @@ def _source_phrase(
     if candidate.source == RELATED:
         seed = candidate.source_detail
         return f"Related to {_describe_video(videos.get(seed) if seed else None)}", seed
+    if candidate.source == SAVED_SEARCH and candidate.source_detail:
+        query = candidate.source_detail.strip()
+        if len(query) > TITLE_MAX_LENGTH:
+            query = query[: TITLE_MAX_LENGTH - 1].rstrip() + "…"
+        return f"From your '{query}' search", None
+    if candidate.source == CHANNEL_GRAPH:
+        return "Featured by a channel you like", None
+    if candidate.source == EXTERNAL and candidate.source_detail:
+        return f"Linked from {candidate.source_detail}", None
     return f"Found via {candidate.source.replace('_', ' ')}", None
 
 

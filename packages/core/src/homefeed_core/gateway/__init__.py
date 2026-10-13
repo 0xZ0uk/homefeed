@@ -23,7 +23,15 @@ from homefeed_core.gateway.events import (
     MemoryEventRecorder,
     SqlEventRecorder,
 )
-from homefeed_core.gateway.interface import DEFAULT_RELATED_LIMIT, DEFAULT_UPLOADS_LIMIT, Gateway
+from homefeed_core.gateway.interface import (
+    DEFAULT_RELATED_LIMIT,
+    DEFAULT_SEARCH_LIMIT,
+    DEFAULT_UPLOADS_LIMIT,
+    MAX_SEARCH_LIMIT,
+    SEARCH_QUERY_MAX_LENGTH,
+    Gateway,
+    normalize_search_query,
+)
 from homefeed_core.gateway.media import MAX_RANGE_BYTES, HttpMediaFetcher, MediaFetcher, MediaStream
 from homefeed_core.gateway.models import (
     ByteRange,
@@ -32,6 +40,7 @@ from homefeed_core.gateway.models import (
     Channel,
     ChannelUploads,
     Chapter,
+    FeaturedChannel,
     Format,
     FormatKind,
     LiveStatus,
@@ -40,6 +49,11 @@ from homefeed_core.gateway.models import (
     ResolvedPlaylist,
     ResolvedUrl,
     ResolvedVideo,
+    SearchDuration,
+    SearchFilters,
+    SearchResult,
+    SearchSort,
+    SearchUploadDate,
     UploadSummary,
     Video,
 )
@@ -49,8 +63,11 @@ from homefeed_core.gateway.ytdlp import YtDlpGateway
 
 __all__ = [
     "DEFAULT_RELATED_LIMIT",
+    "DEFAULT_SEARCH_LIMIT",
     "DEFAULT_UPLOADS_LIMIT",
     "MAX_RANGE_BYTES",
+    "MAX_SEARCH_LIMIT",
+    "SEARCH_QUERY_MAX_LENGTH",
     "ByteRange",
     "CaptionSegment",
     "Captions",
@@ -61,6 +78,7 @@ __all__ = [
     "EventRecorder",
     "ExtractionError",
     "ExtractorEvent",
+    "FeaturedChannel",
     "FeedFetcher",
     "Format",
     "FormatKind",
@@ -82,6 +100,11 @@ __all__ = [
     "ResolvedUrl",
     "ResolvedVideo",
     "RetryPolicy",
+    "SearchDuration",
+    "SearchFilters",
+    "SearchResult",
+    "SearchSort",
+    "SearchUploadDate",
     "SqlEventRecorder",
     "UnavailableError",
     "UnsupportedUrlError",
@@ -91,6 +114,7 @@ __all__ = [
     "channel_feed_url",
     "create_feed_fetcher",
     "create_gateway",
+    "normalize_search_query",
 ]
 
 

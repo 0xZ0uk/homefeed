@@ -6,13 +6,16 @@ and bottom-tier sets, its embedding, duration, upload age, candidate source and 
 score. `feature_matrix` turns inputs into rows of `FEATURE_NAMES`, with NaN for unknown
 values (LightGBM handles them natively; the ridge fallback imputes them).
 
-Inference (Milestone 3, the ranker) builds inputs from what `rank` already has:
+Inference (the ranker) builds inputs from what `rank` already has:
 
-    ModelInput.for_candidate(candidate, similarity, embedding, channel_score, now=now)
+    ModelInput.for_candidate(candidate, similarity, embedding, channel_score, now=now,
+                             tags=tags)
+
+LLM tags (homefeed_core.llm_tags) add `has_llm_tags`, the depth, clickbait and
+rage-bait scores and a one-hot column per topic; all NaN for untagged videos.
 
 Changing the features (names, order or meaning) must bump `FEATURE_VERSION`: stored
 models record the version they were trained with and refuse to load under another.
-LLM tags join the features once the enricher produces them.
 """
 
 import math
@@ -25,9 +28,11 @@ from numpy.typing import NDArray
 
 from homefeed_core.candidates import RELATED, SUBSCRIPTION
 from homefeed_core.embeddings import EMBEDDING_DIMENSIONS, Embedding
+from homefeed_core.llm_tags import TOPICS, LLMTags
 from homefeed_core.ranker import RankCandidate, SimilarityFeatures
 
-FEATURE_VERSION = 1
+# 2: LLM tags.
+FEATURE_VERSION = 2
 
 # Candidate sources with a one-hot column each; any other source counts as "other".
 SOURCES = (SUBSCRIPTION, RELATED)
@@ -43,6 +48,11 @@ _BASE_FEATURES = (
     "channel_score",
     *(f"source_{source}" for source in SOURCES),
     "source_other",
+    "has_llm_tags",
+    "llm_depth",
+    "llm_clickbait",
+    "llm_rage_bait",
+    *(f"llm_topic_{topic}" for topic in TOPICS),
 )
 EMBEDDING_FEATURES = tuple(f"embedding_{i}" for i in range(EMBEDDING_DIMENSIONS))
 FEATURE_NAMES: tuple[str, ...] = _BASE_FEATURES + EMBEDDING_FEATURES
@@ -59,6 +69,7 @@ class ModelInput:
     upload_age_days: float | None = None  # at the time it is scored (or was rated)
     source: str | None = None  # candidate source, e.g. "subscription"
     channel_score: float = 0.0
+    tags: LLMTags | None = None  # LLM tags of the current prompt version
 
     @classmethod
     def for_candidate(
@@ -69,6 +80,7 @@ class ModelInput:
         channel_score: float,
         *,
         now: datetime,
+        tags: LLMTags | None = None,
     ) -> "ModelInput":
         """The input for scoring a feed candidate at `now`."""
         return cls(
@@ -79,6 +91,7 @@ class ModelInput:
             upload_age_days=upload_age_days(candidate.published_at, now),
             source=candidate.source,
             channel_score=channel_score,
+            tags=tags,
         )
 
 
@@ -111,6 +124,13 @@ def feature_row(model_input: ModelInput) -> list[float]:
         *(1.0 if source == known else 0.0 for known in SOURCES),
         0.0 if source in SOURCES else 1.0,
     ]
+    tags = model_input.tags
+    if tags is None:
+        row.append(0.0)
+        row.extend([nan] * (3 + len(TOPICS)))
+    else:
+        row.extend([1.0, tags.depth, tags.clickbait, tags.rage_bait])
+        row.extend(1.0 if tags.topic == topic else 0.0 for topic in TOPICS)
     embedding = model_input.embedding
     if embedding is None:
         row.extend([nan] * EMBEDDING_DIMENSIONS)

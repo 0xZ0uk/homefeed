@@ -175,7 +175,12 @@ def ranker_model(model: RankingModel, *, now: datetime) -> Model:
         return model.predict(
             [
                 ModelInput.for_candidate(
-                    item.candidate, item.similarity, item.embedding, item.channel_score, now=now
+                    item.candidate,
+                    item.similarity,
+                    item.embedding,
+                    item.channel_score,
+                    now=now,
+                    tags=item.tags,
                 )
                 for item in items
             ]

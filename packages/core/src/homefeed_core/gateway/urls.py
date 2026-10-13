@@ -51,6 +51,19 @@ def video_url(video_id: str) -> str:
     return f"https://www.youtube.com/watch?v={video_id}"
 
 
+def is_youtube_url(raw: str) -> bool:
+    """Whether `raw` points at a YouTube host (any path), so it must not be fetched
+    except through the Gateway."""
+    text = raw.strip()
+    if "://" not in text:
+        text = f"https://{text}"
+    try:
+        host = (urlsplit(text).hostname or "").lower().removeprefix("www.")
+    except ValueError:  # e.g. a malformed IPv6 host
+        return False
+    return host == "youtu.be" or host in _YOUTUBE_HOSTS
+
+
 def parse_youtube_url(raw: str) -> ParsedUrl:
     """Classify a YouTube URL. Raises `UnsupportedUrlError` for anything unrecognized."""
     text = raw.strip()

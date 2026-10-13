@@ -15,6 +15,7 @@ then decayed by `0.5 ** (age_days / 180)`. Videos without stored metadata can't 
 featurized and are skipped.
 
 Features are those the ranker has at inference (see homefeed_core.model_features),
+including the video's LLM tags of the current prompt version when it has them,
 computed as of the label's time: a video's similarity to the top-tier and bottom-tier
 sets and its channel score only use ratings given before it. So a label never leaks
 into its own features (a video is not similar to itself, nor does its rating move its
@@ -55,6 +56,7 @@ from homefeed_core.curation import DEFAULT_PRIOR, Prior
 from homefeed_core.db import get_session_factory
 from homefeed_core.embeddings import Embedding, get_embeddings
 from homefeed_core.grades import is_bottom_tier, is_top_tier
+from homefeed_core.llm_tags import get_tags
 from homefeed_core.model_features import ModelInput, feature_matrix, upload_age_days
 from homefeed_core.ranker import SimilarityFeatures, TierSimilarity, channel_score
 from homefeed_core.ranking_models import (
@@ -223,6 +225,7 @@ def build_dataset(session: Session, *, now: datetime | None = None) -> list[Exam
             channel_ratings[video[0]].append((at, rating.value))
 
     embeddings = get_embeddings(session, labels.keys() | ratings.keys())
+    tags = get_tags(session, sorted(labels))
     label_times = {video_id: label[3] for video_id, label in labels.items()}
     similarities = _as_of_similarities(
         {v: (embeddings[v], label_times[v]) for v in labels if v in embeddings},
@@ -259,6 +262,7 @@ def build_dataset(session: Session, *, now: datetime | None = None) -> list[Exam
                     upload_age_days=upload_age_days(published_at, at),
                     source=sources.get(video_id),
                     channel_score=channel_score(priors.get(channel_id, DEFAULT_PRIOR), earlier),
+                    tags=tags.get(video_id),
                 ),
             )
         )

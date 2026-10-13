@@ -1,9 +1,16 @@
 from datetime import time
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from dotenv import find_dotenv
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# LLM providers for video tagging (see homefeed_core.llm_tags). "openrouter" is the
+# hosted OpenRouter API (openrouter.ai), "ollama" a local Ollama server and "none"
+# turns tagging off.
+type LLMProviderName = Literal["openrouter", "ollama", "none"]
 
 
 class Settings(BaseSettings):
@@ -28,7 +35,21 @@ class Settings(BaseSettings):
     # sentence-transformers model for content embeddings (downloaded into DATA_DIR/models).
     # Changing it re-embeds every video on its next enrichment; it must be 384-dimensional.
     embedding_model: str = "BAAI/bge-small-en-v1.5"
-    llm_provider: str = "none"
+    # LLM tagging (topic, depth, clickbait, rage-bait); see homefeed_core.llm_tags. The
+    # default is the hosted OpenRouter API, which needs OPENROUTER_API_KEY: without one,
+    # tagging is skipped (with a warning) and ranking goes on without tags.
+    llm_provider: LLMProviderName = "openrouter"
+    # Model name for the provider; empty means the provider's default
+    # (openrouter: google/gemini-2.5-flash-lite, ollama: llama3.1:8b).
+    llm_model: str = ""
+    # API base URL; empty means the provider's default
+    # (openrouter: https://openrouter.ai/api/v1, ollama: http://localhost:11434).
+    llm_base_url: str = ""
+    # OpenRouter API key (https://openrouter.ai/settings/keys).
+    openrouter_api_key: SecretStr | None = None
+    llm_timeout_seconds: float = 60.0
+    # At most this many videos are tagged per enrichment run, to bound cost.
+    llm_max_tags_per_run: int = 200
 
 
 @lru_cache

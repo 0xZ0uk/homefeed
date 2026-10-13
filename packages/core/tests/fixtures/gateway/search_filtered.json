@@ -1,0 +1,197 @@
+{
+ "request": {
+  "url": "https://www.youtube.com/results?search_query=woodworking&sp=CAISBggEEAEYAg%3D%3D",
+  "flat": true,
+  "limit": 5,
+  "captions": false,
+  "related": false
+ },
+ "response": {
+  "id": "woodworking",
+  "title": "woodworking",
+  "_type": "playlist",
+  "entries": [
+   {
+    "_type": "url",
+    "ie_key": "Youtube",
+    "id": "CS46eflCEtA",
+    "url": "https://www.youtube.com/watch?v=CS46eflCEtA",
+    "title": "Don't Waste Your Table Saw's Potential! DO THIS!",
+    "description": "Your table saw is so much more capable than you think! It is the center of your workshop, so why not make these 5 table saw jigs ...",
+    "duration": 1920,
+    "channel_id": "UCW9ZJj2jISxronlctfqZ2Jg",
+    "channel": "DogWood DIY",
+    "channel_url": "https://www.youtube.com/channel/UCW9ZJj2jISxronlctfqZ2Jg",
+    "uploader": "DogWood DIY",
+    "uploader_id": "@DogWoodDIY",
+    "uploader_url": "https://www.youtube.com/@DogWoodDIY",
+    "thumbnails": [
+     {
+      "url": "https://i.ytimg.com/vi/CS46eflCEtA/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDEflEs5p_u_mdVg-HJBwoOVhwXBA",
+      "height": 202,
+      "width": 360
+     },
+     {
+      "url": "https://i.ytimg.com/vi/CS46eflCEtA/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLAXd6FmXlCqUPhnmoiTKfJaeb2H0w",
+      "height": 404,
+      "width": 720
+     }
+    ],
+    "timestamp": null,
+    "release_timestamp": null,
+    "availability": null,
+    "view_count": 13484,
+    "live_status": null,
+    "channel_is_verified": null,
+    "__x_forwarded_for_ip": null
+   },
+   {
+    "_type": "url",
+    "ie_key": "Youtube",
+    "id": "Enn5smtSHU4",
+    "url": "https://www.youtube.com/watch?v=Enn5smtSHU4",
+    "title": "No Lapping",
+    "description": "Now then. We've ruined a saw. Now I'll show you how to ruin a chisel. I'll rattle on a bit about selecting chisel and then go through ...",
+    "duration": 4927,
+    "channel_id": "UCK9d9JGoPgPGXX8oVxCxjcg",
+    "channel": "The English Woodworker",
+    "channel_url": "https://www.youtube.com/channel/UCK9d9JGoPgPGXX8oVxCxjcg",
+    "uploader": "The English Woodworker",
+    "uploader_id": "@TheEnglishWoodworker",
+    "uploader_url": "https://www.youtube.com/@TheEnglishWoodworker",
+    "thumbnails": [
+     {
+      "url": "https://i.ytimg.com/vi/Enn5smtSHU4/hqdefault.jpg?sqp=-oaymwEcCOADEI4CSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLBdoap9UiJdwoncnnJhFsk_BumWxw",
+      "height": 270,
+      "width": 480
+     }
+    ],
+    "timestamp": null,
+    "release_timestamp": null,
+    "availability": null,
+    "view_count": 7836,
+    "live_status": null,
+    "channel_is_verified": null,
+    "__x_forwarded_for_ip": null
+   },
+   {
+    "_type": "url",
+    "ie_key": "Youtube",
+    "id": "-aazN7r1U1A",
+    "url": "https://www.youtube.com/watch?v=-aazN7r1U1A",
+    "title": "Most Carpenters Don’t Know This Money Saving Woodworking Trick — A 60 Year Old Master’s Method!",
+    "description": "Most carpenters don't know this simple money-saving woodworking trick! In this video, a 60-year-old carpenter shares a clever ...",
+    "duration": 1509,
+    "channel_id": "UCnnw7U3WKPH05CHPqehf28A",
+    "channel": "Maker Wood Master",
+    "channel_url": "https://www.youtube.com/channel/UCnnw7U3WKPH05CHPqehf28A",
+    "uploader": "Maker Wood Master",
+    "uploader_id": "@MakerWoodMaster",
+    "uploader_url": "https://www.youtube.com/@MakerWoodMaster",
+    "thumbnails": [
+     {
+      "url": "https://i.ytimg.com/vi/-aazN7r1U1A/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLCYBk0QndZXpPdhoIGT9he63CZl2g",
+      "height": 202,
+      "width": 360
+     },
+     {
+      "url": "https://i.ytimg.com/vi/-aazN7r1U1A/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLCzNdUqnSEzCo2feNutx47UEBMNMA",
+      "height": 404,
+      "width": 720
+     }
+    ],
+    "timestamp": null,
+    "release_timestamp": null,
+    "availability": null,
+    "view_count": 94691,
+    "live_status": null,
+    "channel_is_verified": null,
+    "__x_forwarded_for_ip": null
+   },
+   {
+    "_type": "url",
+    "ie_key": "Youtube",
+    "id": "YTnRKg7-EJc",
+    "url": "https://www.youtube.com/watch?v=YTnRKg7-EJc",
+    "title": "I Turned Old Scrap Wood Into an INSANE Sound System!",
+    "description": "I Turned Old Scrap Wood Into an INSANE Sound System! #WoodworkingGuide ☆Thank for watching! ☆Please like, share, and ...",
+    "duration": 2865,
+    "channel_id": "UCLhHgP3fTotsZw1qmqSVNMA",
+    "channel": "Woodworking Guide",
+    "channel_url": "https://www.youtube.com/channel/UCLhHgP3fTotsZw1qmqSVNMA",
+    "uploader": "Woodworking Guide",
+    "uploader_id": "@woodworkingguide6356",
+    "uploader_url": "https://www.youtube.com/@woodworkingguide6356",
+    "thumbnails": [
+     {
+      "url": "https://i.ytimg.com/vi/YTnRKg7-EJc/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDDJfrrL1zaIKCSM47bZwAKz3DDUQ",
+      "height": 202,
+      "width": 360
+     },
+     {
+      "url": "https://i.ytimg.com/vi/YTnRKg7-EJc/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDAvSmQI2LAA52kz3jm78vV3eNFCQ",
+      "height": 404,
+      "width": 720
+     }
+    ],
+    "timestamp": null,
+    "release_timestamp": null,
+    "availability": null,
+    "view_count": 15700,
+    "live_status": null,
+    "channel_is_verified": null,
+    "__x_forwarded_for_ip": null
+   },
+   {
+    "_type": "url",
+    "ie_key": "Youtube",
+    "id": "FsJbB5UOUkk",
+    "url": "https://www.youtube.com/watch?v=FsJbB5UOUkk",
+    "title": "Wall Chest Making - From Pallet Wood to Fine Furniture",
+    "description": "Your support on Patreon fuels future projects and helps me create even more high-quality, quiet content for you. Join now and ...",
+    "duration": 2039,
+    "channel_id": "UC_-mZeu4_3kJlSNUWR6bDlA",
+    "channel": "GR Woodworking",
+    "channel_url": "https://www.youtube.com/channel/UC_-mZeu4_3kJlSNUWR6bDlA",
+    "uploader": "GR Woodworking",
+    "uploader_id": "@gr_woodworking",
+    "uploader_url": "https://www.youtube.com/@gr_woodworking",
+    "thumbnails": [
+     {
+      "url": "https://i.ytimg.com/vi/FsJbB5UOUkk/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLC7XpX-uryQZqOC3ohOD2E2Vuy0hQ",
+      "height": 202,
+      "width": 360
+     },
+     {
+      "url": "https://i.ytimg.com/vi/FsJbB5UOUkk/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLAdSlitkJKDhXRY_6f65bvaDESuUg",
+      "height": 404,
+      "width": 720
+     }
+    ],
+    "timestamp": null,
+    "release_timestamp": null,
+    "availability": null,
+    "view_count": 47107,
+    "live_status": null,
+    "channel_is_verified": null,
+    "__x_forwarded_for_ip": null
+   }
+  ],
+  "webpage_url": "https://www.youtube.com/results?search_query=woodworking&sp=CAISBggEEAEYAg%3D%3D",
+  "original_url": "https://www.youtube.com/results?search_query=woodworking&sp=CAISBggEEAEYAg%3D%3D",
+  "webpage_url_basename": "results",
+  "webpage_url_domain": "youtube.com",
+  "extractor": "youtube:search_url",
+  "extractor_key": "YoutubeSearchURL",
+  "release_year": null,
+  "requested_entries": [
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "playlist_count": null,
+  "epoch": 1791849501
+ }
+}

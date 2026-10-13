@@ -1,0 +1,130 @@
+[{
+  "header": "YouTube",
+  "title": "Watched How rockets work",
+  "titleUrl": "https://www.youtube.com/watch?v=rocket00001",
+  "subtitles": [{
+    "name": "Space Explained",
+    "url": "https://www.youtube.com/channel/UCspaceexplained00000001"
+  }],
+  "time": "2026-10-10T20:15:02.123Z",
+  "products": ["YouTube"],
+  "activityControls": ["YouTube watch history"]
+},{
+  "header": "YouTube",
+  "title": "Watched Buy our mattress",
+  "titleUrl": "https://www.youtube.com/watch?v=advert00001",
+  "subtitles": [{
+    "name": "Mattress Co",
+    "url": "https://www.youtube.com/channel/UCmattressco000000000001"
+  }],
+  "details": [{
+    "name": "From Google Ads"
+  }],
+  "time": "2026-10-10T20:14:00.000Z",
+  "products": ["YouTube"],
+  "activityControls": ["YouTube watch history"]
+},{
+  "header": "YouTube",
+  "title": "Watched a video that has been removed",
+  "time": "2026-10-09T18:00:00.000Z",
+  "products": ["YouTube"],
+  "activityControls": ["YouTube watch history"]
+},{
+  "header": "YouTube",
+  "title": "Watched https://www.youtube.com/watch?v=private0001",
+  "titleUrl": "https://www.youtube.com/watch?v=private0001",
+  "time": "2026-10-09T17:00:00.000Z",
+  "products": ["YouTube"],
+  "activityControls": ["YouTube watch history"]
+},{
+  "header": "YouTube",
+  "title": "Watched Orbital mechanics, part 2",
+  "titleUrl": "https://www.youtube.com/watch?v=orbital0002",
+  "subtitles": [{
+    "name": "Space Explained",
+    "url": "https://www.youtube.com/channel/UCspaceexplained00000001"
+  }],
+  "time": "2026-10-08T09:30:00Z",
+  "products": ["YouTube"],
+  "activityControls": ["YouTube watch history"]
+},{
+  "header": "YouTube Music",
+  "title": "Watched Lo-fi beats to import to",
+  "titleUrl": "https://music.youtube.com/watch?v=lofibeats01",
+  "subtitles": [{
+    "name": "Chill Channel",
+    "url": "https://www.youtube.com/channel/UCchillchannel0000000001"
+  }],
+  "time": "2026-10-07T22:00:00.000Z",
+  "products": ["YouTube"],
+  "activityControls": ["YouTube watch history"]
+},{
+  "header": "YouTube",
+  "title": "Watched How rockets work",
+  "titleUrl": "https://www.youtube.com/watch?v=rocket00001",
+  "subtitles": [{
+    "name": "Space Explained",
+    "url": "https://www.youtube.com/channel/UCspaceexplained00000001"
+  }],
+  "time": "2026-10-01T12:00:00.000Z",
+  "products": ["YouTube"],
+  "activityControls": ["YouTube watch history"]
+},{
+  "header": "YouTube",
+  "title": "Answered survey question",
+  "time": "2026-09-30T12:00:00.000Z",
+  "products": ["YouTube"],
+  "activityControls": ["YouTube watch history"]
+},
+"not an entry",
+{
+  "header": "YouTube",
+  "title": "Watched Missing its time",
+  "titleUrl": "https://www.youtube.com/watch?v=notime00001",
+  "subtitles": [{
+    "name": "Space Explained",
+    "url": "https://www.youtube.com/channel/UCspaceexplained00000001"
+  }],
+  "products": ["YouTube"]
+},{
+  "header": "YouTube",
+  "title": "Watched A broken link",
+  "titleUrl": "https://www.youtube.com/watch?v=short",
+  "subtitles": [{
+    "name": "Space Explained",
+    "url": "https://www.youtube.com/channel/UCspaceexplained00000001"
+  }],
+  "time": "2026-09-29T12:00:00.000Z",
+  "products": ["YouTube"]
+},{
+  "header": "YouTube",
+  "title": "Watched A broken channel",
+  "titleUrl": "https://www.youtube.com/watch?v=brokench001",
+  "subtitles": [{
+    "name": "Nobody",
+    "url": "https://example.com/not-a-channel"
+  }],
+  "time": "2026-09-28T12:00:00.000Z",
+  "products": ["YouTube"]
+},{
+  "header": "YouTube",
+  "title": "Watched A garbled time",
+  "titleUrl": "https://www.youtube.com/watch?v=badtime0001",
+  "subtitles": [{
+    "name": "Space Explained",
+    "url": "https://www.youtube.com/channel/UCspaceexplained00000001"
+  }],
+  "time": "yesterday-ish",
+  "products": ["YouTube"]
+},{
+  "header": "YouTube",
+  "title": "Watched Earliest launch",
+  "titleUrl": "https://www.youtube.com/watch?v=launch00001",
+  "subtitles": [{
+    "name": "Space Explained",
+    "url": "https://www.youtube.com/channel/UCspaceexplained00000001"
+  }],
+  "time": "2026-09-01T08:00:00.000Z",
+  "products": ["YouTube"],
+  "activityControls": ["YouTube watch history"]
+}]
