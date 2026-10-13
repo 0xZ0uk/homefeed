@@ -7,6 +7,7 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
 import { AppHeader } from "#/components/AppHeader";
+import { QueueButton } from "#/components/QueueButton";
 import { showsThumbnails, type DisplayPrefs } from "#/lib/display";
 import { formatDuration, formatViews } from "#/lib/format";
 import {
@@ -331,6 +332,9 @@ function ResultRow({
             {result.description}
           </p>
         )}
+        <p className="text-sm text-gray-500">
+          <QueueButton videoId={result.id} title={result.title} />
+        </p>
       </div>
     </li>
   );

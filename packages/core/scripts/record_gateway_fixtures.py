@@ -24,6 +24,7 @@ FIXTURES = Path(__file__).parent.parent / "tests" / "fixtures" / "gateway"
 VERITASIUM = "UCHnyfMqiRRG1u-2MsSQLbXA"
 
 SEARCH_LIMIT = 5
+COMMENTS_LIMIT = 5
 SEARCH_FILTERS = SearchFilters(sort="upload_date", upload_date="month", duration="long")
 
 
@@ -88,6 +89,13 @@ REQUESTS: dict[str, ExtractRequest] = {
     ),
     "featured_missing": ExtractRequest(
         "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx", featured=True
+    ),
+    # Top comments (pinned first, replies left out).
+    "comments_me_at_the_zoo": ExtractRequest(
+        "https://www.youtube.com/watch?v=jNQXAC9IVRw", limit=COMMENTS_LIMIT, comments=True
+    ),
+    "comments_unavailable": ExtractRequest(
+        "https://www.youtube.com/watch?v=xxxxxxxxxxx", limit=COMMENTS_LIMIT, comments=True
     ),
 }
 

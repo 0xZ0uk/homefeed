@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useRef, useState, type RefObject } from "react";
 
 import { DismissMenu } from "#/components/DismissMenu";
+import { QueueButton } from "#/components/QueueButton";
 import { WhyThisPopover } from "#/components/WhyThisPopover";
 import { undismissedItems, withItemDismissal } from "#/lib/dismiss";
 import { showsThumbnails, type DisplayPrefs } from "#/lib/display";
@@ -223,6 +224,7 @@ function FeedItemRow({
             explanation={item.explanation}
             breakdown={item.breakdown}
           />
+          <QueueButton videoId={item.video_id} title={item.title} />
         </div>
       </div>
       {onDismiss && <DismissMenu title={item.title} onDismiss={onDismiss} />}

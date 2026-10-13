@@ -1,4 +1,5 @@
-"""Playback: a DASH manifest for a video and a byte-range proxy for its streams.
+"""Playback: a DASH manifest for a video, a byte-range proxy for its streams, and the
+SponsorBlock segments the player skips.
 
 The manifest lists YouTube's adaptive streams as they are (SegmentBase: the init and
 index byte ranges of each file, see docs/spikes/0013-dash-ranges.md), with `BaseURL`s
@@ -14,6 +15,7 @@ or "251-1" for a dubbed track, since a bare itag can name several files.
     playback.manifest("dQw4w9WgXcQ")            # -> MPD XML
     response = playback.proxy_range("dQw4w9WgXcQ", "137", "bytes=0-1023")
     response.status, response.headers, b"".join(response.body)
+    playback.sponsor_segments("dQw4w9WgXcQ")   # -> [SponsorSegment(...), ...]
 """
 
 import re
@@ -37,6 +39,7 @@ from homefeed_core.gateway import (
     RangeNotSatisfiableError,
     Video,
 )
+from homefeed_core.sponsorblock import HttpSponsorBlock, SponsorBlock, SponsorSegment
 
 MPD_CONTENT_TYPE = "application/dash+xml"
 
@@ -45,6 +48,8 @@ URL_REFRESH_MARGIN = timedelta(minutes=30)
 # How long to trust formats whose URLs carry no expiry, and video metadata.
 FORMATS_TTL = timedelta(hours=1)
 VIDEO_TTL = timedelta(hours=6)
+# SponsorBlock segments are submitted over time, so they're re-fetched hourly.
+SEGMENTS_TTL = timedelta(hours=1)
 MIN_FORMATS_TTL = timedelta(minutes=1)
 # Videos whose formats/metadata are kept in memory (least recently used are dropped).
 CACHED_VIDEOS = 64
@@ -107,6 +112,12 @@ class _CachedVideo:
     fresh_until: datetime
 
 
+@dataclass
+class _CachedSegments:
+    segments: list[SponsorSegment]
+    fresh_until: datetime
+
+
 class Playback:
     """Manifests and the media proxy for one process, with in-memory caches.
 
@@ -117,12 +128,15 @@ class Playback:
         self,
         gateway: Gateway,
         *,
+        sponsorblock: SponsorBlock | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
         chunk_bytes: int = MAX_RANGE_BYTES,
     ) -> None:
         if not 0 < chunk_bytes <= MAX_RANGE_BYTES:
             raise ValueError(f"chunk_bytes must be 1 to {MAX_RANGE_BYTES}")
         self._gateway = gateway
+        self._sponsorblock = sponsorblock or HttpSponsorBlock()
+        self._segments: OrderedDict[str, _CachedSegments] = OrderedDict()
         self._now = now
         self._chunk_bytes = chunk_bytes
         self._lock = threading.Lock()
@@ -147,6 +161,23 @@ class Playback:
                 self._videos[video_id] = _CachedVideo(video, self._now() + VIDEO_TTL)
                 _trim(self._videos)
             return video
+
+    # SponsorBlock
+
+    def sponsor_segments(self, video_id: str) -> list[SponsorSegment]:
+        """The video's SponsorBlock segments to skip, by start time, cached for
+        `SEGMENTS_TTL`. Raises `SponsorBlockError` when SponsorBlock can't be asked
+        (failures aren't cached)."""
+        with self._lock:
+            cached = self._segments.get(video_id)
+            if cached is not None and cached.fresh_until > self._now():
+                self._segments.move_to_end(video_id)
+                return list(cached.segments)
+        segments = self._sponsorblock.skip_segments(video_id)
+        with self._lock:
+            self._segments[video_id] = _CachedSegments(segments, self._now() + SEGMENTS_TTL)
+            _trim(self._segments)
+        return list(segments)
 
     # Manifest
 

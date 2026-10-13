@@ -6,6 +6,7 @@ from homefeed_core.gateway.models import (
     ByteRange,
     Captions,
     ChannelUploads,
+    Comment,
     FeaturedChannel,
     Format,
     RelatedVideo,
@@ -20,6 +21,8 @@ DEFAULT_RELATED_LIMIT = 20
 DEFAULT_SEARCH_LIMIT = 20
 MAX_SEARCH_LIMIT = 50
 SEARCH_QUERY_MAX_LENGTH = 200
+DEFAULT_COMMENTS_LIMIT = 20
+MAX_COMMENTS_LIMIT = 100
 
 
 def normalize_search_query(query: str) -> str:
@@ -36,6 +39,11 @@ def normalize_search_query(query: str) -> str:
 def check_search_limit(limit: int) -> None:
     if not 1 <= limit <= MAX_SEARCH_LIMIT:
         raise ValueError(f"limit must be between 1 and {MAX_SEARCH_LIMIT}")
+
+
+def check_comments_limit(limit: int) -> None:
+    if not 1 <= limit <= MAX_COMMENTS_LIMIT:
+        raise ValueError(f"limit must be between 1 and {MAX_COMMENTS_LIMIT}")
 
 
 class Gateway(Protocol):
@@ -66,6 +74,14 @@ class Gateway(Protocol):
         """Up to `limit` videos YouTube suggests next to a video (its watch page's
         related list), in YouTube's order. Playlists, mixes and Shorts shelves are left
         out. Raises `UnavailableError` if the video can't be watched.
+        """
+        ...
+
+    def get_comments(self, video_id: str, *, limit: int = DEFAULT_COMMENTS_LIMIT) -> list[Comment]:
+        """Up to `limit` (at most `MAX_COMMENTS_LIMIT`) top-level comments on a video, in
+        YouTube's "top comments" order (pinned first), without replies. Empty when
+        comments are off. Raises `UnavailableError` if the video can't be watched and
+        `ValueError` for a limit out of range.
         """
         ...
 

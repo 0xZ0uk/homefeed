@@ -6,6 +6,8 @@ import {
   type Ref,
 } from "react";
 
+import { ResumeNotice } from "#/components/ResumeNotice";
+import { useRegisterPlayerMedia } from "#/components/PlayerMedia";
 import {
   trackWatchEvents,
   watchPosition,
@@ -25,6 +27,8 @@ export interface VideoPlayerHandle {
 interface VideoPlayerProps {
   videoId: string;
   poster?: string | null;
+  /** Where to start, in seconds (the saved resume position); read once. */
+  startAt?: number | null;
   /** Play, pause, seek, end and close (leaving the page), with the position. */
   onWatchEvent?: WatchEventListener;
   ref?: Ref<VideoPlayerHandle>;
@@ -43,12 +47,16 @@ type ShakaPlayer = InstanceType<
 export function VideoPlayer({
   videoId,
   poster,
+  startAt,
   onWatchEvent,
   ref,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  // Only the first value counts: a later one mustn't jump a playing video.
+  const [initialStartAt] = useState(startAt);
   const listenerRef = useRef(onWatchEvent);
   const [error, setError] = useState<string | null>(null);
+  useRegisterPlayerMedia(videoRef);
 
   useEffect(() => {
     listenerRef.current = onWatchEvent;
@@ -100,7 +108,7 @@ export function VideoPlayer({
       try {
         await instance.attach(video);
         if (cancelled) return;
-        await instance.load(manifestUrl(videoId));
+        await instance.load(manifestUrl(videoId), initialStartAt);
       } catch (loadError) {
         if (!cancelled) setError(playerErrorMessage(loadError));
       }
@@ -111,7 +119,7 @@ export function VideoPlayer({
       stopTracking();
       void player?.destroy();
     };
-  }, [videoId]);
+  }, [videoId, initialStartAt]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -123,6 +131,7 @@ export function VideoPlayer({
         poster={poster ?? undefined}
         className="aspect-video w-full rounded bg-black"
       />
+      <ResumeNotice startAt={initialStartAt} videoRef={videoRef} />
       {error && (
         <p role="alert" className="text-red-700">
           {error}{" "}

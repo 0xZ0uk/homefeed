@@ -1,0 +1,70 @@
+# Homefeed on a home server: `docker compose up -d --build`, then open
+# http://<host>:3000 (WEB_PORT). Settings come from `.env` (see .env.example).
+#
+# Only `web` publishes a port. `api` has no published port: it is reachable only by
+# the other services on the compose network (web's server functions call it at
+# http://api:8000), never from the LAN. api and worker share the `data` volume
+# (SQLite database, ranking models, embedding model cache).
+
+name: homefeed
+
+x-python-env: &python-env
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    # Inside the containers, data always lives on the shared volume.
+    DATA_DIR: /data
+    DATABASE_PATH: /data/homefeed.sqlite
+  volumes:
+    - data:/data
+  init: true
+  restart: unless-stopped
+
+services:
+  api:
+    <<: *python-env
+    build:
+      context: .
+      target: api
+    image: homefeed-api
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  worker:
+    <<: *python-env
+    build:
+      context: .
+      target: worker
+    image: homefeed-worker
+
+  web:
+    build:
+      context: .
+      target: web
+    image: homefeed-web
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      API_URL: http://api:8000
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+
+volumes:
+  data:

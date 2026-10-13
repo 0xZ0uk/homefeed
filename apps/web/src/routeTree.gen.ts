@@ -12,14 +12,20 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CurationRouteImport } from './routes/curation'
 import { Route as DiscoverRouteImport } from './routes/discover'
+import { Route as ExportDotjsonRouteImport } from './routes/export[.]json'
+import { Route as HistoryRouteImport } from './routes/history'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LogoutRouteImport } from './routes/logout'
 import { Route as ModelsRouteImport } from './routes/models'
+import { Route as QueueRouteImport } from './routes/queue'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as StatusRouteImport } from './routes/status'
 import { Route as WatchEventsRouteImport } from './routes/watch-events'
 import { Route as FeedDateRouteImport } from './routes/feed.$date'
+import { Route as PlaylistsIndexRouteImport } from './routes/playlists.index'
+import { Route as PlaylistsPlaylistIdRouteImport } from './routes/playlists.$playlistId'
 import { Route as WatchVideoIdRouteImport } from './routes/watch.$videoId'
 import { Route as VideosVideoIdManifestDotmpdRouteImport } from './routes/videos.$videoId.manifest[.]mpd'
 import { Route as VideosVideoIdMediaItagRouteImport } from './routes/videos.$videoId.media.$itag'
@@ -37,6 +43,16 @@ const CurationRoute = CurationRouteImport.update({
 const DiscoverRoute = DiscoverRouteImport.update({
   id: '/discover',
   path: '/discover',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExportDotjsonRoute = ExportDotjsonRouteImport.update({
+  id: '/export.json',
+  path: '/export.json',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HistoryRoute = HistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InsightsRoute = InsightsRouteImport.update({
@@ -59,6 +75,11 @@ const ModelsRoute = ModelsRouteImport.update({
   path: '/models',
   getParentRoute: () => rootRouteImport,
 } as any)
+const QueueRoute = QueueRouteImport.update({
+  id: '/queue',
+  path: '/queue',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SearchRoute = SearchRouteImport.update({
   id: '/search',
   path: '/search',
@@ -69,6 +90,11 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StatusRoute = StatusRouteImport.update({
+  id: '/status',
+  path: '/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WatchEventsRoute = WatchEventsRouteImport.update({
   id: '/watch-events',
   path: '/watch-events',
@@ -77,6 +103,16 @@ const WatchEventsRoute = WatchEventsRouteImport.update({
 const FeedDateRoute = FeedDateRouteImport.update({
   id: '/feed/$date',
   path: '/feed/$date',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlaylistsIndexRoute = PlaylistsIndexRouteImport.update({
+  id: '/playlists/',
+  path: '/playlists/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlaylistsPlaylistIdRoute = PlaylistsPlaylistIdRouteImport.update({
+  id: '/playlists/$playlistId',
+  path: '/playlists/$playlistId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WatchVideoIdRoute = WatchVideoIdRouteImport.update({
@@ -100,15 +136,21 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/curation': typeof CurationRoute
   '/discover': typeof DiscoverRoute
+  '/export.json': typeof ExportDotjsonRoute
+  '/history': typeof HistoryRoute
   '/insights': typeof InsightsRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
   '/models': typeof ModelsRoute
+  '/queue': typeof QueueRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
+  '/status': typeof StatusRoute
   '/watch-events': typeof WatchEventsRoute
   '/feed/$date': typeof FeedDateRoute
+  '/playlists/$playlistId': typeof PlaylistsPlaylistIdRoute
   '/watch/$videoId': typeof WatchVideoIdRoute
+  '/playlists/': typeof PlaylistsIndexRoute
   '/videos/$videoId/manifest.mpd': typeof VideosVideoIdManifestDotmpdRoute
   '/videos/$videoId/media/$itag': typeof VideosVideoIdMediaItagRoute
 }
@@ -116,15 +158,21 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/curation': typeof CurationRoute
   '/discover': typeof DiscoverRoute
+  '/export.json': typeof ExportDotjsonRoute
+  '/history': typeof HistoryRoute
   '/insights': typeof InsightsRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
   '/models': typeof ModelsRoute
+  '/queue': typeof QueueRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
+  '/status': typeof StatusRoute
   '/watch-events': typeof WatchEventsRoute
   '/feed/$date': typeof FeedDateRoute
+  '/playlists/$playlistId': typeof PlaylistsPlaylistIdRoute
   '/watch/$videoId': typeof WatchVideoIdRoute
+  '/playlists': typeof PlaylistsIndexRoute
   '/videos/$videoId/manifest.mpd': typeof VideosVideoIdManifestDotmpdRoute
   '/videos/$videoId/media/$itag': typeof VideosVideoIdMediaItagRoute
 }
@@ -133,15 +181,21 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/curation': typeof CurationRoute
   '/discover': typeof DiscoverRoute
+  '/export.json': typeof ExportDotjsonRoute
+  '/history': typeof HistoryRoute
   '/insights': typeof InsightsRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
   '/models': typeof ModelsRoute
+  '/queue': typeof QueueRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
+  '/status': typeof StatusRoute
   '/watch-events': typeof WatchEventsRoute
   '/feed/$date': typeof FeedDateRoute
+  '/playlists/$playlistId': typeof PlaylistsPlaylistIdRoute
   '/watch/$videoId': typeof WatchVideoIdRoute
+  '/playlists/': typeof PlaylistsIndexRoute
   '/videos/$videoId/manifest.mpd': typeof VideosVideoIdManifestDotmpdRoute
   '/videos/$videoId/media/$itag': typeof VideosVideoIdMediaItagRoute
 }
@@ -151,15 +205,21 @@ export interface FileRouteTypes {
     | '/'
     | '/curation'
     | '/discover'
+    | '/export.json'
+    | '/history'
     | '/insights'
     | '/login'
     | '/logout'
     | '/models'
+    | '/queue'
     | '/search'
     | '/settings'
+    | '/status'
     | '/watch-events'
     | '/feed/$date'
+    | '/playlists/$playlistId'
     | '/watch/$videoId'
+    | '/playlists/'
     | '/videos/$videoId/manifest.mpd'
     | '/videos/$videoId/media/$itag'
   fileRoutesByTo: FileRoutesByTo
@@ -167,15 +227,21 @@ export interface FileRouteTypes {
     | '/'
     | '/curation'
     | '/discover'
+    | '/export.json'
+    | '/history'
     | '/insights'
     | '/login'
     | '/logout'
     | '/models'
+    | '/queue'
     | '/search'
     | '/settings'
+    | '/status'
     | '/watch-events'
     | '/feed/$date'
+    | '/playlists/$playlistId'
     | '/watch/$videoId'
+    | '/playlists'
     | '/videos/$videoId/manifest.mpd'
     | '/videos/$videoId/media/$itag'
   id:
@@ -183,15 +249,21 @@ export interface FileRouteTypes {
     | '/'
     | '/curation'
     | '/discover'
+    | '/export.json'
+    | '/history'
     | '/insights'
     | '/login'
     | '/logout'
     | '/models'
+    | '/queue'
     | '/search'
     | '/settings'
+    | '/status'
     | '/watch-events'
     | '/feed/$date'
+    | '/playlists/$playlistId'
     | '/watch/$videoId'
+    | '/playlists/'
     | '/videos/$videoId/manifest.mpd'
     | '/videos/$videoId/media/$itag'
   fileRoutesById: FileRoutesById
@@ -200,15 +272,21 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CurationRoute: typeof CurationRoute
   DiscoverRoute: typeof DiscoverRoute
+  ExportDotjsonRoute: typeof ExportDotjsonRoute
+  HistoryRoute: typeof HistoryRoute
   InsightsRoute: typeof InsightsRoute
   LoginRoute: typeof LoginRoute
   LogoutRoute: typeof LogoutRoute
   ModelsRoute: typeof ModelsRoute
+  QueueRoute: typeof QueueRoute
   SearchRoute: typeof SearchRoute
   SettingsRoute: typeof SettingsRoute
+  StatusRoute: typeof StatusRoute
   WatchEventsRoute: typeof WatchEventsRoute
   FeedDateRoute: typeof FeedDateRoute
+  PlaylistsPlaylistIdRoute: typeof PlaylistsPlaylistIdRoute
   WatchVideoIdRoute: typeof WatchVideoIdRoute
+  PlaylistsIndexRoute: typeof PlaylistsIndexRoute
   VideosVideoIdManifestDotmpdRoute: typeof VideosVideoIdManifestDotmpdRoute
   VideosVideoIdMediaItagRoute: typeof VideosVideoIdMediaItagRoute
 }
@@ -234,6 +312,20 @@ declare module '@tanstack/react-router' {
       path: '/discover'
       fullPath: '/discover'
       preLoaderRoute: typeof DiscoverRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/export.json': {
+      id: '/export.json'
+      path: '/export.json'
+      fullPath: '/export.json'
+      preLoaderRoute: typeof ExportDotjsonRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/history': {
+      id: '/history'
+      path: '/history'
+      fullPath: '/history'
+      preLoaderRoute: typeof HistoryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/insights': {
@@ -264,6 +356,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ModelsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/queue': {
+      id: '/queue'
+      path: '/queue'
+      fullPath: '/queue'
+      preLoaderRoute: typeof QueueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/search': {
       id: '/search'
       path: '/search'
@@ -278,6 +377,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/status': {
+      id: '/status'
+      path: '/status'
+      fullPath: '/status'
+      preLoaderRoute: typeof StatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/watch-events': {
       id: '/watch-events'
       path: '/watch-events'
@@ -290,6 +396,20 @@ declare module '@tanstack/react-router' {
       path: '/feed/$date'
       fullPath: '/feed/$date'
       preLoaderRoute: typeof FeedDateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/playlists/': {
+      id: '/playlists/'
+      path: '/playlists'
+      fullPath: '/playlists/'
+      preLoaderRoute: typeof PlaylistsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/playlists/$playlistId': {
+      id: '/playlists/$playlistId'
+      path: '/playlists/$playlistId'
+      fullPath: '/playlists/$playlistId'
+      preLoaderRoute: typeof PlaylistsPlaylistIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/watch/$videoId': {
@@ -320,15 +440,21 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CurationRoute: CurationRoute,
   DiscoverRoute: DiscoverRoute,
+  ExportDotjsonRoute: ExportDotjsonRoute,
+  HistoryRoute: HistoryRoute,
   InsightsRoute: InsightsRoute,
   LoginRoute: LoginRoute,
   LogoutRoute: LogoutRoute,
   ModelsRoute: ModelsRoute,
+  QueueRoute: QueueRoute,
   SearchRoute: SearchRoute,
   SettingsRoute: SettingsRoute,
+  StatusRoute: StatusRoute,
   WatchEventsRoute: WatchEventsRoute,
   FeedDateRoute: FeedDateRoute,
+  PlaylistsPlaylistIdRoute: PlaylistsPlaylistIdRoute,
   WatchVideoIdRoute: WatchVideoIdRoute,
+  PlaylistsIndexRoute: PlaylistsIndexRoute,
   VideosVideoIdManifestDotmpdRoute: VideosVideoIdManifestDotmpdRoute,
   VideosVideoIdMediaItagRoute: VideosVideoIdMediaItagRoute,
 }
