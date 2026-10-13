@@ -6,14 +6,36 @@ from homefeed_core.gateway.models import (
     ByteRange,
     Captions,
     ChannelUploads,
+    FeaturedChannel,
     Format,
     RelatedVideo,
     ResolvedUrl,
+    SearchFilters,
+    SearchResult,
     Video,
 )
 
 DEFAULT_UPLOADS_LIMIT = 30
 DEFAULT_RELATED_LIMIT = 20
+DEFAULT_SEARCH_LIMIT = 20
+MAX_SEARCH_LIMIT = 50
+SEARCH_QUERY_MAX_LENGTH = 200
+
+
+def normalize_search_query(query: str) -> str:
+    """Trim and collapse inner whitespace. Raises `ValueError` if nothing is left or the
+    result is longer than `SEARCH_QUERY_MAX_LENGTH`."""
+    normalized = " ".join(query.split())
+    if not normalized:
+        raise ValueError("Search query is empty")
+    if len(normalized) > SEARCH_QUERY_MAX_LENGTH:
+        raise ValueError(f"Search query is longer than {SEARCH_QUERY_MAX_LENGTH} characters")
+    return normalized
+
+
+def check_search_limit(limit: int) -> None:
+    if not 1 <= limit <= MAX_SEARCH_LIMIT:
+        raise ValueError(f"limit must be between 1 and {MAX_SEARCH_LIMIT}")
 
 
 class Gateway(Protocol):
@@ -47,10 +69,30 @@ class Gateway(Protocol):
         """
         ...
 
+    def search(
+        self,
+        query: str,
+        filters: SearchFilters | None = None,
+        *,
+        limit: int = DEFAULT_SEARCH_LIMIT,
+    ) -> list[SearchResult]:
+        """Up to `limit` (at most `MAX_SEARCH_LIMIT`) videos YouTube finds for `query`,
+        in its order, narrowed by `filters`. Raises `ValueError` for a blank or too long
+        query (see `normalize_search_query`).
+        """
+        ...
+
     def get_channel_uploads(
         self, channel_id: str, *, limit: int = DEFAULT_UPLOADS_LIMIT
     ) -> ChannelUploads:
         """The channel and its most recent `limit` uploads (videos tab), newest first."""
+        ...
+
+    def get_featured_channels(self, channel_id: str) -> list[FeaturedChannel]:
+        """The channels a channel features on its home tab, in its order, without
+        duplicates or the channel itself. Empty when it features none. Raises
+        `UnavailableError` if the channel doesn't exist.
+        """
         ...
 
     def resolve_url(self, url: str) -> ResolvedUrl:

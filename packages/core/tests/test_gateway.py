@@ -29,7 +29,11 @@ from homefeed_core.gateway import (
     YtDlpGateway,
     create_gateway,
 )
-from homefeed_core.gateway.normalize import pick_caption_track, related_from_info
+from homefeed_core.gateway.normalize import (
+    featured_channels_from_info,
+    pick_caption_track,
+    related_from_info,
+)
 from homefeed_core.gateway.ytdlp import ExtractRequest, classify_error
 
 VERITASIUM = "UCHnyfMqiRRG1u-2MsSQLbXA"
@@ -388,6 +392,92 @@ def test_related_from_info_skips_the_seed_duplicates_and_incomplete_entries() ->
     ]
 
 
+# get_featured_channels
+
+
+def test_get_featured_channels(harness: Harness, replay: Replay) -> None:
+    featured = harness.gateway.get_featured_channels(VERITASIUM)
+
+    assert replay.requests == [
+        ExtractRequest(f"https://www.youtube.com/channel/{VERITASIUM}", featured=True)
+    ]
+    assert len(featured) == 12
+    first = featured[0]
+    assert (first.id, first.title, first.handle) == (
+        "UCin0m13qWv3-051xlWlHamA",
+        "Veritasium en Français",
+        "@VeritasiumFR",
+    )
+    assert first.url == "https://www.youtube.com/channel/UCin0m13qWv3-051xlWlHamA"
+    assert (first.subscriber_count, first.video_count) == (29_900, 178)
+    assert first.thumbnail_url is not None
+    assert first.thumbnail_url.startswith("https://yt3.googleusercontent.com/")
+    assert "=s176-" in first.thumbnail_url  # the largest one
+    assert "UCwpHKudUkP5tNgmMdexB3ow" in {channel.id for channel in featured}  # Mentour Pilot
+    [event] = harness.recorder.events
+    assert (event.operation, event.target, event.success) == (
+        "get_featured_channels",
+        VERITASIUM,
+        True,
+    )
+
+
+def test_get_featured_channels_drops_duplicates(harness: Harness) -> None:
+    featured = harness.gateway.get_featured_channels("UC4QobU6STFB0P71PMvOGN5A")
+
+    ids = [channel.id for channel in featured]
+    assert ids[:2] == ["UCPszuZ3hR89D4NqFd7g3mDQ", "UCC5NfQ6Mf0dq_eEwv4P_hWA"]
+    assert ids.count("UCPszuZ3hR89D4NqFd7g3mDQ") == 1  # featured twice
+    assert len(ids) == 10
+    assert featured[0].video_count is None  # no video count shown
+
+
+def test_get_featured_channels_none(harness: Harness) -> None:
+    assert harness.gateway.get_featured_channels("UCin0m13qWv3-051xlWlHamA") == []
+
+
+def test_get_featured_channels_missing_channel(harness: Harness) -> None:
+    with pytest.raises(UnavailableError, match="does not exist"):
+        harness.gateway.get_featured_channels("UCxxxxxxxxxxxxxxxxxxxxxx")
+
+    [event] = harness.recorder.events
+    assert (event.operation, event.success, event.error_kind) == (
+        "get_featured_channels",
+        False,
+        "unavailable",
+    )
+    assert harness.sleeps == []  # not retried
+
+
+def test_get_featured_channels_rejects_bad_input(harness: Harness, replay: Replay) -> None:
+    with pytest.raises(UnavailableError):
+        harness.gateway.get_featured_channels("@veritasium")
+    assert replay.requests == []
+
+
+def test_featured_channels_from_info_skips_the_owner_duplicates_and_bad_ids() -> None:
+    entry = {"id": "UC" + "a" * 22, "title": "A", "uploader_id": "@a"}
+    featured = featured_channels_from_info(
+        {
+            "id": VERITASIUM,
+            "entries": [
+                {**entry, "id": VERITASIUM},
+                entry,
+                entry,
+                {**entry, "id": "not a channel"},
+                {**entry, "id": None},
+                "junk",
+                {"id": "UC" + "b" * 22, "uploader_id": "not a handle"},
+            ],
+        }
+    )
+
+    assert [(channel.id, channel.title, channel.handle) for channel in featured] == [
+        ("UC" + "a" * 22, "A", "@a"),
+        ("UC" + "b" * 22, "", None),
+    ]
+
+
 # get_channel_uploads
 
 
@@ -708,5 +798,6 @@ def test_live_smoke() -> None:
     captions = gateway.get_captions("jNQXAC9IVRw")
     assert captions is not None and "elephants" in captions.text()
     assert gateway.get_related("jNQXAC9IVRw", limit=5)
+    assert gateway.get_featured_channels(VERITASIUM)
     resolved = gateway.resolve_url("https://www.youtube.com/@veritasium")
     assert isinstance(resolved, ResolvedChannel) and resolved.channel.id == VERITASIUM

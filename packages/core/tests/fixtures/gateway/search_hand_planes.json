@@ -1,0 +1,202 @@
+{
+ "request": {
+  "url": "ytsearch5:woodworking hand planes",
+  "flat": true,
+  "limit": 5,
+  "captions": false,
+  "related": false
+ },
+ "response": {
+  "id": "woodworking hand planes",
+  "title": "woodworking hand planes",
+  "_type": "playlist",
+  "entries": [
+   {
+    "_type": "url",
+    "ie_key": "Youtube",
+    "id": "v0VItLJTRnU",
+    "url": "https://www.youtube.com/watch?v=v0VItLJTRnU",
+    "title": "What PLANES do you NEED?",
+    "description": "Starting woodworking is a daunting process. What tools do you invest in? What do you need? What the bloody hell does that thing ...",
+    "duration": 739,
+    "channel_id": "UCxWzA3ZlYEOLr1JkKH0ZMyg",
+    "channel": "Matt Estlea",
+    "channel_url": "https://www.youtube.com/channel/UCxWzA3ZlYEOLr1JkKH0ZMyg",
+    "uploader": "Matt Estlea",
+    "uploader_id": "@MattEstlea",
+    "uploader_url": "https://www.youtube.com/@MattEstlea",
+    "thumbnails": [
+     {
+      "url": "https://i.ytimg.com/vi/v0VItLJTRnU/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLCNar6S613L9EdE6xb8ja4Uf9_mag",
+      "height": 202,
+      "width": 360
+     },
+     {
+      "url": "https://i.ytimg.com/vi/v0VItLJTRnU/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLCGOsCBvLWPnshd1_UZMZO6LWP1pA",
+      "height": 404,
+      "width": 720
+     }
+    ],
+    "timestamp": null,
+    "release_timestamp": null,
+    "availability": null,
+    "view_count": 521203,
+    "live_status": null,
+    "channel_is_verified": true,
+    "__x_forwarded_for_ip": null
+   },
+   {
+    "_type": "url",
+    "ie_key": "Youtube",
+    "id": "xqA9BL3CJU0",
+    "url": "https://www.youtube.com/watch?v=xqA9BL3CJU0",
+    "title": "Hand Planes For Woodworking - Types & Sizes",
+    "description": "Bench planes come in many styles and sizes. This discussion clears up the differences between the many types of hand planes.",
+    "duration": 922,
+    "channel_id": "UCK9d9JGoPgPGXX8oVxCxjcg",
+    "channel": "The English Woodworker",
+    "channel_url": "https://www.youtube.com/channel/UCK9d9JGoPgPGXX8oVxCxjcg",
+    "uploader": "The English Woodworker",
+    "uploader_id": "@TheEnglishWoodworker",
+    "uploader_url": "https://www.youtube.com/@TheEnglishWoodworker",
+    "thumbnails": [
+     {
+      "url": "https://i.ytimg.com/vi/xqA9BL3CJU0/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLAI8WlyFL1ehBSIC8vW1JWlDrp0PQ",
+      "height": 202,
+      "width": 360
+     },
+     {
+      "url": "https://i.ytimg.com/vi/xqA9BL3CJU0/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDxqM8S8heS2miCljVGEFD79DjYSg",
+      "height": 404,
+      "width": 720
+     }
+    ],
+    "timestamp": null,
+    "release_timestamp": null,
+    "availability": null,
+    "view_count": 113392,
+    "live_status": null,
+    "channel_is_verified": null,
+    "__x_forwarded_for_ip": null
+   },
+   {
+    "_type": "url",
+    "ie_key": "Youtube",
+    "id": "z6FlNGYiY7A",
+    "url": "https://www.youtube.com/watch?v=z6FlNGYiY7A",
+    "title": "How good is a REALLY expensive plane?",
+    "description": "Does the Bridge City Dual-Angle Bench Plane live up to the hype? Become a Patron! Share your tools!",
+    "duration": 919,
+    "channel_id": "UCj4SLNED1DiNPHComZTCbzw",
+    "channel": "Rex Krueger",
+    "channel_url": "https://www.youtube.com/channel/UCj4SLNED1DiNPHComZTCbzw",
+    "uploader": "Rex Krueger",
+    "uploader_id": "@RexKrueger",
+    "uploader_url": "https://www.youtube.com/@RexKrueger",
+    "thumbnails": [
+     {
+      "url": "https://i.ytimg.com/vi/z6FlNGYiY7A/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLB8T_mmjcZ5vv4vqnEz07zCrptgzg",
+      "height": 202,
+      "width": 360
+     },
+     {
+      "url": "https://i.ytimg.com/vi/z6FlNGYiY7A/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLAC53BjKGT_lpC9T0hP1UVT3sfGZw",
+      "height": 404,
+      "width": 720
+     }
+    ],
+    "timestamp": null,
+    "release_timestamp": null,
+    "availability": null,
+    "view_count": 221529,
+    "live_status": null,
+    "channel_is_verified": true,
+    "__x_forwarded_for_ip": null
+   },
+   {
+    "_type": "url",
+    "ie_key": "Youtube",
+    "id": "ODpVgpxXOEY",
+    "url": "https://www.youtube.com/watch?v=ODpVgpxXOEY",
+    "title": "11 Hand Plane Tips that Will Transform Your Woodworking!",
+    "description": "Support What we do at KMTools.com Hand Planes are a big part of every Woodworker's journey. In the beginning you use them ...",
+    "duration": 1089,
+    "channel_id": "UCXBNF-A7QlYT3tT-B9N4ElA",
+    "channel": "Jonathan Katz-Moses",
+    "channel_url": "https://www.youtube.com/channel/UCXBNF-A7QlYT3tT-B9N4ElA",
+    "uploader": "Jonathan Katz-Moses",
+    "uploader_id": "@katzmosestools",
+    "uploader_url": "https://www.youtube.com/@katzmosestools",
+    "thumbnails": [
+     {
+      "url": "https://i.ytimg.com/vi/ODpVgpxXOEY/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLBFMxvc4NRiBbrxuzLnXfS-zm2pLQ",
+      "height": 202,
+      "width": 360
+     },
+     {
+      "url": "https://i.ytimg.com/vi/ODpVgpxXOEY/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLCKaYHB9rKIoVVC-H46JJktFNWqRg",
+      "height": 404,
+      "width": 720
+     }
+    ],
+    "timestamp": null,
+    "release_timestamp": null,
+    "availability": null,
+    "view_count": 131777,
+    "live_status": null,
+    "channel_is_verified": null,
+    "__x_forwarded_for_ip": null
+   },
+   {
+    "_type": "url",
+    "ie_key": "Youtube",
+    "id": "YUjSBAq6iGg",
+    "url": "https://www.youtube.com/watch?v=YUjSBAq6iGg",
+    "title": "Are Electric Hand Planes Any Good?? || Beginners Guide To Hand Planes",
+    "description": "In this woodworking tools tips video, I'll answer the question, \"Are electric hand planers any good?\". I'll also walk you through the ...",
+    "duration": 451,
+    "channel_id": "UCboCCtnsCslt0ZT9W47thcA",
+    "channel": "How I Do Things Woodworking",
+    "channel_url": "https://www.youtube.com/channel/UCboCCtnsCslt0ZT9W47thcA",
+    "uploader": "How I Do Things Woodworking",
+    "uploader_id": "@HowIDoThingsDIY",
+    "uploader_url": "https://www.youtube.com/@HowIDoThingsDIY",
+    "thumbnails": [
+     {
+      "url": "https://i.ytimg.com/vi/YUjSBAq6iGg/hq720.jpg?sqp=-oaymwEcCOgCEMoBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLCIEY76uQHb7eNIDiCHSQIBivBRMw",
+      "height": 202,
+      "width": 360
+     },
+     {
+      "url": "https://i.ytimg.com/vi/YUjSBAq6iGg/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLBmUa5ZJgnej9O8xFuy0lmgS0ssxg",
+      "height": 404,
+      "width": 720
+     }
+    ],
+    "timestamp": null,
+    "release_timestamp": null,
+    "availability": null,
+    "view_count": 101708,
+    "live_status": null,
+    "channel_is_verified": null,
+    "__x_forwarded_for_ip": null
+   }
+  ],
+  "webpage_url": "ytsearch5:woodworking hand planes",
+  "original_url": "ytsearch5:woodworking hand planes",
+  "webpage_url_basename": "woodworking hand planes",
+  "webpage_url_domain": null,
+  "extractor": "youtube:search",
+  "extractor_key": "YoutubeSearch",
+  "release_year": null,
+  "requested_entries": [
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "playlist_count": null,
+  "epoch": 1791849500
+ }
+}

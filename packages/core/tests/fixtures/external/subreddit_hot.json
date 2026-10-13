@@ -1,0 +1,73 @@
+{
+  "kind": "Listing",
+  "data": {
+    "after": "t3_1g0abcd",
+    "dist": 5,
+    "children": [
+      {
+        "kind": "t3",
+        "data": {
+          "subreddit_name_prefixed": "r/Documentaries",
+          "title": "Weekly discussion thread",
+          "is_self": true,
+          "stickied": true,
+          "url": "https://www.reddit.com/r/Documentaries/comments/1g0aaaa/weekly_discussion_thread/",
+          "selftext": "Post your recs here. Last week's favourite: [this one](https://youtu.be/aaaaaaaaaaa?t=42), and see https://example.com/blog/post."
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "subreddit_name_prefixed": "r/Documentaries",
+          "title": "The Deep Sea (2024) - a long look at the ocean floor",
+          "is_self": false,
+          "url": "https://www.youtube.com/watch?v=bbbbbbbbbbb&amp;feature=share",
+          "url_overridden_by_dest": "https://www.youtube.com/watch?v=bbbbbbbbbbb&feature=share",
+          "secure_media": {
+            "type": "youtube.com",
+            "oembed": {
+              "provider_name": "YouTube",
+              "url": "https://www.youtube.com/watch?v=bbbbbbbbbbb",
+              "type": "video"
+            }
+          },
+          "media": {
+            "type": "youtube.com",
+            "oembed": {"url": "https://www.youtube.com/watch?v=bbbbbbbbbbb"}
+          },
+          "selftext": ""
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "subreddit_name_prefixed": "r/Documentaries",
+          "title": "A short one",
+          "is_self": false,
+          "url": "https://www.youtube.com/shorts/sssssssssss",
+          "selftext": ""
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "subreddit_name_prefixed": "r/Documentaries",
+          "title": "Not on YouTube",
+          "is_self": false,
+          "url": "https://vimeo.com/123456789",
+          "selftext": ""
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "subreddit_name_prefixed": "r/Documentaries",
+          "title": "A whole channel of these",
+          "is_self": false,
+          "url": "https://www.youtube.com/@deepdives",
+          "selftext": ""
+        }
+      }
+    ]
+  }
+}

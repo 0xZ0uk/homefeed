@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>Slow Science Weekly</title>
+    <link>https://slowscience.example.org/</link>
+    <description>Long videos worth your time</description>
+    <item>
+      <title>Issue 12</title>
+      <link>https://slowscience.example.org/issues/12</link>
+      <guid>https://slowscience.example.org/issues/12</guid>
+      <description>&lt;p&gt;This week: &lt;a href="https://www.youtube.com/watch?v=ccccccccccc"&gt;how glaciers move&lt;/a&gt; and &lt;a href="/about"&gt;about us&lt;/a&gt;.&lt;/p&gt;</description>
+      <content:encoded><![CDATA[<p>Also embedded:</p><iframe src="https://www.youtube-nocookie.com/embed/ddddddddddd?rel=0"></iframe>]]></content:encoded>
+    </item>
+    <item>
+      <title>Issue 11</title>
+      <link>https://youtu.be/eeeeeeeeeee</link>
+      <description>Straight to the video. Plain link too: https://www.youtube.com/watch?v=ccccccccccc.</description>
+      <media:content url="https://example.org/cover.jpg" medium="image"/>
+    </item>
+  </channel>
+</rss>

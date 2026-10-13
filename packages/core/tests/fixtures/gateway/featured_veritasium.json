@@ -1,0 +1,243 @@
+{
+ "request": {
+  "url": "https://www.youtube.com/channel/UCHnyfMqiRRG1u-2MsSQLbXA",
+  "flat": false,
+  "limit": null,
+  "captions": false,
+  "related": false,
+  "featured": true
+ },
+ "response": {
+  "id": "UCHnyfMqiRRG1u-2MsSQLbXA",
+  "entries": [
+   {
+    "id": "UCin0m13qWv3-051xlWlHamA",
+    "title": "Veritasium en Français",
+    "uploader_id": "@VeritasiumFR",
+    "thumbnails": [
+     {
+      "url": "https://yt3.googleusercontent.com/Iv9K2cSrt5_ey6nPVcQFzoBmDWd7RJxN-VpJ1LBRDRqrQuvR60FTtIwlXoH7BZbQ4Gtr14n5=s88-c-k-c0x00ffffff-no-rj-mo",
+      "width": 88,
+      "height": 88
+     },
+     {
+      "url": "https://yt3.googleusercontent.com/Iv9K2cSrt5_ey6nPVcQFzoBmDWd7RJxN-VpJ1LBRDRqrQuvR60FTtIwlXoH7BZbQ4Gtr14n5=s176-c-k-c0x00ffffff-no-rj-mo",
+      "width": 176,
+      "height": 176
+     }
+    ],
+    "channel_follower_count": 29900,
+    "video_count": 178
+   },
+   {
+    "id": "UCnopJilYkHmuK-sdl07vkVg",
+    "title": "Veritasium em Português",
+    "uploader_id": "@VeritasiumPT",
+    "thumbnails": [
+     {
+      "url": "https://yt3.googleusercontent.com/XYVOuyuIUVBEzjDrMJnK-mEyb0SYnu8nBJt0cvplTpiJkUeaP3BVYjfvZwW3MX-bQIAn2QyyhA=s88-c-k-c0x00ffffff-no-rj-mo",
+      "width": 88,
+      "height": 88
+     },
+     {
+      "url": "https://yt3.googleusercontent.com/XYVOuyuIUVBEzjDrMJnK-mEyb0SYnu8nBJt0cvplTpiJkUeaP3BVYjfvZwW3MX-bQIAn2QyyhA=s176-c-k-c0x00ffffff-no-rj-mo",
+      "width": 176,
+      "height": 176
+     }
+    ],
+    "channel_follower_count": 208000,
+    "video_count": 232
+   },
+   {
+    "id": "UCwpHKudUkP5tNgmMdexB3ow",
+    "title": "Mentour Pilot",
+    "uploader_id": "@MentourPilot",
+    "thumbnails": [
+     {
+      "url": "https://yt3.googleusercontent.com/fGvWBj_aMZpY0aIKj0QqHC-1H77mdaNOEaCnhNgsWJaR5FTV1MD19weFhWUIGR97FHtuIRCE=s88-c-k-c0x00ffffff-no-rj-mo",
+      "width": 88,
+      "height": 88
+     },
+     {
+      "url": "https://yt3.googleusercontent.com/fGvWBj_aMZpY0aIKj0QqHC-1H77mdaNOEaCnhNgsWJaR5FTV1MD19weFhWUIGR97FHtuIRCE=s176-c-k-c0x00ffffff-no-rj-mo",
+      "width": 176,
+      "height": 176
+     }
+    ],
+    "channel_follower_count": 2520000,
+    "video_count": 815
+   },
+   {
+    "id": "UC2LZO6swZ9SLUEOks3WnsfA",
+    "title": "2veritasium",
+    "uploader_id": "@derek",
+    "thumbnails": [
+     {
+      "url": "https://yt3.googleusercontent.com/e7ENWdyffTfOl7CNadvF7UAwkFy3q-ZeN-jZdSozfvwIB-GzKxARcaZKvlldNRj6r48mQDS0=s88-c-k-c0x00ffffff-no-rj-mo",
+      "width": 88,
+      "height": 88
+     },
+     {
+      "url": "https://yt3.googleusercontent.com/e7ENWdyffTfOl7CNadvF7UAwkFy3q-ZeN-jZdSozfvwIB-GzKxARcaZKvlldNRj6r48mQDS0=s176-c-k-c0x00ffffff-no-rj-mo",
+      "width": 176,
+      "height": 176
+     }
+    ],
+    "channel_follower_count": 563000,
+    "video_count": 51
+   },
+   {
+    "id": "UCGRB1ZjIqAiaGwt-XLq9CnA",
+    "title": "Sciencium",
+    "uploader_id": "@sciencium",
+    "thumbnails": [
+     {
+      "url": "https://yt3.googleusercontent.com/ytc/AIdro_lBARWRHmlbvOlmdFOZ1Tz4NxT6mFUZjPrrv93HR80fKA=s88-c-k-c0x00ffffff-no-rj-mo",
+      "width": 88,
+      "height": 88
+     },
+     {
+      "url": "https://yt3.googleusercontent.com/ytc/AIdro_lBARWRHmlbvOlmdFOZ1Tz4NxT6mFUZjPrrv93HR80fKA=s176-c-k-c0x00ffffff-no-rj-mo",
+      "width": 176,
+      "height": 176
+     }
+    ],
+    "channel_follower_count": 322000,
+    "video_count": 7
+   },
+   {
+    "id": "UCXtxgWwk55kVJo9lCCZRdmg",
+    "title": "Veritasium en español",
+    "uploader_id": "@VeritasiumES",
+    "thumbnails": [
+     {
+      "url": "https://yt3.googleusercontent.com/eEzOCQszM2PCifAaJlJhjRsewotTEIqDdqt9YN4qS2Y-JldCdUMHW19ULcIqd-3WvQi70qvENqU=s88-c-k-c0x00ffffff-no-rj-mo",
+      "width": 88,
+      "height": 88
+     },
+     {
+      "url": "https://yt3.googleusercontent.com/eEzOCQszM2PCifAaJlJhjRsewotTEIqDdqt9YN4qS2Y-JldCdUMHW19ULcIqd-3WvQi70qvENqU=s176-c-k-c0x00ffffff-no-rj-mo",
+      "width": 176,
+      "height": 176
+     }
+    ],
+    "channel_follower_count": 2960000,
+    "video_count": 275
+   },
+   {
+    "id": "UCOgK3J7WTOl5f5Fd51kcoSg",
+    "title": "Veritasium 한국어 - 베리타시움",
+    "uploader_id": "@veritasium_kor",
+    "thumbnails": [
+     {
+      "url": "https://yt3.googleusercontent.com/Ng7StsJ1fSq83GTUARsSofeOAfqDQuzSQZNwm8vaTnUbDFt5gGZj1ECfK8uWyIBFkoBxrxKZ9w=s88-c-k-c0x00ffffff-no-rj-mo",
+      "width": 88,
+      "height": 88
+     },
+     {
+      "url": "https://yt3.googleusercontent.com/Ng7StsJ1fSq83GTUARsSofeOAfqDQuzSQZNwm8vaTnUbDFt5gGZj1ECfK8uWyIBFkoBxrxKZ9w=s176-c-k-c0x00ffffff-no-rj-mo",
+      "width": 176,
+      "height": 176
+     }
+    ],
+    "channel_follower_count": 313000,
+    "video_count": 86
+   },
+   {
+    "id": "UCUQHsAYGhWhKUpy8MfE1ddg",
+    "title": "Veritasium Italia",
+    "uploader_id": "@veritasiumitalia7561",
+    "thumbnails": [
+     {
+      "url": "https://yt3.googleusercontent.com/ytc/AIdro_kihW_QdADHK0iMFwkEMxrvOkaa5i0sHlPlbePhuKSx5CM=s88-c-k-c0x00ffffff-no-rj-mo",
+      "width": 88,
+      "height": 88
+     },
+     {
+      "url": "https://yt3.googleusercontent.com/ytc/AIdro_kihW_QdADHK0iMFwkEMxrvOkaa5i0sHlPlbePhuKSx5CM=s176-c-k-c0x00ffffff-no-rj-mo",
+      "width": 176,
+      "height": 176
+     }
+    ],
+    "channel_follower_count": 6460,
+    "video_count": 12
+   },
+   {
+    "id": "UCo-UabaGleyY7a9saGSMNkg",
+    "title": "Veritasium in हिन्दी",
+    "uploader_id": "@veritasiuminhindi",
+    "thumbnails": [
+     {
+      "url": "https://yt3.googleusercontent.com/SXmR58wqrMQ_j--GTzJVZk8xKeD54V1AZQZovyN2oZv8TCB1CzslfkeCE8ek9YiW0F6NDp8H4g=s88-c-k-c0x00ffffff-no-rj-mo",
+      "width": 88,
+      "height": 88
+     },
+     {
+      "url": "https://yt3.googleusercontent.com/SXmR58wqrMQ_j--GTzJVZk8xKeD54V1AZQZovyN2oZv8TCB1CzslfkeCE8ek9YiW0F6NDp8H4g=s176-c-k-c0x00ffffff-no-rj-mo",
+      "width": 176,
+      "height": 176
+     }
+    ],
+    "channel_follower_count": 93900,
+    "video_count": 106
+   },
+   {
+    "id": "UCxHeOI0pg0I0x4CFOyUni9Q",
+    "title": "Veritasium auf Deutsch",
+    "uploader_id": "@veritasiumDE",
+    "thumbnails": [
+     {
+      "url": "https://yt3.googleusercontent.com/YWJLgYlvOXPlPGAF--WdKgSSVN2sm3ghMsMtZcPhJuxLDxhWd4VJrkgdWqbu_jGC-1sE3jXq3A=s88-c-k-c0x00ffffff-no-rj-mo",
+      "width": 88,
+      "height": 88
+     },
+     {
+      "url": "https://yt3.googleusercontent.com/YWJLgYlvOXPlPGAF--WdKgSSVN2sm3ghMsMtZcPhJuxLDxhWd4VJrkgdWqbu_jGC-1sE3jXq3A=s176-c-k-c0x00ffffff-no-rj-mo",
+      "width": 176,
+      "height": 176
+     }
+    ],
+    "channel_follower_count": 19600,
+    "video_count": 190
+   },
+   {
+    "id": "UCmafpEjYI9WZH32DT0ebB1g",
+    "title": "Veritasium Arabic - فريتاسيوم بالعربي",
+    "uploader_id": "@veritasiumarabic-8392",
+    "thumbnails": [
+     {
+      "url": "https://yt3.googleusercontent.com/HJ_OHUG2sQzTA1beLLbn-rz4yDQVw3y4UEKNils6eBNBroCdazhO7goRqnmDkvCqErb5FVTv7w=s88-c-k-c0x00ffffff-no-rj-mo",
+      "width": 88,
+      "height": 88
+     },
+     {
+      "url": "https://yt3.googleusercontent.com/HJ_OHUG2sQzTA1beLLbn-rz4yDQVw3y4UEKNils6eBNBroCdazhO7goRqnmDkvCqErb5FVTv7w=s176-c-k-c0x00ffffff-no-rj-mo",
+      "width": 176,
+      "height": 176
+     }
+    ],
+    "channel_follower_count": 24200,
+    "video_count": 50
+   },
+   {
+    "id": "UCp9fa8BLkst2gO_umj9BjYg",
+    "title": "Veritasium Català",
+    "uploader_id": "@veritasiumcatala",
+    "thumbnails": [
+     {
+      "url": "https://yt3.googleusercontent.com/eg6PdDbWSmoFMe9-hUXZZh_3g1J3bqBmPhxrU_jGbjVxZE7x-ubsM1IVj4e1SYtZWwBJGrCRrA=s88-c-k-c0x00ffffff-no-rj-mo",
+      "width": 88,
+      "height": 88
+     },
+     {
+      "url": "https://yt3.googleusercontent.com/eg6PdDbWSmoFMe9-hUXZZh_3g1J3bqBmPhxrU_jGbjVxZE7x-ubsM1IVj4e1SYtZWwBJGrCRrA=s176-c-k-c0x00ffffff-no-rj-mo",
+      "width": 176,
+      "height": 176
+     }
+    ],
+    "channel_follower_count": 1280,
+    "video_count": 31
+   }
+  ]
+ }
+}

@@ -19,12 +19,17 @@ top or bottom tier, which the ranker's similarity features compare candidates wi
 a video can be rated without ever being a candidate (e.g. opened from a pasted URL). And
 it re-embeds topic descriptions embedded by another model (after an `EMBEDDING_MODEL`
 change), so topic boosts compare vectors from the same model.
+
+With an LLM provider configured (see homefeed_core.llm_tags), `enrich_candidates` then
+tags the same videos and every rated video (training uses their tags too) with topic,
+depth, clickbait and rage-bait. Tagging never fails the run: errors are logged and the
+untagged videos are tried again next time.
 """
 
 import json
 import logging
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import Literal, cast
@@ -45,7 +50,8 @@ from homefeed_core.embeddings import (
 )
 from homefeed_core.gateway import Gateway, GatewayError, Video, create_gateway
 from homefeed_core.gateway.events import format_timestamp
-from homefeed_core.ratings import tier_rated_video_ids
+from homefeed_core.llm_tags import Tagger, TagReport, get_tagger
+from homefeed_core.ratings import list_ratings, tier_rated_video_ids
 from homefeed_core.videos import store_video
 
 logger = logging.getLogger(__name__)
@@ -84,6 +90,8 @@ class EnrichReport:
     enriched: list[str] = field(default_factory=list[str])  # computed in this run
     cached: list[str] = field(default_factory=list[str])  # already up to date
     failed: dict[str, str] = field(default_factory=dict[str, str])  # video id -> error
+    # LLM tagging after enrichment (see `enrich_candidates`); None when it didn't run.
+    tags: TagReport | None = None
 
 
 class Enricher:
@@ -93,11 +101,13 @@ class Enricher:
         gateway: Gateway,
         embedder: EmbeddingProvider,
         *,
+        tagger: Tagger | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._sessions = sessions
         self._gateway = gateway
         self._embedder = embedder
+        self._tagger = tagger
         self._now = now
 
     def enrich(self, video_id: str) -> VideoFeatures:
@@ -126,6 +136,17 @@ class Enricher:
                 continue
             report.enriched.append(video_id)
         return report
+
+    def tag_many(self, video_ids: Iterable[str]) -> TagReport | None:
+        """LLM-tag the videos without current tags; None without a tagger. Never raises:
+        a failure is logged and the videos are left for the next run."""
+        if self._tagger is None:
+            return None
+        try:
+            return self._tagger.tag_many(video_ids)
+        except Exception:
+            logger.exception("LLM tagging failed; continuing without new tags")
+            return None
 
     def refresh_topic_embeddings(self) -> list[int]:
         """Re-embed topics embedded by another model. Returns their ids."""
@@ -282,9 +303,12 @@ def get_features(session: Session, video_id: str) -> VideoFeatures | None:
 
 @lru_cache
 def get_enricher() -> Enricher:
-    """The process-wide production enricher (one embedding model per process)."""
+    """The process-wide production enricher (one embedding model per process), tagging
+    with the configured LLM provider, if any."""
     sessions = get_session_factory()
-    return Enricher(sessions, create_gateway(sessions), get_embedding_provider())
+    return Enricher(
+        sessions, create_gateway(sessions), get_embedding_provider(), tagger=get_tagger()
+    )
 
 
 def enrich_candidates(
@@ -297,7 +321,8 @@ def enrich_candidates(
     """Enrich the candidates the next feed will rank (first seen within
     `FEED_CANDIDATE_DAYS`), newest first, then the top-tier and bottom-tier rated videos
     the ranker compares them with. Up-to-date ones are skipped. Topics embedded by
-    another model are re-embedded first."""
+    another model are re-embedded first. Then, if the enricher has a tagger, those
+    videos and every other rated video are LLM-tagged (`EnrichReport.tags`)."""
     enricher = enricher or get_enricher()
     enricher.refresh_topic_embeddings()
     sessions = sessions or get_session_factory()
@@ -306,7 +331,9 @@ def enrich_candidates(
     with sessions() as session:
         video_ids = [candidate.video_id for candidate in list_candidates(session, since=since)]
         video_ids += tier_rated_video_ids(session)
-    return enricher.enrich_many(video_ids)
+        rated_ids = [rating.video_id for rating in list_ratings(session)]
+    report = enricher.enrich_many(video_ids)
+    return replace(report, tags=enricher.tag_many([*video_ids, *rated_ids]))
 
 
 def _parse_timestamp(value: str) -> datetime:

@@ -3,17 +3,22 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { ChannelsTab } from "#/components/ChannelsTab";
 import { LogoutButton } from "#/components/LogoutButton";
 import { MutesTab } from "#/components/MutesTab";
+import { SavedSearchesTab } from "#/components/SavedSearchesTab";
+import { SourcesTab } from "#/components/SourcesTab";
 import { TopicsTab } from "#/components/TopicsTab";
 import { channelsQuery } from "#/server/channels";
 import { displayPrefsQuery } from "#/server/display";
+import { externalSourcesQuery } from "#/server/external-sources";
 import { keywordMutesQuery } from "#/server/keyword-mutes";
+import { savedSearchesQuery } from "#/server/saved-searches";
 import { topicsQuery } from "#/server/topics";
 
-// Searches and sources tabs arrive in later milestones.
 const TABS = [
   { id: "channels", label: "Channels" },
   { id: "topics", label: "Topics" },
   { id: "mutes", label: "Mutes" },
+  { id: "searches", label: "Searches" },
+  { id: "sources", label: "Sources" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -35,6 +40,10 @@ export const Route = createFileRoute("/curation")({
       await context.queryClient.ensureQueryData(keywordMutesQuery);
     } else if (deps.tab === "topics") {
       await context.queryClient.ensureQueryData(topicsQuery);
+    } else if (deps.tab === "searches") {
+      await context.queryClient.ensureQueryData(savedSearchesQuery);
+    } else if (deps.tab === "sources") {
+      await context.queryClient.ensureQueryData(externalSourcesQuery);
     } else {
       await Promise.all([
         context.queryClient.ensureQueryData(channelsQuery),
@@ -76,6 +85,8 @@ function Curation() {
         {tab === "channels" && <ChannelsTab />}
         {tab === "topics" && <TopicsTab />}
         {tab === "mutes" && <MutesTab />}
+        {tab === "searches" && <SavedSearchesTab />}
+        {tab === "sources" && <SourcesTab />}
       </section>
     </main>
   );

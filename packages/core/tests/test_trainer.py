@@ -16,8 +16,14 @@ from homefeed_core.embeddings import EMBEDDING_DIMENSIONS, store_embedding
 from homefeed_core.feeds import load_rated_tiers
 from homefeed_core.gateway.events import format_timestamp
 from homefeed_core.grades import GRADES, grade_value, nearest_grade
+from homefeed_core.llm_tags import LLMTags, store_tags
 from homefeed_core.model_features import FEATURE_NAMES, FEATURE_VERSION, ModelInput
-from homefeed_core.ranker import SimilarityFeatures, similarity_features
+from homefeed_core.ranker import (
+    ModelCandidate,
+    RankCandidate,
+    SimilarityFeatures,
+    similarity_features,
+)
 from homefeed_core.ranking_models import (
     IncompatibleModelError,
     RankingModel,
@@ -26,6 +32,7 @@ from homefeed_core.ranking_models import (
     list_model_versions,
     load_active_model,
     prune_versions,
+    ranker_model,
     read_model,
     record_version,
 )
@@ -402,6 +409,49 @@ def test_trains_lightgbm_once_there_are_enough_ratings(
 
     assert result.version.kind == "lightgbm"
     assert result.version.spearman is not None and result.version.spearman > 0.7
+
+
+def test_dataset_features_include_llm_tags(sessions: sessionmaker[Session]) -> None:
+    tags = LLMTags("crafts_diy", depth=0.9, clickbait=0.1, rage_bait=0.0)
+    with sessions.begin() as session:
+        add_video(session, "tagged00000")
+        add_video(session, "untagged000")
+        rate(session, "tagged00000", 0.5, NOW - timedelta(days=2))
+        rate(session, "untagged000", 0.5, NOW - timedelta(days=1))
+        store_tags(session, "tagged00000", tags, model="stub")
+        examples = {example.video_id: example for example in build_dataset(session, now=NOW)}
+
+    assert examples["tagged00000"].input.tags == tags
+    assert examples["untagged000"].input.tags is None
+
+
+def test_model_learns_from_llm_tags(sessions: sessionmaker[Session], settings: Settings) -> None:
+    """Ratings that follow only the clickbait score: the trained model, used by the
+    ranker, prefers a plainly titled video to a clickbait one."""
+    rng = np.random.default_rng(3)
+    with sessions.begin() as session:
+        for i in range(60):
+            video_id = f"t{i:010d}"
+            clickbait = float(rng.uniform(0, 1))
+            add_video(session, video_id, channel_id=CHANNELS[i % len(CHANNELS)])
+            store_tags(session, video_id, LLMTags("other", 0.5, clickbait, 0.0), model="stub")
+            rate(session, video_id, 0.8 - 1.6 * clickbait, NOW - timedelta(days=i + 1))
+    train_now(sessions, settings)
+    with sessions() as session:
+        active = load_active_model(session, data_dir=settings.data_dir)
+    assert active is not None
+
+    def item(video_id: str, clickbait: float) -> ModelCandidate:
+        return ModelCandidate(
+            RankCandidate(video_id, CHANNEL, "subscription", duration_seconds=600),
+            similarity=None,
+            embedding=None,
+            channel_score=0.0,
+            tags=LLMTags("other", 0.5, clickbait, 0.0),
+        )
+
+    plain, bait = ranker_model(active.model, now=NOW)([item("plain", 0.05), item("bait", 0.95)])
+    assert plain > bait
 
 
 def test_active_model_ranks_unseen_videos_by_the_learned_taste(

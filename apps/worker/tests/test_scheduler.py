@@ -136,3 +136,29 @@ def test_gathering_runs_the_other_sources_even_if_polling_fails(
     gather_candidates()
 
     assert calls == ["poll", "generate"]
+
+
+def test_build_scheduler_registers_the_external_sources_check() -> None:
+    job = jobs_by_id()["fetch_external_sources"]
+
+    assert job.func is scheduler.fetch_external_sources
+    assert isinstance(job.trigger, IntervalTrigger)
+    assert job.trigger.interval == timedelta(minutes=scheduler.EXTERNAL_SOURCES_CHECK_MINUTES)
+    assert job.max_instances == 1
+    assert job.coalesce is True
+
+
+def test_external_sources_job_runs_only_that_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    ran: list[list[str]] = []
+
+    def generate(sources: list[Any], **_kwargs: Any) -> SimpleNamespace:
+        ran.append([source.name for source in sources])
+        return SimpleNamespace(new={"external": ["aaaaaaaaaaa"]}, failed={})
+
+    monkeypatch.setattr(scheduler, "get_session_factory", lambda: None)
+    monkeypatch.setattr(scheduler, "create_gateway", lambda _sessions: None)
+    monkeypatch.setattr(scheduler.candidates, "generate", generate)
+
+    scheduler.fetch_external_sources()
+
+    assert ran == [["external"]]

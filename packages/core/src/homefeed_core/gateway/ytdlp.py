@@ -1,5 +1,6 @@
 """The yt-dlp implementation of the Gateway. The only module that imports yt-dlp."""
 
+import base64
 import json
 import logging
 import random
@@ -8,11 +9,12 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, cast
+from urllib.parse import quote, urlencode
 
 import yt_dlp
 from yt_dlp.extractor.youtube import YoutubeIE, YoutubeTabIE
 from yt_dlp.networking.exceptions import HTTPError
-from yt_dlp.utils import DownloadError, ExtractorError
+from yt_dlp.utils import DownloadError, ExtractorError, parse_count
 
 from homefeed_core.gateway.dash import DashRanges, probe_dash_ranges
 from homefeed_core.gateway.errors import (
@@ -22,16 +24,25 @@ from homefeed_core.gateway.errors import (
     UnavailableError,
 )
 from homefeed_core.gateway.events import EventRecorder, ExtractorEvent
-from homefeed_core.gateway.interface import DEFAULT_RELATED_LIMIT, DEFAULT_UPLOADS_LIMIT
+from homefeed_core.gateway.interface import (
+    DEFAULT_RELATED_LIMIT,
+    DEFAULT_SEARCH_LIMIT,
+    DEFAULT_UPLOADS_LIMIT,
+    check_search_limit,
+    normalize_search_query,
+)
 from homefeed_core.gateway.media import HttpMediaFetcher, MediaFetcher, MediaStream
 from homefeed_core.gateway.models import (
     ByteRange,
     Captions,
     ChannelUploads,
+    FeaturedChannel,
     Format,
     RelatedVideo,
     ResolvedChannel,
     ResolvedUrl,
+    SearchFilters,
+    SearchResult,
     Video,
 )
 from homefeed_core.gateway.normalize import (
@@ -41,9 +52,11 @@ from homefeed_core.gateway.normalize import (
     channel_from_info,
     channel_uploads_from_info,
     dash_ranges,
+    featured_channels_from_info,
     formats_from_info,
     pick_caption_track,
     related_from_info,
+    search_results_from_info,
     video_from_info,
 )
 from homefeed_core.gateway.resilience import RateLimiter, RetryPolicy, Sleep, call_with_retries
@@ -66,13 +79,15 @@ class ExtractRequest:
     """One extractor call. `flat` lists playlist/channel entries without resolving each;
     `captions` returns a video's chosen caption track instead of its info (see
     `normalize.pick_caption_track`); `related` returns the videos suggested next to it
-    (see `_download_related`)."""
+    (see `_download_related`); `featured` returns the channels a channel features (see
+    `_download_featured`)."""
 
     url: str
     flat: bool = False
     limit: int | None = None  # max entries when `flat`
     captions: bool = False
     related: bool = False
+    featured: bool = False
 
 
 Extract = Callable[[ExtractRequest], dict[str, Any]]
@@ -102,6 +117,8 @@ def extract_info(request: ExtractRequest) -> dict[str, Any]:
             ydl.add_info_extractor(_DashRangesYoutubeIE())  # pyright: ignore[reportArgumentType]
             if request.related:
                 return _download_related(ydl, request.url)
+            if request.featured:
+                return _download_featured(ydl, request.url)
             info = dict(ydl.sanitize_info(ydl.extract_info(request.url, download=False)) or {})
             return _download_captions(ydl, info) if request.captions else info
     except (DownloadError, ExtractorError) as error:
@@ -228,6 +245,85 @@ def _download_related(ydl: yt_dlp.YoutubeDL, url: str) -> dict[str, Any]:
     return {"id": video_id, "entries": entries}
 
 
+_CHANNEL_RENDERERS = ("gridChannelRenderer", "channelRenderer")
+
+
+def _download_featured(ydl: yt_dlp.YoutubeDL, url: str) -> dict[str, Any]:
+    """The channels a channel features, as {"id": <channel id>, "entries": [...]}.
+
+    YouTube dropped the "Channels" tab that yt-dlp reads featured channels from; they
+    now show as shelves of channel renderers on the home tab. This asks InnerTube's
+    `browse` endpoint for the home tab through yt-dlp's (private) API helper and turns
+    every channel renderer on it into a flat entry, in page order.
+    """
+    channel_id = url.rstrip("/").rsplit("/", 1)[-1]
+    if not CHANNEL_ID.match(channel_id):
+        raise ExtractionError(f"Not a channel URL: {url}")
+    tab: Any = ydl.get_info_extractor(YoutubeTabIE.ie_key())
+    tab.initialize()
+    data = tab._extract_response(
+        item_id=channel_id,
+        query={"browseId": channel_id},
+        ep="browse",
+        note="Downloading featured channels",
+    )
+    if not isinstance(data, dict) or not isinstance(_dig(data, "contents"), dict):
+        raise ExtractionError(f"No channel page data for {channel_id}")
+    entries: list[dict[str, Any]] = []
+    for renderer in _find_all(data, _CHANNEL_RENDERERS):
+        featured_id = renderer.get("channelId")
+        if not isinstance(featured_id, str):
+            continue
+        base_url = _dig(renderer, "navigationEndpoint", "browseEndpoint", "canonicalBaseUrl")
+        handle = str(base_url or "").lstrip("/")
+        thumbnails = _dig(renderer, "thumbnail", "thumbnails")
+        entries.append(
+            {
+                "id": featured_id,
+                "title": _text(renderer.get("title")),
+                "uploader_id": handle if handle.startswith("@") else None,
+                "thumbnails": [
+                    {**thumb, "url": "https:" + thumb["url"]}
+                    if str(thumb.get("url", "")).startswith("//")
+                    else thumb
+                    for thumb in cast(list[Any], thumbnails if isinstance(thumbnails, list) else [])
+                    if isinstance(thumb, dict)
+                ],
+                "channel_follower_count": parse_count(_text(renderer.get("subscriberCountText"))),
+                "video_count": parse_count(_text(renderer.get("videoCountText"))),
+            }
+        )
+    return {"id": channel_id, "entries": entries}
+
+
+def _text(value: Any) -> str | None:
+    """The text of an InnerTube text object ({"simpleText": ...} or {"runs": [...]})."""
+    if not isinstance(value, dict):
+        return None
+    mapping = cast(dict[str, Any], value)
+    if isinstance(mapping.get("simpleText"), str):
+        return mapping["simpleText"]
+    runs = mapping.get("runs")
+    if isinstance(runs, list):
+        return "".join(
+            str(run.get("text", "")) for run in cast(list[Any], runs) if isinstance(run, dict)
+        )
+    return None
+
+
+def _find_all(value: Any, keys: tuple[str, ...]) -> Iterator[dict[str, Any]]:
+    """Every dict under one of `keys` anywhere in nested dicts and lists, in order."""
+    if isinstance(value, dict):
+        for key, child in cast(dict[str, Any], value).items():
+            if key in keys and isinstance(child, dict):
+                yield cast(dict[str, Any], child)
+            else:
+                yield from _find_all(child, keys)
+    elif isinstance(value, list):
+        for child in cast(list[Any], value):
+            yield from _find_all(child, keys)
+
+
 def _dig(value: Any, *path: str | int) -> Any:
     """`value[path[0]][path[1]]...`, or None where the path doesn't exist."""
     for key in path:
@@ -351,6 +447,20 @@ class YtDlpGateway:
             "get_related", video_id, request, lambda info: related_from_info(info)[:limit]
         )
 
+    def search(
+        self,
+        query: str,
+        filters: SearchFilters | None = None,
+        *,
+        limit: int = DEFAULT_SEARCH_LIMIT,
+    ) -> list[SearchResult]:
+        query = normalize_search_query(query)
+        check_search_limit(limit)
+        request = ExtractRequest(search_url(query, filters, limit), flat=True, limit=limit)
+        return self._run(
+            "search", query, request, lambda info: search_results_from_info(info)[:limit]
+        )
+
     def get_channel_uploads(
         self, channel_id: str, *, limit: int = DEFAULT_UPLOADS_LIMIT
     ) -> ChannelUploads:
@@ -360,6 +470,12 @@ class YtDlpGateway:
             raise ValueError("limit must be at least 1")
         request = ExtractRequest(f"{channel_url(channel_id)}/videos", flat=True, limit=limit)
         return self._run("get_channel_uploads", channel_id, request, channel_uploads_from_info)
+
+    def get_featured_channels(self, channel_id: str) -> list[FeaturedChannel]:
+        if not CHANNEL_ID.match(channel_id):
+            raise UnavailableError(f"Not a channel id: {channel_id!r}")
+        request = ExtractRequest(channel_url(channel_id), featured=True)
+        return self._run("get_featured_channels", channel_id, request, featured_channels_from_info)
 
     def resolve_url(self, url: str) -> ResolvedUrl:
         parsed = parse_youtube_url(url)
@@ -453,6 +569,38 @@ class YtDlpGateway:
                 error=str(error) if error else None,
             )
         )
+
+
+# YouTube's search filters travel in the results page's `sp` parameter: a base64
+# protobuf message with the sort order as field 1 and the filters as message field 2
+# (upload date = 1, result type = 2, duration = 3).
+_SORT_VALUES = {"relevance": 0, "rating": 1, "upload_date": 2, "view_count": 3}
+_UPLOAD_DATE_VALUES = {"hour": 1, "today": 2, "week": 3, "month": 4, "year": 5}
+_DURATION_VALUES = {"short": 1, "long": 2, "medium": 3}
+_TYPE_VIDEO = 1
+
+
+def search_url(query: str, filters: SearchFilters | None, limit: int) -> str:
+    """What yt-dlp is asked for: `ytsearchN:<query>` for a plain search, or YouTube's
+    results page with the filters encoded in `sp` otherwise."""
+    if filters is None or filters.is_default:
+        return f"ytsearch{limit}:{query}"
+    params = urlencode({"search_query": query, "sp": search_params(filters)}, quote_via=quote)
+    return f"https://www.youtube.com/results?{params}"
+
+
+def search_params(filters: SearchFilters) -> str:
+    """The `sp` value for `filters` (results are always restricted to videos)."""
+    nested = bytes([0x10, _TYPE_VIDEO])  # field 2 (type) = video
+    if filters.upload_date is not None:
+        nested = bytes([0x08, _UPLOAD_DATE_VALUES[filters.upload_date]]) + nested
+    if filters.duration is not None:
+        nested += bytes([0x18, _DURATION_VALUES[filters.duration]])
+    message = bytes([0x12, len(nested)]) + nested  # field 2 (filters)
+    sort = _SORT_VALUES[filters.sort]
+    if sort:
+        message = bytes([0x08, sort]) + message  # field 1 (sort)
+    return base64.b64encode(message).decode()
 
 
 def _check_video_id(video_id: str) -> None:

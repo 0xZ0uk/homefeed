@@ -4,28 +4,52 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Annotated, Any, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Path, Query, Response, status
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Path,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from homefeed_core import (
+    channel_graph,
     curation,
+    external_sources,
     feeds,
+    importer,
     insights,
     playback,
     poller,
     ranking_models,
     ratings,
+    saved_searches,
     videos,
     watch_events,
 )
 from homefeed_core.db import get_session_factory
 from homefeed_core.embeddings import EmbeddingProvider, get_embedding_provider
 from homefeed_core.gateway import (
+    DEFAULT_SEARCH_LIMIT,
+    MAX_SEARCH_LIMIT,
+    SEARCH_QUERY_MAX_LENGTH,
     Gateway,
     GatewayError,
+    SearchDuration,
+    SearchFilters,
+    SearchResult,
+    SearchSort,
+    SearchUploadDate,
     UnavailableError,
     UnsupportedUrlError,
     create_gateway,
@@ -489,6 +513,157 @@ def delete_topic(topic_id: TopicId, session: SessionDep) -> Response:
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+SearchQuery = Annotated[
+    str,
+    Field(
+        min_length=1,
+        max_length=SEARCH_QUERY_MAX_LENGTH,
+        description="What to search YouTube for",
+    ),
+]
+SEARCH_ERRORS: dict[int | str, dict[str, Any]] = {
+    502: {"model": ErrorDetail, "description": "YouTube could not be reached"}
+}
+
+
+@app.get("/search", tags=["search"], responses=SEARCH_ERRORS)
+def search_videos(
+    gateway: GatewayDep,
+    q: Annotated[
+        str,
+        Query(min_length=1, max_length=SEARCH_QUERY_MAX_LENGTH, description="Search query"),
+    ],
+    sort: Annotated[SearchSort, Query(description="Result order")] = "relevance",
+    upload_date: Annotated[
+        SearchUploadDate | None, Query(description="Only videos uploaded within the last ...")
+    ] = None,
+    duration: Annotated[
+        SearchDuration | None,
+        Query(description="short: under 4 minutes, medium: 4-20 minutes, long: over 20"),
+    ] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_SEARCH_LIMIT)] = DEFAULT_SEARCH_LIMIT,
+) -> list[SearchResult]:
+    """Search YouTube for videos, in YouTube's order. A blank query is a 422 with a
+    string `detail`."""
+    filters = SearchFilters(sort=sort, upload_date=upload_date, duration=duration)
+    try:
+        return gateway.search(q, filters, limit=limit)
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    except GatewayError as error:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(error)) from error
+
+
+class SearchFiltersInput(BaseModel):
+    sort: SearchSort = "relevance"
+    upload_date: SearchUploadDate | None = Field(
+        default=None, description="Only videos uploaded within the last ..."
+    )
+    duration: SearchDuration | None = Field(
+        default=None, description="short: under 4 minutes, medium: 4-20 minutes, long: over 20"
+    )
+
+    def to_filters(self) -> SearchFilters:
+        return SearchFilters(sort=self.sort, upload_date=self.upload_date, duration=self.duration)
+
+
+class SavedSearchInput(BaseModel):
+    query: SearchQuery
+    filters: SearchFiltersInput = Field(default_factory=SearchFiltersInput)
+    schedule: saved_searches.Schedule = Field(
+        default=saved_searches.DEFAULT_SCHEDULE,
+        description="How often its results are added to the candidates",
+    )
+
+
+class SavedSearchUpdateInput(BaseModel):
+    """Fields to change; omitted fields keep their current value."""
+
+    query: SearchQuery | None = None
+    filters: SearchFiltersInput | None = None
+    schedule: saved_searches.Schedule | None = None
+
+
+SAVED_SEARCH_NOT_FOUND: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorDetail, "description": "No such saved search"}
+}
+SavedSearchId = Annotated[int, Path(ge=1, description="Saved search id")]
+
+
+@app.get("/saved-searches", tags=["saved-searches"])
+def list_saved_searches(session: SessionDep) -> list[saved_searches.SavedSearch]:
+    """All saved searches, alphabetically by query."""
+    return saved_searches.list_saved_searches(session)
+
+
+@app.post(
+    "/saved-searches",
+    tags=["saved-searches"],
+    status_code=status.HTTP_201_CREATED,
+    responses={200: {"model": saved_searches.SavedSearch, "description": "Already saved"}},
+)
+def add_saved_search(
+    body: SavedSearchInput, session: SessionDep, response: Response
+) -> saved_searches.SavedSearch:
+    """Save a search; its results are added to the candidates on its schedule.
+
+    Saving the same query (in any case) with the same filters again returns 200 with the
+    existing search. A blank query is a 422 with a string `detail`.
+    """
+    try:
+        search, created = saved_searches.add_saved_search(
+            session, body.query, body.filters.to_filters(), schedule=body.schedule
+        )
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return search
+
+
+@app.patch(
+    "/saved-searches/{search_id}",
+    tags=["saved-searches"],
+    responses={
+        **SAVED_SEARCH_NOT_FOUND,
+        409: {"model": ErrorDetail, "description": "Another saved search is the same"},
+    },
+)
+def update_saved_search(
+    search_id: SavedSearchId, body: SavedSearchUpdateInput, session: SessionDep
+) -> saved_searches.SavedSearch:
+    """Change a saved search's query, filters or schedule. A new query or filters
+    make it run with the next candidate run."""
+    try:
+        search = saved_searches.update_saved_search(
+            session,
+            search_id,
+            query=body.query,
+            filters=body.filters.to_filters() if body.filters is not None else None,
+            schedule=body.schedule,
+        )
+    except saved_searches.DuplicateSavedSearchError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    if search is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Saved search not found")
+    return search
+
+
+@app.delete(
+    "/saved-searches/{search_id}",
+    tags=["saved-searches"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=SAVED_SEARCH_NOT_FOUND,
+)
+def delete_saved_search(search_id: SavedSearchId, session: SessionDep) -> Response:
+    """Delete a saved search. Candidates it already found stay."""
+    if not saved_searches.delete_saved_search(session, search_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Saved search not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 class ScoreBreakdownOut(BaseModel):
     """How an item's score was made:
     `alpha * model + channel + similarity + sum(topics) = final`."""
@@ -913,3 +1088,227 @@ def activate_model(version_id: ModelVersionId, session: SessionDep) -> ModelVers
     if version is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Model version not found")
     return _model_version_out(version)
+
+
+# Channel graph and discovery
+
+CHANNEL_ERRORS: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorDetail, "description": "The channel doesn't exist"},
+    502: {"model": ErrorDetail, "description": "YouTube could not be reached"},
+}
+
+
+@app.get("/channels/{channel_id}/featured", tags=["discovery"], responses=CHANNEL_ERRORS)
+def get_featured_channels(
+    channel_id: ChannelId, session: SessionDep, gateway: GatewayDep
+) -> list[channel_graph.GraphChannel]:
+    """The channels a channel features on its page, in its order, with whether I'm
+    subscribed to each. Kept for a week; a stale copy is served when YouTube fails."""
+    try:
+        return channel_graph.featured_channels(session, gateway, channel_id)
+    except GatewayError as error:
+        raise _gateway_http_error(error) from error
+
+
+class ChannelSummaryOut(BaseModel):
+    channel_id: str
+    title: str
+    handle: str | None
+    url: str | None
+    thumbnail_url: str | None
+    subscribed: bool
+
+
+class UploadOut(BaseModel):
+    id: str
+    title: str
+    duration_seconds: int | None
+    view_count: int | None
+    thumbnail_url: str | None
+    published_at: str | None = Field(description="Upload time, ISO 8601 UTC, when listed")
+    live_status: str | None
+
+
+class ChannelUploadsOut(BaseModel):
+    channel: ChannelSummaryOut
+    videos: list[UploadOut] = Field(description="Newest first")
+
+
+@app.get("/channels/{channel_id}/uploads", tags=["discovery"], responses=CHANNEL_ERRORS)
+def get_channel_uploads(
+    channel_id: ChannelId,
+    session: SessionDep,
+    gateway: GatewayDep,
+    limit: Annotated[int, Query(ge=1, le=50)] = 30,
+) -> ChannelUploadsOut:
+    """A channel and its most recent uploads, newest first, straight from YouTube."""
+    try:
+        uploads = gateway.get_channel_uploads(channel_id, limit=limit)
+    except GatewayError as error:
+        raise _gateway_http_error(error) from error
+    channel = uploads.channel
+    return ChannelUploadsOut(
+        channel=ChannelSummaryOut(
+            channel_id=channel.id,
+            title=channel.title,
+            handle=channel.handle,
+            url=channel.url,
+            thumbnail_url=channel.thumbnail_url,
+            subscribed=curation.get_channel(session, channel.id) is not None,
+        ),
+        videos=[
+            UploadOut(
+                id=video.id,
+                title=video.title,
+                duration_seconds=video.duration_seconds,
+                view_count=video.view_count,
+                thumbnail_url=video.thumbnail_url,
+                published_at=(format_timestamp(video.published_at) if video.published_at else None),
+                live_status=video.live_status,
+            )
+            for video in uploads.videos
+        ],
+    )
+
+
+@app.get("/discover/suggested-channels", tags=["discovery"])
+def get_suggested_channels(
+    gateway: GatewayDep, limit: Annotated[int, Query(ge=1, le=50)] = 20
+) -> list[channel_graph.SuggestedChannel]:
+    """Channels featured by channels I like (loved or liked subscriptions, channels of
+    top-tier rated videos) that I'm not subscribed to, most often featured first.
+
+    Liked channels whose featured channels were never fetched are fetched first (a few
+    per request); the daily feed job keeps the rest fresh.
+    """
+    return channel_graph.suggest(get_session_factory(), gateway, limit=limit)
+
+
+class ExternalSourceInput(BaseModel):
+    kind: external_sources.Kind = Field(
+        description="subreddit (its hot posts), rss (an RSS or Atom feed) or page (a web "
+        "page whose links are read)"
+    )
+    url: str = Field(
+        min_length=1,
+        max_length=external_sources.URL_MAX_LENGTH,
+        description='The feed or page URL; for a subreddit, "r/name", "name" or a Reddit link',
+    )
+    schedule: external_sources.Schedule = Field(
+        default=external_sources.DEFAULT_SCHEDULE, description="How often to fetch it"
+    )
+
+
+class ExternalSourceUpdateInput(BaseModel):
+    """Fields to change; omitted fields keep their current value."""
+
+    schedule: external_sources.Schedule | None = None
+
+
+EXTERNAL_SOURCE_NOT_FOUND: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorDetail, "description": "No such external source"}
+}
+ExternalSourceId = Annotated[int, Path(ge=1, description="External source id")]
+
+
+@app.get("/external-sources", tags=["external-sources"])
+def list_external_sources(session: SessionDep) -> list[external_sources.ExternalSource]:
+    """All external sources (subreddits, feeds, link pages) with their fetch status."""
+    return external_sources.list_sources(session)
+
+
+@app.post(
+    "/external-sources",
+    tags=["external-sources"],
+    status_code=status.HTTP_201_CREATED,
+    responses={200: {"model": external_sources.ExternalSource, "description": "Already added"}},
+)
+def add_external_source(
+    body: ExternalSourceInput, session: SessionDep, response: Response
+) -> external_sources.ExternalSource:
+    """Add a subreddit, feed or link page; it is fetched on the worker's next check.
+
+    Adding a URL again returns 200 with the existing source. A URL that can't be a source
+    of that kind (including any YouTube link) is a 422 with a string `detail`.
+    """
+    try:
+        source, created = external_sources.add_source(session, body.kind, body.url, body.schedule)
+    except external_sources.InvalidSourceError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return source
+
+
+@app.patch(
+    "/external-sources/{source_id}",
+    tags=["external-sources"],
+    responses=EXTERNAL_SOURCE_NOT_FOUND,
+)
+def update_external_source(
+    source_id: ExternalSourceId, body: ExternalSourceUpdateInput, session: SessionDep
+) -> external_sources.ExternalSource:
+    """Change how often a source is fetched."""
+    source = external_sources.update_source(session, source_id, schedule=body.schedule)
+    if source is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "External source not found")
+    return source
+
+
+@app.delete(
+    "/external-sources/{source_id}",
+    tags=["external-sources"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=EXTERNAL_SOURCE_NOT_FOUND,
+)
+def delete_external_source(source_id: ExternalSourceId, session: SessionDep) -> Response:
+    """Remove a source. Videos it already found stay candidates."""
+    if not external_sources.delete_source(session, source_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "External source not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post(
+    "/import/takeout",
+    tags=["import"],
+    responses={
+        413: {"model": ErrorDetail, "description": "The file is too large"},
+        422: {"model": ErrorDetail, "description": "The file isn't a Takeout watch history"},
+    },
+)
+def import_takeout(
+    file: Annotated[
+        UploadFile,
+        File(description="Takeout `watch-history.json` or `watch-history.html`"),
+    ],
+    session: SessionDep,
+    subscribe_min_watches: Annotated[
+        int | None,
+        Form(ge=1, description="Subscribe to channels watched at least this often; unset: none"),
+    ] = None,
+    max_candidates: Annotated[
+        int,
+        Form(ge=0, le=10_000, description="Most recently watched videos added as candidates"),
+    ] = importer.DEFAULT_MAX_CANDIDATES,
+) -> importer.ImportReport:
+    """Import a Google Takeout YouTube watch history (JSON or HTML).
+
+    Seeds channels, videos and candidates (source `takeout`), and optionally subscribes to
+    often-watched channels. Never creates ratings or watch events. Each entry is counted
+    as imported, removed (deleted or private video), malformed or skipped (e.g. ads).
+    """
+    content = file.file.read(importer.MAX_TAKEOUT_BYTES + 1)
+    if len(content) > importer.MAX_TAKEOUT_BYTES:
+        raise HTTPException(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            f"The file is larger than {importer.MAX_TAKEOUT_BYTES // (1024 * 1024)} MB",
+        )
+    try:
+        return importer.import_takeout(
+            session,
+            content,
+            subscribe_min_watches=subscribe_min_watches,
+            max_candidates=max_candidates,
+        )
+    except importer.TakeoutFormatError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error

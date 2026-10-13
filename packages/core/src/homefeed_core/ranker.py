@@ -31,6 +31,10 @@ filtering them out would empty the feed. Shorts are still caught through `is_sho
 (RSS marks them by their /shorts/ link) and, once known, a duration under 60 seconds.
 
 Keyword mutes are matched against the title and description (see `KeywordMutes`).
+
+LLM tags (topic, depth, clickbait, rage-bait; see homefeed_core.llm_tags) are passed
+to the model with the other features. They add no rules-based term: the model learns
+how much they matter from the ratings.
 """
 
 import math
@@ -42,6 +46,7 @@ from typing import Any
 
 from homefeed_core.curation import DEFAULT_PRIOR, PRIOR_VALUES, Prior, TopicVector
 from homefeed_core.embeddings import Embedding, cosine_similarity, normalize
+from homefeed_core.llm_tags import LLMTags
 
 # Weight of the prior in the channel score, in "ratings' worth" (PLAN.md section 7).
 CHANNEL_PRIOR_WEIGHT = 5
@@ -270,6 +275,7 @@ class ModelCandidate:
     similarity: SimilarityFeatures | None  # None without an embedding
     embedding: Embedding | None
     channel_score: float
+    tags: LLMTags | None = None  # None until the video is LLM-tagged
 
 
 # Scores a batch of candidates at once, one score per candidate in the same order, in
@@ -393,12 +399,15 @@ def rank(
     rated_tiers: RatedTiers = NO_RATED_TIERS,
     model: Model | None = None,
     topics: Sequence[TopicVector] = (),
+    llm_tags: Mapping[str, LLMTags] | None = None,
 ) -> list[ScoredCandidate]:
     """Filter and score `candidates`, best first (ties keep the input order).
 
     `embeddings` holds candidate embeddings by video id, for similarity features and
-    topic boosts; candidates without one get neither."""
+    topic boosts; candidates without one get neither. `llm_tags` holds candidate LLM
+    tags by video id, passed to the model."""
     embeddings = embeddings or {}
+    llm_tags = llm_tags or {}
     blend = alpha(history.n_ratings, has_model=model is not None)
     top_tier, bottom_tier = _normalized(rated_tiers.top), _normalized(rated_tiers.bottom)
     channel_scores: dict[str, float] = {}
@@ -422,7 +431,15 @@ def rank(
         features = (
             None if embedding is None else _similarity_features(embedding, top_tier, bottom_tier)
         )
-        passed.append(ModelCandidate(candidate, features, embedding, channel_scores[channel_id]))
+        passed.append(
+            ModelCandidate(
+                candidate,
+                features,
+                embedding,
+                channel_scores[channel_id],
+                llm_tags.get(candidate.video_id),
+            )
+        )
     model_scores = _model_scores(model, passed)
     scored: list[ScoredCandidate] = []
     for item, model_score in zip(passed, model_scores, strict=True):

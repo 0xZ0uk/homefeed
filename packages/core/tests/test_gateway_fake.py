@@ -79,6 +79,21 @@ def test_serves_added_related_videos(gateway: FakeGateway) -> None:
         gateway.get_related("zzzzzzzzzzz")
 
 
+def test_serves_added_featured_channels(gateway: FakeGateway) -> None:
+    other = make_channel("UC" + "o" * 22, title="Other", handle="@other")
+    gateway.add_featured(CHANNEL.id, [other], subscriber_count=1200)
+
+    [featured] = gateway.get_featured_channels(CHANNEL.id)
+    assert (featured.id, featured.title, featured.handle, featured.subscriber_count) == (
+        other.id,
+        "Other",
+        "@other",
+        1200,
+    )
+    with pytest.raises(UnavailableError):
+        gateway.get_featured_channels(other.id)  # featured, but not added
+
+
 def test_channel_uploads_in_order_with_limit(gateway: FakeGateway) -> None:
     uploads = gateway.get_channel_uploads(CHANNEL.id)
     assert uploads.channel == CHANNEL

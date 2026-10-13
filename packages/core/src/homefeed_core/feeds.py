@@ -50,6 +50,7 @@ from homefeed_core.db import get_session_factory
 from homefeed_core.embeddings import get_embeddings
 from homefeed_core.gateway.events import format_timestamp
 from homefeed_core.grades import is_bottom_tier, is_good, is_top_tier
+from homefeed_core.llm_tags import get_tags
 from homefeed_core.ranker import (
     ChannelCuration,
     DurationBounds,
@@ -177,6 +178,7 @@ def build_feed(
         topics=topics,
         embeddings=get_embeddings(session, [c.video_id for c in pool]),
         rated_tiers=load_rated_tiers(session),
+        llm_tags=get_tags(session, [c.video_id for c in pool]),
         model=None if active is None else ranker_model(active.model, now=now),
     )
     slots = compose(

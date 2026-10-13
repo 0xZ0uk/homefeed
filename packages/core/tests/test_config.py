@@ -6,7 +6,16 @@ import pytest
 
 from homefeed_core.config import Settings, get_settings
 
-ENV_VARS = ("DATA_DIR", "DATABASE_PATH", "FEED_SIZE", "FEED_REFRESH_TIME", "LLM_PROVIDER")
+ENV_VARS = (
+    "DATA_DIR",
+    "DATABASE_PATH",
+    "FEED_SIZE",
+    "FEED_REFRESH_TIME",
+    "LLM_PROVIDER",
+    "LLM_MODEL",
+    "LLM_BASE_URL",
+    "OPENROUTER_API_KEY",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -24,7 +33,9 @@ def test_defaults() -> None:
 
     assert settings.feed_size == 15
     assert settings.feed_refresh_time == time(6, 0)
-    assert settings.llm_provider == "none"
+    # The hosted OpenRouter API, which stays off until OPENROUTER_API_KEY is set.
+    assert settings.llm_provider == "openrouter"
+    assert settings.openrouter_api_key is None
 
 
 def test_loads_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
