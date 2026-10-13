@@ -441,6 +441,22 @@ def test_scores_fall_back_to_older_compatible_versions(sessions: sessionmaker[Se
         assert get_tags(session, [VIDEO.id, BAIT.id]) == {BAIT.id: new}
 
 
+def test_tagging_reports_progress_over_the_videos_it_calls_for(
+    sessions: sessionmaker[Session],
+) -> None:
+    add_videos(sessions, VIDEO.id, BAIT.id, "ccccccccccc")
+    with sessions.begin() as session:
+        store_tags(session, VIDEO.id, LLMTags("other", 0, 0, 0), model="m")  # up to date
+    seen: list[tuple[int, int]] = []
+
+    Tagger(sessions, StubLLMProvider(default=DEEP), max_per_run=1).tag_many(
+        [VIDEO.id, BAIT.id, "ccccccccccc"], progress=lambda done, total: seen.append((done, total))
+    )
+
+    # Two need tagging, the cap allows one call.
+    assert seen == [(1, 1)]
+
+
 def test_unusable_answers_are_recorded_and_retried(sessions: sessionmaker[Session]) -> None:
     add_videos(sessions, VIDEO.id, BAIT.id)
     provider = StubLLMProvider(answers={VIDEO.id: "no idea"}, default=BAITY)
