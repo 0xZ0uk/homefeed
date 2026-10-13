@@ -114,7 +114,7 @@ export function GoodTierTrend({ weeks }: { weeks: readonly WeekInsights[] }) {
         <path
           d={trendPath(points)}
           fill="none"
-          stroke="#2a78d6"
+          className="stroke-chart-1"
           strokeWidth={2}
           strokeLinejoin="round"
           strokeLinecap="round"
@@ -125,8 +125,7 @@ export function GoodTierTrend({ weeks }: { weeks: readonly WeekInsights[] }) {
             cx={x}
             cy={y ?? 0}
             r={active?.week === week || week === latest?.week ? 5 : 4}
-            fill="#2a78d6"
-            stroke="white"
+            className="fill-chart-1 stroke-background"
             strokeWidth={2}
           />
         ))}
@@ -137,7 +136,7 @@ export function GoodTierTrend({ weeks }: { weeks: readonly WeekInsights[] }) {
             textAnchor="middle"
             fontSize={12}
             fontWeight={600}
-            fill="#111827"
+            className="fill-foreground"
           >
             {formatPercent(latest.week.good_tier_rate)}
           </text>

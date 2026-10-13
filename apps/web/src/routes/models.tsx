@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 
+import { Button } from "#/components/ui/button";
 import { AppShell } from "#/components/AppShell";
 import { formatKind, formatMetric, formatTimestamp } from "#/lib/models";
 import {
@@ -79,15 +80,17 @@ function ModelRow({ version }: { version: ModelVersion }) {
         </h3>
         {!version.active &&
           (version.compatible ? (
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="lg"
               disabled={activate.isPending}
               onClick={() => activate.mutate()}
               aria-label={`Activate version ${version.id}`}
-              className="inline-flex items-center justify-center rounded-full bg-secondary px-4 py-2 text-sm font-medium hover:bg-accent text-sm font-medium disabled:opacity-50"
+              className="px-4"
             >
               {activate.isPending ? "Activating…" : "Activate"}
-            </button>
+            </Button>
           ) : (
             <span className="text-sm text-muted-foreground">
               Trained with older features; can't be activated

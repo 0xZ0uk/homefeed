@@ -147,7 +147,7 @@ export function AppShell({
         <SheetContent
           side="left"
           showCloseButton={false}
-          className="w-60 gap-0 border-none bg-background p-0 data-[side=left]:w-60"
+          className="w-60 gap-0 border-transparent bg-background p-0 data-[side=left]:w-60"
         >
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           <SheetDescription className="sr-only">
@@ -172,7 +172,7 @@ export function AppShell({
         {docked && (
           <aside
             className={cn(
-              "sticky top-14 hidden h-[calc(100svh-3.5rem)] shrink-0 overflow-y-auto lg:block",
+              "sticky top-14 hidden h-[calc(100svh-3.5rem)] shrink-0 overflow-y-auto overscroll-contain lg:block",
               expanded ? "w-60" : "w-[4.5rem]",
             )}
           >

@@ -1,6 +1,8 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
+import { buttonVariants } from "#/components/ui/button";
+import { cn } from "#/lib/utils";
 import { formatFeedDate } from "#/lib/format";
 import { feedHistoryQuery } from "#/server/feeds";
 
@@ -22,7 +24,10 @@ export function FeedHistory() {
               <Link
                 to="/feed/$date"
                 params={{ date: feed.date }}
-                className="group flex h-8 items-center gap-1.5 rounded-lg bg-secondary px-3 font-medium outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 aria-[current=page]:bg-primary aria-[current=page]:text-primary-foreground"
+                className={cn(
+                  buttonVariants({ variant: "secondary" }),
+                  "group rounded-lg px-3 aria-[current=page]:bg-primary aria-[current=page]:text-primary-foreground",
+                )}
               >
                 {formatFeedDate(feed.date)}
                 <span className="font-normal text-muted-foreground group-aria-[current=page]:text-primary-foreground/70">

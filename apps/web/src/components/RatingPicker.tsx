@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 
+import { Button } from "#/components/ui/button";
 import {
   MODIFIERS,
   TIERS,
@@ -27,11 +28,8 @@ interface RatingPickerProps {
   cancel?: { label: string; onCancel: () => void };
 }
 
-const LINK =
-  "inline-flex h-9 items-center justify-center rounded-full px-4 text-sm font-medium hover:bg-accent disabled:opacity-50";
-
 const BUTTON =
-  "h-10 min-w-12 rounded-full bg-secondary px-4 font-semibold transition-colors hover:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground disabled:opacity-60";
+  "h-10 min-w-12 px-4 font-semibold aria-pressed:bg-primary aria-pressed:text-primary-foreground disabled:opacity-60";
 
 /**
  * Tier-list rating in one tap: S/A/B/C/D/F saves the plain tier right away.
@@ -90,17 +88,19 @@ export function RatingPicker({
       </h3>
       <div role="group" aria-label="Tier" className="flex flex-wrap gap-2">
         {TIERS.map((t, index) => (
-          <button
+          <Button
             key={t}
             ref={index === 0 ? firstButton : undefined}
             type="button"
+            variant="secondary"
+            size="lg"
             className={BUTTON}
             disabled={saving}
             aria-pressed={(tier ?? currentParts?.tier) === t}
             onClick={() => void pickTier(t)}
           >
             {t}
-          </button>
+          </Button>
         ))}
       </div>
       {tier && (
@@ -112,49 +112,57 @@ export function RatingPicker({
           {MODIFIERS.map((modifier) => {
             const grade = composeGrade(tier, modifier);
             return (
-              <button
+              <Button
                 key={modifier}
                 type="button"
+                variant="secondary"
+                size="lg"
                 className={BUTTON}
                 disabled={saving}
                 aria-pressed={current === grade}
                 onClick={() => void pickModifier(grade)}
               >
                 {grade}
-              </button>
+              </Button>
             );
           })}
         </div>
       )}
       <div className="flex flex-wrap items-center gap-4">
         {tier ? (
-          <button
+          <Button
             type="button"
-            className={LINK}
+            variant="ghost"
+            size="lg"
+            className="px-4"
             disabled={saving}
             onClick={() => onClose(true)}
           >
             {doneLabel}
-          </button>
+          </Button>
         ) : (
-          <button
+          <Button
             type="button"
-            className={LINK}
+            variant="ghost"
+            size="lg"
+            className="px-4"
             disabled={saving}
             onClick={() => onClose(false)}
           >
             {skipLabel}
-          </button>
+          </Button>
         )}
         {cancel && (
-          <button
+          <Button
             type="button"
-            className={LINK}
+            variant="ghost"
+            size="lg"
+            className="px-4"
             disabled={saving}
             onClick={cancel.onCancel}
           >
             {cancel.label}
-          </button>
+          </Button>
         )}
         <p aria-live="polite" className="text-sm text-muted-foreground">
           {error ??

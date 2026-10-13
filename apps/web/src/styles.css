@@ -34,6 +34,7 @@
   --ring: oklch(0.55 0.18 255);
   --brand: oklch(0.6 0.25 27);
   --brand-foreground: oklch(0.99 0 0);
+  --chart-1: oklch(0.55 0.15 255);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -58,6 +59,7 @@
     --border: oklch(1 0 0 / 14%);
     --input: oklch(1 0 0 / 20%);
     --ring: oklch(0.65 0.16 255);
+    --chart-1: oklch(0.7 0.14 255);
   }
 }
 
@@ -85,6 +87,7 @@
   --color-ring: var(--ring);
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
+  --color-chart-1: var(--chart-1);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);

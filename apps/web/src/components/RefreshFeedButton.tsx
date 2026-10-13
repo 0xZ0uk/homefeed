@@ -42,7 +42,9 @@ export function RefreshFeedButton({
         disabled={refresh.isPending}
         className="px-4"
       >
-        <RefreshCw className={cn(refresh.isPending && "animate-spin")} />
+        <RefreshCw
+          className={cn(refresh.isPending && "motion-safe:animate-spin")}
+        />
         {refresh.isPending ? "Refreshing…" : label}
       </Button>
       <p role="status" className="text-sm empty:hidden">

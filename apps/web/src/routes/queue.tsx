@@ -13,6 +13,8 @@ import {
   type RefObject,
 } from "react";
 
+import { Button, buttonVariants } from "#/components/ui/button";
+import { cn } from "#/lib/utils";
 import { AppShell } from "#/components/AppShell";
 import { showsThumbnails, type DisplayPrefs } from "#/lib/display";
 import { formatDuration } from "#/lib/format";
@@ -65,7 +67,7 @@ function Queue() {
           <Link
             to="/watch/$videoId"
             params={{ videoId: first.video_id }}
-            className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85"
+            className={cn(buttonVariants({ size: "lg" }), "px-4")}
           >
             Watch next
           </Link>
@@ -259,14 +261,14 @@ function QueueRow({
           params={params}
           tabIndex={-1}
           aria-hidden="true"
-          className="relative aspect-video w-32 shrink-0 overflow-hidden rounded bg-secondary"
+          className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-lg bg-secondary"
         >
           {item.thumbnail_url && (
             <img
               src={item.thumbnail_url}
               alt=""
               loading="lazy"
-              className="size-full object-cover"
+              className="size-full rounded-[inherit] object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
             />
           )}
         </Link>
@@ -380,13 +382,15 @@ function AddForm() {
           aria-describedby="queue-video-status"
           className="min-w-0 flex-1 rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
         />
-        <button
+        <Button
           type="submit"
+          variant="secondary"
+          size="lg"
           disabled={mutation.isPending}
-          className="inline-flex items-center justify-center rounded-full bg-secondary px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
+          className="px-4"
         >
           {mutation.isPending ? "Adding…" : "Add"}
-        </button>
+        </Button>
       </div>
       <p id="queue-video-status" role="status" className="min-h-6 text-sm">
         {error && <span className="text-destructive">{error}</span>}
@@ -449,14 +453,16 @@ function ClearQueue({
       <span>
         Remove all {count} {count === 1 ? "video" : "videos"} from your queue?
       </span>
-      <button
+      <Button
         type="button"
+        variant="destructive"
+        size="sm"
         disabled={mutation.isPending}
         onClick={() => mutation.mutate()}
-        className="inline-flex items-center justify-center rounded-full bg-destructive px-3 py-1 text-sm font-medium text-white hover:bg-destructive/85 disabled:opacity-50"
+        className="px-3"
       >
         {mutation.isPending ? "Clearing…" : "Clear queue"}
-      </button>
+      </Button>
       <button
         type="button"
         onClick={() => setConfirming(false)}

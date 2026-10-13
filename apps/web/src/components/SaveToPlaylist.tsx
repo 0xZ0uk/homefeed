@@ -3,6 +3,8 @@ import { Link } from "@tanstack/react-router";
 import { ListPlus } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
 
+import { Button, buttonVariants } from "#/components/ui/button";
+import { cn } from "#/lib/utils";
 import { PLAYLIST_NAME_MAX_LENGTH, checkPlaylistName } from "#/lib/playlists";
 import {
   addToPlaylist,
@@ -25,7 +27,12 @@ export function SaveToPlaylist({ videoId }: { videoId: string }) {
       className="relative text-sm"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
-      <summary className="inline-flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-full bg-secondary px-4 font-medium outline-none select-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
+      <summary
+        className={cn(
+          buttonVariants({ variant: "secondary", size: "lg" }),
+          "cursor-pointer list-none px-4 [&::-webkit-details-marker]:hidden",
+        )}
+      >
         <ListPlus className="size-4" />
         Save to playlist
       </summary>
@@ -38,7 +45,7 @@ function PlaylistChoices({ videoId }: { videoId: string }) {
   const query = useQuery(playlistsForVideoQuery(videoId));
 
   return (
-    <div className="absolute right-0 z-20 mt-2 flex w-72 max-w-[calc(100vw-2rem)] flex-col gap-3 rounded-xl bg-popover p-4 text-popover-foreground shadow-lg ring-1 ring-foreground/10">
+    <div className="absolute right-0 z-20 mt-2 flex w-72 max-w-[calc(100vw-2rem)] flex-col gap-3 rounded-xl bg-popover p-4 text-popover-foreground shadow-lg ring-1 ring-foreground/10 border border-transparent">
       {query.isPending ? (
         <p className="text-muted-foreground">Loading playlists…</p>
       ) : query.isError ? (
@@ -157,13 +164,14 @@ function NewPlaylistWithVideo({ videoId }: { videoId: string }) {
           maxLength={PLAYLIST_NAME_MAX_LENGTH}
           className="min-w-0 flex-1 rounded-lg border border-input bg-transparent px-2 py-1.5 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
         />
-        <button
+        <Button
           type="submit"
+          size="lg"
           disabled={create.isPending}
-          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85 disabled:opacity-50"
+          className="px-4"
         >
           {create.isPending ? "Creating…" : "Create and add"}
-        </button>
+        </Button>
       </div>
       {problem && (
         <p role="alert" className="text-destructive">

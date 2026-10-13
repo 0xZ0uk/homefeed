@@ -116,7 +116,7 @@ function ThisWeek({ week }: { week: WeekInsights }) {
         {stats.map((stat) => (
           <div
             key={stat.label}
-            className="flex flex-col rounded border border-border p-4"
+            className="flex flex-col rounded-xl border border-border p-4"
           >
             <dt className="text-sm text-muted-foreground">{stat.label}</dt>
             <dd className="text-3xl font-semibold tabular-nums">

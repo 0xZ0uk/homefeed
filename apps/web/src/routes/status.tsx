@@ -106,7 +106,7 @@ function SmokeTest({ run }: { run: SmokeTestRun | null }) {
         Live smoke test
       </h3>
       {run ? (
-        <div className="flex flex-col gap-1 rounded border border-border p-4">
+        <div className="flex flex-col gap-1 rounded-xl border border-border p-4">
           <p className="flex flex-wrap items-center gap-2">
             <HealthBadge health={run.success ? "ok" : "failing"} />
             <span>

@@ -4,6 +4,8 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 
+import { buttonVariants } from "#/components/ui/button";
+import { cn } from "#/lib/utils";
 import type { DisplayPrefs } from "#/lib/display";
 import { displayPrefsQuery, saveDisplayPrefs } from "#/server/display";
 
@@ -43,7 +45,10 @@ export function DisplayToggles() {
         return (
           <label
             key={key}
-            className="flex h-8 cursor-pointer items-center gap-1.5 rounded-lg bg-secondary px-3 font-medium transition-colors select-none hover:bg-accent has-checked:bg-primary has-checked:text-primary-foreground has-focus-visible:ring-3 has-focus-visible:ring-ring/50 has-disabled:cursor-not-allowed has-disabled:opacity-50"
+            className={cn(
+              buttonVariants({ variant: "secondary" }),
+              "cursor-pointer rounded-lg px-3 has-checked:bg-primary has-checked:text-primary-foreground has-focus-visible:border-ring has-focus-visible:ring-3 has-focus-visible:ring-ring/50 has-disabled:cursor-not-allowed has-disabled:opacity-50",
+            )}
           >
             <input
               type="checkbox"

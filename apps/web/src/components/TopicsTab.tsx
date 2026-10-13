@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 
+import { Button } from "#/components/ui/button";
 import {
   HALF_LIFE_DAYS,
   WEIGHT_STEP,
@@ -131,13 +132,14 @@ function TopicForm() {
         onChange={(decay) => setTopic({ ...topic, decay })}
       />
       <div className="flex items-center gap-3">
-        <button
+        <Button
           type="submit"
+          size="lg"
           disabled={mutation.isPending}
-          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85 disabled:opacity-50"
+          className="px-4"
         >
           {mutation.isPending ? "Adding…" : "Add topic"}
-        </button>
+        </Button>
         <p role="status" className="min-h-6">
           {mutation.isError && (
             <span className="text-destructive">
@@ -298,14 +300,16 @@ function TopicRow({ topic }: { topic: Topic }) {
       {topic.decay && (
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <span className="text-muted-foreground">{decayNote(topic)}</span>
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="lg"
             disabled={busy}
             onClick={() => renew.mutate()}
-            className="inline-flex items-center justify-center rounded-full bg-secondary px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
+            className="px-4"
           >
             {renew.isPending ? "Reaffirming…" : "Reaffirm"}
-          </button>
+          </Button>
         </div>
       )}
       {failed && (

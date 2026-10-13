@@ -6,6 +6,7 @@ import {
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
+import { Button } from "#/components/ui/button";
 import { AppShell } from "#/components/AppShell";
 import { QueueButton } from "#/components/QueueButton";
 import { showsThumbnails, type DisplayPrefs } from "#/lib/display";
@@ -95,12 +96,9 @@ function SearchForm({ params }: { params: SearchParams }) {
           required
           className="min-w-0 flex-1 rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-3 py-2"
         />
-        <button
-          type="submit"
-          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85"
-        >
+        <Button type="submit" size="lg" className="px-4">
           Search
-        </button>
+        </Button>
       </div>
       <div className="flex flex-wrap gap-4 text-sm">
         <FilterSelect
@@ -185,7 +183,7 @@ function SaveSearch({ params }: { params: SearchParams }) {
   const schedules = SCHEDULES.filter((s) => s.value !== "paused");
 
   return (
-    <div className="flex flex-col gap-2 rounded border p-4">
+    <div className="flex flex-col gap-2 rounded-xl border p-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <p className="min-w-0 flex-1">
           <span className="font-medium">“{params.q}”</span>
@@ -200,14 +198,16 @@ function SaveSearch({ params }: { params: SearchParams }) {
           options={schedules}
           onChange={setSchedule}
         />
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="lg"
           disabled={mutation.isPending}
           onClick={() => mutation.mutate()}
-          className="inline-flex items-center justify-center rounded-full bg-secondary px-4 py-2 text-sm font-medium hover:bg-accent text-sm font-medium disabled:opacity-50"
+          className="px-4"
         >
           {mutation.isPending ? "Saving…" : "Save search"}
-        </button>
+        </Button>
       </div>
       <p role="status" className="min-h-5 text-sm">
         {mutation.isError && (
@@ -287,14 +287,14 @@ function ResultRow({
           params={params}
           tabIndex={-1}
           aria-hidden="true"
-          className="relative aspect-video w-40 shrink-0 overflow-hidden rounded bg-secondary"
+          className="relative aspect-video w-40 shrink-0 overflow-hidden rounded-lg bg-secondary"
         >
           {result.thumbnail_url && (
             <img
               src={result.thumbnail_url}
               alt=""
               loading="lazy"
-              className="size-full object-cover"
+              className="size-full rounded-[inherit] object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
             />
           )}
           {duration && (

@@ -6,6 +6,12 @@ import { Button } from "#/components/ui/button";
 import { cn } from "#/lib/utils";
 import { dequeue, enqueueVideo, queueQuery } from "#/server/queue";
 
+/** Stacked icons cross-fade; reduced motion keeps only the opacity fade. */
+const ICON =
+  "col-start-1 row-start-1 size-4 transition-[opacity,scale,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)]";
+const ACTIVE = "opacity-100 motion-safe:scale-100 motion-safe:blur-none";
+const INACTIVE = "opacity-0 motion-safe:scale-25 motion-safe:blur-xs";
+
 type QueueMessage = { ok: boolean; text: string };
 
 /**
@@ -94,7 +100,10 @@ export function QueueButton({
           queued ? `Remove ${title} from queue` : `Add ${title} to queue`
         }
       >
-        {queued ? <ListMinus /> : <ListPlus />}
+        <span className="relative inline-grid size-4" aria-hidden="true">
+          <ListPlus className={cn(ICON, queued ? INACTIVE : ACTIVE)} />
+          <ListMinus className={cn(ICON, queued ? ACTIVE : INACTIVE)} />
+        </span>
         {queued ? "Remove from queue" : "Add to queue"}
       </Button>
       <QueueStatus message={message} />

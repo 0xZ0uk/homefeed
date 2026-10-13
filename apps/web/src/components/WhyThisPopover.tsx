@@ -1,4 +1,5 @@
 import type { ScoreBreakdownOut } from "@homefeed/api-client";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { breakdownTerms, formatScore } from "#/lib/breakdown";
@@ -55,15 +56,23 @@ export function WhyThisPopover({
       >
         <span className="sr-only">Why this is here: </span>
         {explanation}
-        <span aria-hidden="true" className="ml-1 inline-block text-xs">
-          {open ? "▴" : "▾"}
-        </span>
+        {open ? (
+          <ChevronUp
+            aria-hidden="true"
+            className="ml-1 inline-block size-3.5 align-middle"
+          />
+        ) : (
+          <ChevronDown
+            aria-hidden="true"
+            className="ml-1 inline-block size-3.5 align-middle"
+          />
+        )}
       </button>
       <section
         id={panelId}
         aria-labelledby={headingId}
         hidden={!open}
-        className="absolute top-full left-0 z-20 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-xl bg-popover p-3 text-sm text-popover-foreground shadow-lg ring-1 ring-foreground/10"
+        className="absolute top-full left-0 z-20 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-transparent bg-popover p-3 text-sm text-popover-foreground shadow-lg ring-1 ring-foreground/10"
       >
         <h4 id={headingId} className="mb-2 text-sm font-semibold">
           Score breakdown

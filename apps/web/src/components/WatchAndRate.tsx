@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { Button } from "#/components/ui/button";
 import { RatingPicker } from "#/components/RatingPicker";
 import { VideoPlayer, type VideoPlayerHandle } from "#/components/VideoPlayer";
 import type { Grade } from "#/lib/grades";
@@ -197,21 +198,25 @@ function YourRating({
           "Not rated yet."
         )}
       </p>
-      <button
+      <Button
         type="button"
-        className="inline-flex h-9 items-center justify-center rounded-full bg-secondary px-4 text-sm font-medium hover:bg-accent disabled:opacity-50"
+        variant="secondary"
+        size="lg"
+        className="px-4"
         onClick={onEdit}
       >
         {grade ? "Change" : "Rate"}
-      </button>
+      </Button>
       {grade && (
-        <button
+        <Button
           type="button"
-          className="inline-flex h-9 items-center justify-center rounded-full px-4 text-sm font-medium hover:bg-accent"
+          variant="ghost"
+          size="lg"
+          className="px-4"
           onClick={() => void remove()}
         >
           Remove rating
-        </button>
+        </Button>
       )}
       {error && (
         <p role="alert" className="w-full text-destructive">

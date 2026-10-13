@@ -108,7 +108,7 @@ function SuggestionRow({
               width={40}
               height={40}
               loading="lazy"
-              className="size-10 shrink-0 rounded-full"
+              className="size-10 shrink-0 rounded-full outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
             />
           )}
           <div className="min-w-0">

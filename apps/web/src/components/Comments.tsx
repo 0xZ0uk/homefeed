@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { Button } from "#/components/ui/button";
 import { formatLikes } from "#/lib/comments";
 import { commentsQuery, type Comment } from "#/server/video-extras";
 
@@ -15,13 +16,15 @@ export function Comments({ videoId }: { videoId: string }) {
   let body;
   if (!shown) {
     body = (
-      <button
+      <Button
         type="button"
-        className="self-start inline-flex h-9 items-center justify-center rounded-full bg-secondary px-4 text-sm font-medium hover:bg-accent disabled:opacity-50"
+        variant="secondary"
+        size="lg"
+        className="self-start px-4"
         onClick={() => setShown(true)}
       >
         Show comments
-      </button>
+      </Button>
     );
   } else if (comments.isPending) {
     body = <p role="status">Loading comments…</p>;

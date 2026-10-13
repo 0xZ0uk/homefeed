@@ -157,14 +157,14 @@ function EntryRow({
           params={params}
           tabIndex={-1}
           aria-hidden="true"
-          className="relative aspect-video w-40 shrink-0 overflow-hidden rounded bg-secondary"
+          className="relative aspect-video w-40 shrink-0 overflow-hidden rounded-lg bg-secondary"
         >
           {entry.thumbnail_url && (
             <img
               src={entry.thumbnail_url}
               alt=""
               loading="lazy"
-              className="size-full object-cover"
+              className="size-full rounded-[inherit] object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
             />
           )}
           {duration && (

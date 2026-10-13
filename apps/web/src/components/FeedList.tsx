@@ -83,15 +83,16 @@ export function FeedList({
         className="sticky top-14 z-30 -mx-1 flex gap-3 overflow-x-auto bg-background px-1 py-3"
       >
         {LENGTH_FILTERS.map(({ value, label }) => (
-          <button
+          <Button
             key={value}
             type="button"
+            variant="secondary"
             aria-pressed={filter === value}
             onClick={() => setFilter(value)}
-            className="h-8 shrink-0 rounded-lg bg-secondary px-3 text-sm font-medium transition-colors outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 aria-pressed:bg-primary aria-pressed:text-primary-foreground"
+            className="shrink-0 rounded-lg px-3 aria-pressed:bg-primary aria-pressed:text-primary-foreground"
           >
             {label}
-          </button>
+          </Button>
         ))}
       </div>
       {/* Focus moves here when a dismissed card disappears from the grid. */}
@@ -233,7 +234,7 @@ function VideoCard({
               src={thumbnail}
               alt=""
               loading="lazy"
-              className="size-full object-cover"
+              className="size-full rounded-[inherit] object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
             />
           ) : (
             <span
