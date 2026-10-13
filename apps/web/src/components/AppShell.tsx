@@ -1,5 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate, type LinkProps } from "@tanstack/react-router";
+import {
+  Link,
+  useMatch,
+  useNavigate,
+  type LinkProps,
+} from "@tanstack/react-router";
 import {
   Activity,
   ChartLine,
@@ -54,7 +59,6 @@ const NAV: NavItem[][] = [
     { to: "/playlists", label: "Playlists", icon: SquarePlay },
   ],
   [
-    { to: "/search", label: "Search", icon: Search },
     { to: "/discover", label: "Discover", icon: Compass },
     { to: "/curation", label: "Curation", icon: SlidersHorizontal },
     { to: "/insights", label: "Insights", icon: ChartLine },
@@ -221,11 +225,18 @@ function Logo() {
   );
 }
 
-/** YouTube's search box: a pill field joined to a search button. Hidden on
- * narrow screens, where the masthead links to the search page instead. */
+/** YouTube's search box: a pill field joined to a search button, showing the
+ * query on the search page. Hidden on narrow screens, where the masthead
+ * links to the search page instead. */
 function MastheadSearch() {
+  const query = useMatch({ from: "/search", shouldThrow: false })?.search.q;
+  // Remount when the query changes, so the field shows the current search.
+  return <MastheadSearchForm key={query} query={query ?? ""} />;
+}
+
+function MastheadSearchForm({ query }: { query: string }) {
   const navigate = useNavigate();
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(query);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
