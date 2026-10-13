@@ -3,16 +3,19 @@ import { useBlocker } from "@tanstack/react-router";
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
+  type FormEvent,
   type ReactNode,
 } from "react";
 
 import { Button } from "#/components/ui/button";
-import { RatingPicker } from "#/components/RatingPicker";
+import { RatingPicker, UNRATED_START } from "#/components/RatingPicker";
+import { ScoreSlider } from "#/components/ScoreSlider";
 import { VideoPlayer, type VideoPlayerHandle } from "#/components/VideoPlayer";
-import { MAX_SCORE, MIN_SCORE, formatScore } from "#/lib/scores";
+import { formatScore } from "#/lib/scores";
 import type { WatchEvent } from "#/lib/player-events";
 import { createWatchEventReporter, sendWatchEvent } from "#/lib/watch-reporter";
 import { ratingQuery, removeRating, saveRating } from "#/server/ratings";
@@ -57,7 +60,6 @@ export function WatchAndRate({
   const score = rating?.score ?? null;
   const player = useRef<VideoPlayerHandle>(null);
   const [endedPrompt, setEndedPrompt] = useState(false);
-  const [editing, setEditing] = useState(false);
   // Read by the navigation blocker, so kept in refs rather than state.
   const played = useRef(false);
   const answered = useRef(false);
@@ -134,25 +136,13 @@ export function WatchAndRate({
         autoFocus
       />
     );
-  } else if (editing) {
-    panel = (
-      <RatingPicker
-        title={score !== null ? "Change your rating" : "Rate this video"}
-        current={score}
-        onRate={rate}
-        onClose={() => setEditing(false)}
-        skipLabel="Cancel"
-        autoFocus
-      />
-    );
   } else {
     panel = (
-      <YourRating
+      <InlineRating
         score={score}
         loadFailed={isError}
-        onEdit={() => setEditing(true)}
+        onRate={rate}
         onRemove={remove}
-        onRestore={rate}
       />
     );
   }
@@ -179,117 +169,162 @@ export function WatchAndRate({
   );
 }
 
-function YourRating({
+/**
+ * The rating, always on the page: the slider sits at the saved score (or the
+ * middle of the scale, unrated), and moving it offers Save and Reset. A saved
+ * rating can be removed, with an Undo.
+ */
+function InlineRating({
   score,
   loadFailed,
-  onEdit,
+  onRate,
   onRemove,
-  onRestore,
 }: {
   score: number | null;
   loadFailed: boolean;
-  onEdit: () => void;
+  onRate: (score: number) => Promise<void>;
   onRemove: () => Promise<void>;
-  onRestore: (score: number) => Promise<void>;
 }) {
+  const headingId = useId();
+  const [draft, setDraft] = useState(score ?? UNRATED_START);
+  const [saved, setSaved] = useState(score);
+  if (score !== saved) {
+    // The stored score changed (saved here, in a prompt or removed): follow it.
+    setSaved(score);
+    setDraft(score ?? UNRATED_START);
+  }
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   // The score that was just removed, so it can be put back.
   const [removed, setRemoved] = useState<number | null>(null);
 
-  const remove = async () => {
+  const run = async (action: () => Promise<void>, failure: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+    } catch {
+      setError(failure);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const save = (event: FormEvent) => {
+    event.preventDefault();
+    void run(async () => {
+      await onRate(draft);
+      setRemoved(null);
+    }, "Couldn't save the rating. Try again.");
+  };
+
+  const remove = () => {
     if (score === null) return;
     const previous = score;
-    setError(null);
-    try {
+    void run(async () => {
       await onRemove();
       setRemoved(previous);
-    } catch {
-      setError("Couldn't remove the rating. Try again.");
-    }
+    }, "Couldn't remove the rating. Try again.");
   };
 
-  const undo = async () => {
+  const undo = () => {
     if (removed === null) return;
-    setError(null);
-    try {
-      await onRestore(removed);
+    const previous = removed;
+    void run(async () => {
+      await onRate(previous);
       setRemoved(null);
-    } catch {
-      setError("Couldn't restore the rating. Try again.");
-    }
+    }, "Couldn't restore the rating. Try again.");
   };
 
-  // Rating again (score is set) retires the undo.
+  const changed = score === null || draft !== score;
+  // Rating again retires the undo.
   const undoable = score === null ? removed : null;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-secondary p-3">
-      <p className="mr-auto">
+    <form
+      aria-labelledby={headingId}
+      onSubmit={save}
+      className="flex flex-col gap-2 rounded-xl bg-secondary p-3"
+    >
+      <h3 id={headingId} className="font-semibold">
         {score !== null ? (
           <>
             Your rating:{" "}
-            <strong className="text-lg tabular-nums">
-              {formatScore(score)}
-            </strong>
-            <span
-              aria-hidden="true"
-              className="relative mx-3 inline-block h-1.5 w-24 rounded-full bg-[linear-gradient(to_right_in_oklch,var(--score-low),var(--score-mid),var(--score-high))] align-middle"
-            >
-              <span
-                className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background bg-foreground shadow-sm"
-                style={{
-                  left: `${((score - MIN_SCORE) / (MAX_SCORE - MIN_SCORE)) * 100}%`,
-                }}
-              />
-            </span>
+            <span className="tabular-nums">{formatScore(score)}</span>
           </>
         ) : loadFailed ? (
-          "Couldn't load your rating."
+          "Couldn't load your rating"
         ) : (
-          "Not rated yet."
+          "Rate this video"
         )}
-      </p>
-      <Button
-        type="button"
-        variant="outline"
-        size="lg"
-        className="px-4"
-        onClick={onEdit}
-      >
-        {score !== null ? "Change" : "Rate"}
-      </Button>
-      {score !== null && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="lg"
-          className="px-4"
-          onClick={() => void remove()}
-        >
-          Remove rating
-        </Button>
-      )}
-      <p role="status" className="text-sm text-muted-foreground">
-        {undoable !== null && (
-          <>
-            Rating removed.{" "}
+      </h3>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <ScoreSlider
+          value={draft}
+          onValueChange={setDraft}
+          label="Score"
+          disabled={busy}
+          className="max-w-xl min-w-60 grow pt-6"
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          {changed ? (
+            <>
+              <Button
+                type="submit"
+                size="lg"
+                className="px-4 tabular-nums"
+                disabled={busy}
+              >
+                Save {formatScore(draft)}
+              </Button>
+              {score !== null && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="lg"
+                  className="px-4"
+                  disabled={busy}
+                  onClick={() => setDraft(score)}
+                >
+                  Reset
+                </Button>
+              )}
+            </>
+          ) : (
             <Button
               type="button"
-              variant="link"
-              className="h-auto p-0"
-              onClick={() => void undo()}
+              variant="ghost"
+              size="lg"
+              className="px-4"
+              disabled={busy}
+              onClick={remove}
             >
-              Undo
+              Remove rating
             </Button>
-          </>
-        )}
-      </p>
+          )}
+          <p role="status" className="text-sm text-muted-foreground">
+            {undoable !== null && (
+              <>
+                Rating removed.{" "}
+                <Button
+                  type="button"
+                  variant="link"
+                  className="h-auto p-0"
+                  disabled={busy}
+                  onClick={undo}
+                >
+                  Undo
+                </Button>
+              </>
+            )}
+          </p>
+        </div>
+      </div>
       {error && (
-        <p role="alert" className="w-full text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
-    </div>
+    </form>
   );
 }

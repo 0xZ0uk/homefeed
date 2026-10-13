@@ -23,7 +23,7 @@ interface RatingPickerProps {
 }
 
 /** Where the slider starts for an unrated video: the middle of the scale. */
-const UNRATED_START = 5.5;
+export const UNRATED_START = 5.5;
 
 /**
  * A 1 to 10 rating: pick the score on the slider, then save it, which closes
