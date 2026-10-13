@@ -1,23 +1,24 @@
 import {
-  getChannelUploads,
+  getChannelProfile,
   getSuggestedChannels,
-  type ChannelUploadsOut,
+  refreshSuggestedChannels,
+  type ChannelProfileOut,
   type SuggestedChannel,
 } from "@homefeed/api-client";
 import { queryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 
 import { isChannelId } from "#/lib/discover";
-import { apiClient } from "#/server/api";
+import { apiClient, apiErrorMessage } from "#/server/api";
 
 /** Server functions for the discover page. Subscribing uses `channels.subscribe`. */
 
-export type { ChannelUploadsOut, SuggestedChannel };
+export type { ChannelProfileOut, SuggestedChannel };
 
 /** How many suggested channels the discover page shows. */
 export const SUGGESTIONS_LIMIT = 20;
-/** How many uploads a suggestion's preview lists. */
-export const PREVIEW_UPLOADS = 5;
+/** How many uploads a channel page lists. */
+export const PROFILE_UPLOADS = 12;
 
 const fetchSuggestedChannels = createServerFn({ method: "GET" }).handler(
   async (): Promise<SuggestedChannel[]> => {
@@ -35,26 +36,49 @@ export const suggestedChannelsQuery = queryOptions({
   queryFn: () => fetchSuggestedChannels(),
 });
 
-const fetchChannelUploads = createServerFn({ method: "GET" })
+/** Re-crawl the featured channels, preferring ones not in `exclude`. */
+export const refreshSuggestions = createServerFn({ method: "POST" })
+  .inputValidator((data: { exclude: string[] }) => {
+    if (!Array.isArray(data.exclude)) throw new Error("exclude must be a list");
+    return { exclude: data.exclude.filter(isChannelId) };
+  })
+  .handler(async ({ data }): Promise<SuggestedChannel[]> => {
+    const { data: channels } = await refreshSuggestedChannels({
+      client: apiClient(),
+      query: { limit: SUGGESTIONS_LIMIT, exclude: data.exclude },
+      throwOnError: true,
+    });
+    return channels;
+  });
+
+/** A channel's profile and latest uploads, or null when there's no such channel. */
+const fetchChannelProfile = createServerFn({ method: "GET" })
   .inputValidator((data: { channelId: string }) => {
     if (typeof data.channelId !== "string" || !isChannelId(data.channelId)) {
       throw new Error("channelId must be a YouTube channel id");
     }
     return { channelId: data.channelId };
   })
-  .handler(async ({ data }): Promise<ChannelUploadsOut> => {
-    const { data: uploads } = await getChannelUploads({
+  .handler(async ({ data }): Promise<ChannelProfileOut | null> => {
+    const {
+      data: profile,
+      error,
+      response,
+    } = await getChannelProfile({
       client: apiClient(),
       path: { channel_id: data.channelId },
-      query: { limit: PREVIEW_UPLOADS },
-      throwOnError: true,
+      query: { limit: PROFILE_UPLOADS },
     });
-    return uploads;
+    if (profile) return profile;
+    if (response?.status === 404) return null;
+    throw new Error(
+      apiErrorMessage(error, `Couldn't load the channel (${response?.status})`),
+    );
   });
 
-export const channelUploadsQuery = (channelId: string) =>
+export const channelProfileQuery = (channelId: string) =>
   queryOptions({
-    queryKey: ["channels", channelId, "uploads", PREVIEW_UPLOADS],
-    queryFn: () => fetchChannelUploads({ data: { channelId } }),
-    staleTime: 10 * 60 * 1000,
+    queryKey: ["channels", channelId, "profile"],
+    queryFn: () => fetchChannelProfile({ data: { channelId } }),
+    staleTime: 5 * 60 * 1000,
   });

@@ -6,14 +6,15 @@ through the Gateway and stored in `featured_channels`, with the fetch time in
 `channel_graph_fetches`; they are refetched once older than `FEATURED_MAX_AGE`.
 
 Liked channels are the subscribed, unmuted channels with a love or like prior, then the
-channels of videos rated top tier (7.0 and up), and never a muted channel. Their
-featured channels that I'm not subscribed to are the suggested channels, ordered by how
-many liked channels feature them. `ChannelGraphSource` turns the top suggestions'
-newest uploads into candidates, attributed to the liked channel that featured them.
+channels of videos rated top tier (7.0 and up), and never a muted or blocked (see
+`channel_hides`) channel. Their featured channels that I'm not subscribed to or have
+hidden are the suggested channels, ordered by how many liked channels feature them.
+`ChannelGraphSource` turns the top suggestions' newest uploads into candidates,
+attributed to the liked channel that featured them.
 """
 
 import logging
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -31,6 +32,10 @@ logger = logging.getLogger(__name__)
 FEATURED_MAX_AGE = timedelta(days=7)
 # At most this many liked channels' featured channels are fetched per run or request.
 DEFAULT_MAX_SEEDS = 20
+# A forced refresh (`refresh_suggestions`) fetches at most this many, to stay quick.
+DEFAULT_MAX_FORCED_FETCHES = 10
+# ... plus this many of the suggestions' own featured channels (the second hop).
+DEFAULT_MAX_HOP_FETCHES = 5
 DEFAULT_SUGGESTIONS_LIMIT = 20
 
 
@@ -71,7 +76,8 @@ class SuggestedChannel:
 
 def liked_channel_ids(session: Session, *, limit: int | None = None) -> list[str]:
     """Channels I like: loved, then liked subscriptions (by title), then channels of
-    top-tier rated videos (most recently rated first). Muted channels never count."""
+    top-tier rated videos (most recently rated first). Muted and blocked channels never
+    count."""
     rows = session.execute(
         text(
             """
@@ -96,6 +102,7 @@ def liked_channel_ids(session: Session, *, limit: int | None = None) -> list[str
             SELECT liked.id
             FROM liked LEFT JOIN last_rated ON last_rated.id = liked.id
             WHERE liked.id NOT IN (SELECT channel_id FROM channel_prefs WHERE muted = 1)
+              AND liked.id NOT IN (SELECT channel_id FROM channel_hides WHERE kind = 'blocked')
             GROUP BY liked.id
             ORDER BY min(liked.rank), min(liked.sort_key), max(last_rated.rated_at) DESC,
                      liked.id
@@ -320,14 +327,43 @@ def featured_channels(
 
 
 def suggested_channels(
-    session: Session, *, limit: int | None = DEFAULT_SUGGESTIONS_LIMIT
+    session: Session,
+    *,
+    limit: int | None = DEFAULT_SUGGESTIONS_LIMIT,
+    exclude: Collection[str] = (),
+    second_hop: bool = False,
 ) -> list[SuggestedChannel]:
-    """Channels featured by liked channels (from storage) that I'm not subscribed to,
-    most often featured first, then by best position on a page, then most subscribers."""
+    """Channels featured by liked channels (from storage) that I'm not subscribed to and
+    haven't hidden, most often featured first, then by best position on a page, then
+    most subscribers.
+
+    With `second_hop`, channels featured by those suggestions follow all of them (never
+    the liked channels, subscriptions, hidden or first-hop channels), ranked the same
+    way by how many suggestions feature them; their `featured_by` are the suggestions.
+    A hidden channel is neither suggested nor a source.
+
+    `exclude` rotates the whole list: the channels in it (those currently shown) go after
+    all the others, keeping their order, so the first `limit` prefer unseen channels and
+    wrap back to the top once fewer than `limit` unseen ones are left. Nothing is
+    dropped because of it."""
     liked = liked_channel_ids(session)
     if not liked:
         return []
-    order = {channel_id: index for index, channel_id in enumerate(liked)}
+    ranked = _rank(session, {channel_id: index for index, channel_id in enumerate(liked)}, set())
+    if second_hop and ranked:
+        first = {suggestion.channel_id: index for index, suggestion in enumerate(ranked)}
+        ranked += _rank(session, first, set(first) | set(liked))
+    if exclude:
+        seen = set(exclude)
+        ranked = [s for s in ranked if s.channel_id not in seen] + [
+            s for s in ranked if s.channel_id in seen
+        ]
+    return ranked if limit is None else ranked[:limit]
+
+
+def _rank(session: Session, sources: dict[str, int], skip: set[str]) -> list[SuggestedChannel]:
+    """The channels featured by `sources` (channel id -> rank) that I'm not subscribed to,
+    haven't hidden and aren't in `skip`, ranked by how many sources feature them."""
     rows = session.execute(
         text(
             """
@@ -336,17 +372,20 @@ def suggested_channels(
             FROM featured_channels AS f
             JOIN channels AS c ON c.id = f.featured_id
             JOIN channels AS src ON src.id = f.channel_id
-            WHERE f.channel_id IN :liked
+            WHERE f.channel_id IN :sources
               AND f.featured_id NOT IN (SELECT channel_id FROM channel_prefs)
+              AND f.featured_id NOT IN (SELECT channel_id FROM channel_hides)
             """
-        ).bindparams(bindparam("liked", expanding=True)),
-        {"liked": liked},
+        ).bindparams(bindparam("sources", expanding=True)),
+        {"sources": list(sources)},
     )
     by_id: dict[str, list[tuple[int, int, int | None, ChannelRef]]] = {}
     details: dict[str, tuple[str, str | None, str | None, str | None]] = {}
     for featured_id, source_id, position, subscribers, title, handle, url, thumb, source in rows:
+        if featured_id in skip:
+            continue
         by_id.setdefault(featured_id, []).append(
-            (order[source_id], position, subscribers, ChannelRef(source_id, source))
+            (sources[source_id], position, subscribers, ChannelRef(source_id, source))
         )
         details[featured_id] = (title, handle, url, thumb)
     suggestions: list[tuple[tuple[int, int, int, str, str], SuggestedChannel]] = []
@@ -372,8 +411,7 @@ def suggested_channels(
         )
         suggestions.append((key, suggestion))
     suggestions.sort(key=lambda pair: pair[0])
-    ranked = [suggestion for _key, suggestion in suggestions]
-    return ranked if limit is None else ranked[:limit]
+    return [suggestion for _key, suggestion in suggestions]
 
 
 def suggest(
@@ -382,11 +420,13 @@ def suggest(
     *,
     limit: int | None = DEFAULT_SUGGESTIONS_LIMIT,
     max_fetches: int = 5,
+    exclude: Collection[str] = (),
+    second_hop: bool = False,
     now: datetime | None = None,
 ) -> list[SuggestedChannel]:
-    """`suggested_channels`, first fetching the featured channels of up to
-    `max_fetches` liked channels that were never fetched (the daily job keeps the rest
-    fresh), so new likes show their suggestions right away."""
+    """`suggested_channels` (with its `exclude` and `second_hop`), first fetching the featured
+    channels of up to `max_fetches` liked channels that were never fetched (the daily job
+    keeps the rest fresh), so new likes show their suggestions right away."""
     with sessions() as session:
         liked = liked_channel_ids(session, limit=DEFAULT_MAX_SEEDS)
         never = [
@@ -394,7 +434,55 @@ def suggest(
         ][:max_fetches]
     refresh(sessions, gateway, never, now=now)
     with sessions() as session:
-        return suggested_channels(session, limit=limit)
+        return suggested_channels(session, limit=limit, exclude=exclude, second_hop=second_hop)
+
+
+def refresh_suggestions(
+    sessions: sessionmaker[Session],
+    gateway: Gateway,
+    *,
+    limit: int | None = DEFAULT_SUGGESTIONS_LIMIT,
+    exclude: Collection[str] = (),
+    second_hop: bool = False,
+    max_fetches: int = DEFAULT_MAX_FORCED_FETCHES,
+    max_hop_fetches: int = DEFAULT_MAX_HOP_FETCHES,
+    now: datetime | None = None,
+) -> list[SuggestedChannel]:
+    """Widen the suggestions, then return `suggested_channels` (with `exclude` and
+    `second_hop`). A failed fetch keeps what was stored.
+
+    First the featured channels of up to `max_fetches` of the top `DEFAULT_MAX_SEEDS`
+    liked channels are fetched again whatever their age, least recently fetched first
+    (never fetched ones before those). Then, with `second_hop`, those of up to
+    `max_hop_fetches` suggestions that were never fetched or are stale, preferring the
+    ones in `exclude` (already seen) and then the top ranked, so repeated refreshes
+    reach further."""
+    with sessions() as session:
+        liked = liked_channel_ids(session, limit=DEFAULT_MAX_SEEDS)
+        fetched_at = _fetch_times(session, liked)
+    order = sorted(liked, key=lambda channel_id: fetched_at.get(channel_id, ""))  # stable
+    refresh(sessions, gateway, order[:max_fetches], max_age=timedelta(0), now=now)
+    if second_hop and max_hop_fetches > 0:
+        seen = set(exclude)
+        with sessions() as session:
+            ranked = [s.channel_id for s in suggested_channels(session, limit=None)]
+            ranked.sort(key=lambda channel_id: channel_id not in seen)  # stable
+            stale = stale_channel_ids(session, ranked, now=now)
+        refresh(sessions, gateway, stale[:max_hop_fetches], now=now)
+    with sessions() as session:
+        return suggested_channels(session, limit=limit, exclude=exclude, second_hop=second_hop)
+
+
+def _fetch_times(session: Session, channel_ids: list[str]) -> dict[str, str]:
+    if not channel_ids:
+        return {}
+    rows = session.execute(
+        text(
+            "SELECT channel_id, fetched_at FROM channel_graph_fetches WHERE channel_id IN :ids"
+        ).bindparams(bindparam("ids", expanding=True)),
+        {"ids": channel_ids},
+    )
+    return {channel_id: fetched_at for channel_id, fetched_at in rows}
 
 
 def _subscribed_ids(session: Session, channel_ids: list[str]) -> set[str]:
@@ -422,7 +510,8 @@ class ChannelGraphSource:
     Refreshes the stale featured channels of up to `max_seeds` liked channels, then
     takes up to `per_channel` uploads from each of the top `max_channels` suggestions,
     attributed to the liked channel that features it first (`source_detail` = that
-    channel's id). Rated videos are never candidates. A channel that can't be fetched
+    channel's id). With `second_hop`, channels featured by suggestions count too (the
+    feed doesn't use it). Rated videos are never candidates. A channel that can't be fetched
     is skipped; the source fails only if every Gateway call failed.
     """
 
@@ -437,6 +526,7 @@ class ChannelGraphSource:
         max_channels: int = DEFAULT_SOURCE_CHANNELS,
         per_channel: int = DEFAULT_UPLOADS_PER_CHANNEL,
         max_age: timedelta = FEATURED_MAX_AGE,
+        second_hop: bool = False,
         now: datetime | None = None,
     ) -> None:
         self._sessions = sessions
@@ -445,6 +535,7 @@ class ChannelGraphSource:
         self._max_channels = max_channels
         self._per_channel = per_channel
         self._max_age = max_age
+        self._second_hop = second_hop
         self._now = now
 
     def fetch(self) -> list[FoundVideo]:
@@ -452,7 +543,9 @@ class ChannelGraphSource:
             liked = liked_channel_ids(session, limit=self._max_seeds)
         report = refresh(self._sessions, self._gateway, liked, max_age=self._max_age, now=self._now)
         with self._sessions() as session:
-            suggestions = suggested_channels(session, limit=self._max_channels)
+            suggestions = suggested_channels(
+                session, limit=self._max_channels, second_hop=self._second_hop
+            )
             rated = set(session.execute(text("SELECT video_id FROM ratings")).scalars())
         errors = list(report.failed.values())
         attempts = len(report.refreshed) + len(report.failed)

@@ -29,15 +29,15 @@ import logging
 import random
 from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from homefeed_core import channel_hides, poller, watch_events
 from homefeed_core import curation as curation_prefs
-from homefeed_core import poller, watch_events
 from homefeed_core.candidates import SUBSCRIPTION, list_candidates
 from homefeed_core.composer import (
     ChannelRatings,
@@ -360,12 +360,16 @@ def dismiss_feed_item(
 
 
 def load_curation(session: Session) -> dict[str, ChannelCuration]:
-    """Channel preferences by channel id, for the ranker and composer."""
+    """Channel preferences by channel id, for the ranker and composer. A blocked channel
+    (see `channel_hides`) counts as muted, keeping its other preferences if subscribed."""
     rows = session.execute(text("SELECT channel_id, prior, pinned, muted FROM channel_prefs"))
-    return {
+    result = {
         channel_id: ChannelCuration(prior=prior, pinned=bool(pinned), muted=bool(muted))
         for channel_id, prior, pinned, muted in rows
     }
+    for channel_id in channel_hides.blocked_channel_ids(session):
+        result[channel_id] = replace(result.get(channel_id, ChannelCuration()), muted=True)
+    return result
 
 
 def watched_video_ids(session: Session) -> set[str]:

@@ -28,6 +28,8 @@ class Channel:
     url: str | None = None
     thumbnail_url: str | None = None
     description: str | None = None
+    banner_url: str | None = None
+    subscriber_count: int | None = None
 
 
 @dataclass(frozen=True)

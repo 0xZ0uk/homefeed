@@ -22,6 +22,7 @@ import { Route as SearchRouteImport } from './routes/search'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as StatusRouteImport } from './routes/status'
 import { Route as WatchEventsRouteImport } from './routes/watch-events'
+import { Route as ChannelsChannelIdRouteImport } from './routes/channels.$channelId'
 import { Route as FeedDateRouteImport } from './routes/feed.$date'
 import { Route as PlaylistsIndexRouteImport } from './routes/playlists.index'
 import { Route as PlaylistsPlaylistIdRouteImport } from './routes/playlists.$playlistId'
@@ -95,6 +96,11 @@ const WatchEventsRoute = WatchEventsRouteImport.update({
   path: '/watch-events',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChannelsChannelIdRoute = ChannelsChannelIdRouteImport.update({
+  id: '/channels/$channelId',
+  path: '/channels/$channelId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FeedDateRoute = FeedDateRouteImport.update({
   id: '/feed/$date',
   path: '/feed/$date',
@@ -146,6 +152,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/status': typeof StatusRoute
   '/watch-events': typeof WatchEventsRoute
+  '/channels/$channelId': typeof ChannelsChannelIdRoute
   '/feed/$date': typeof FeedDateRoute
   '/playlists/$playlistId': typeof PlaylistsPlaylistIdRoute
   '/tags/$slug': typeof TagsSlugRoute
@@ -168,6 +175,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/status': typeof StatusRoute
   '/watch-events': typeof WatchEventsRoute
+  '/channels/$channelId': typeof ChannelsChannelIdRoute
   '/feed/$date': typeof FeedDateRoute
   '/playlists/$playlistId': typeof PlaylistsPlaylistIdRoute
   '/tags/$slug': typeof TagsSlugRoute
@@ -191,6 +199,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/status': typeof StatusRoute
   '/watch-events': typeof WatchEventsRoute
+  '/channels/$channelId': typeof ChannelsChannelIdRoute
   '/feed/$date': typeof FeedDateRoute
   '/playlists/$playlistId': typeof PlaylistsPlaylistIdRoute
   '/tags/$slug': typeof TagsSlugRoute
@@ -215,6 +224,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/status'
     | '/watch-events'
+    | '/channels/$channelId'
     | '/feed/$date'
     | '/playlists/$playlistId'
     | '/tags/$slug'
@@ -237,6 +247,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/status'
     | '/watch-events'
+    | '/channels/$channelId'
     | '/feed/$date'
     | '/playlists/$playlistId'
     | '/tags/$slug'
@@ -259,6 +270,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/status'
     | '/watch-events'
+    | '/channels/$channelId'
     | '/feed/$date'
     | '/playlists/$playlistId'
     | '/tags/$slug'
@@ -282,6 +294,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   StatusRoute: typeof StatusRoute
   WatchEventsRoute: typeof WatchEventsRoute
+  ChannelsChannelIdRoute: typeof ChannelsChannelIdRoute
   FeedDateRoute: typeof FeedDateRoute
   PlaylistsPlaylistIdRoute: typeof PlaylistsPlaylistIdRoute
   TagsSlugRoute: typeof TagsSlugRoute
@@ -384,6 +397,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WatchEventsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/channels/$channelId': {
+      id: '/channels/$channelId'
+      path: '/channels/$channelId'
+      fullPath: '/channels/$channelId'
+      preLoaderRoute: typeof ChannelsChannelIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/feed/$date': {
       id: '/feed/$date'
       path: '/feed/$date'
@@ -450,6 +470,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   StatusRoute: StatusRoute,
   WatchEventsRoute: WatchEventsRoute,
+  ChannelsChannelIdRoute: ChannelsChannelIdRoute,
   FeedDateRoute: FeedDateRoute,
   PlaylistsPlaylistIdRoute: PlaylistsPlaylistIdRoute,
   TagsSlugRoute: TagsSlugRoute,

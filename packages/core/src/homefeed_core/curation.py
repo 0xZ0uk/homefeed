@@ -121,7 +121,8 @@ _SELECT = """
 def subscribe(session: Session, gateway: Gateway, url: str) -> tuple[SubscribedChannel, bool]:
     """Subscribe to the channel at `url` (any channel URL form, or a bare @handle).
 
-    Returns the subscription and whether it is new. Subscribing again is a no-op apart
+    Returns the subscription and whether it is new. Subscribing clears any hide
+    (`channel_hides`) of the channel. Subscribing again is a no-op apart
     from refreshing the channel's metadata; existing preferences are kept. Raises
     `NotAChannelUrlError` for video or playlist links, and the Gateway's errors
     (`UnsupportedUrlError`, `UnavailableError`, ...) as they come.
@@ -130,7 +131,8 @@ def subscribe(session: Session, gateway: Gateway, url: str) -> tuple[SubscribedC
     if not isinstance(resolved, ResolvedChannel):
         raise NotAChannelUrlError(f"Not a channel URL: {url!r}")
     channel = resolved.channel
-    _upsert_channel(session, channel)
+    upsert_channel(session, channel)
+    session.execute(text("DELETE FROM channel_hides WHERE channel_id = :id"), {"id": channel.id})
     inserted = session.execute(
         text(
             "INSERT INTO channel_prefs (channel_id) VALUES (:id) "
@@ -745,7 +747,7 @@ def _parse_timestamp(value: str) -> datetime:
     return datetime.fromisoformat(value).astimezone(UTC)
 
 
-def _upsert_channel(session: Session, channel: Channel) -> None:
+def upsert_channel(session: Session, channel: Channel) -> None:
     session.execute(
         text(
             """

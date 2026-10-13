@@ -43,3 +43,18 @@ const CHANNEL_ID = /^UC[A-Za-z0-9_-]{22}$/;
 export function isChannelId(value: string): boolean {
   return CHANNEL_ID.test(value);
 }
+
+/** The status-line message after hiding a channel. */
+export function hiddenMessage(
+  kind: "dismissed" | "blocked",
+  title: string,
+): string {
+  return kind === "dismissed"
+    ? `Dismissed ${title}.`
+    : `${title}'s videos won't show in your feed.`;
+}
+
+/** Label for a hidden channel in Settings. */
+export function hideKindLabel(kind: "dismissed" | "blocked"): string {
+  return kind === "dismissed" ? "Dismissed from Discover" : "Hidden from feed";
+}
