@@ -6,7 +6,7 @@ through the Gateway and stored in `featured_channels`, with the fetch time in
 `channel_graph_fetches`; they are refetched once older than `FEATURED_MAX_AGE`.
 
 Liked channels are the subscribed, unmuted channels with a love or like prior, then the
-channels of videos rated top tier (A-- and up), and never a muted channel. Their
+channels of videos rated top tier (7.0 and up), and never a muted channel. Their
 featured channels that I'm not subscribed to are the suggested channels, ordered by how
 many liked channels feature them. `ChannelGraphSource` turns the top suggestions'
 newest uploads into candidates, attributed to the liked channel that featured them.
@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from homefeed_core.candidates import CHANNEL_GRAPH, FoundVideo
 from homefeed_core.gateway import FeaturedChannel, Gateway, GatewayError
 from homefeed_core.gateway.events import format_timestamp
-from homefeed_core.grades import GRADES, is_top_tier
+from homefeed_core.scores import TOP_TIER_THRESHOLD
 
 logger = logging.getLogger(__name__)
 
@@ -84,13 +84,13 @@ def liked_channel_ids(session: Session, *, limit: int | None = None) -> list[str
                 UNION ALL
                 SELECT v.channel_id, 2, NULL
                 FROM ratings AS r JOIN videos AS v ON v.id = r.video_id
-                WHERE r.grade IN :grades
+                WHERE r.score >= :threshold
                 GROUP BY v.channel_id
             ),
             last_rated AS (
                 SELECT v.channel_id AS id, max(r.rated_at) AS rated_at
                 FROM ratings AS r JOIN videos AS v ON v.id = r.video_id
-                WHERE r.grade IN :grades
+                WHERE r.score >= :threshold
                 GROUP BY v.channel_id
             )
             SELECT liked.id
@@ -101,9 +101,9 @@ def liked_channel_ids(session: Session, *, limit: int | None = None) -> list[str
                      liked.id
             LIMIT :limit
             """
-        ).bindparams(bindparam("grades", expanding=True)),
+        ),
         {
-            "grades": [grade for grade in GRADES if is_top_tier(grade)],
+            "threshold": TOP_TIER_THRESHOLD,
             "limit": -1 if limit is None else limit,
         },
     )

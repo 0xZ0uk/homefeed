@@ -5,7 +5,7 @@ import { handleExport } from "./export";
 const EXPORT = {
   format: "homefeed-export",
   exported_at: "2026-10-13T09:30:00.000Z",
-  ratings: [{ video_id: "dQw4w9WgXcQ", grade: "A+" }],
+  ratings: [{ video_id: "dQw4w9WgXcQ", score: 8.1 }],
   settings: { stored: {} },
 };
 

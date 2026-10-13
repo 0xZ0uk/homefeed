@@ -20,7 +20,6 @@ from homefeed_core.db import open_database
 from homefeed_core.embeddings import EMBEDDING_DIMENSIONS, StubEmbeddingProvider, store_embedding
 from homefeed_core.enricher import Enricher, enrich_candidates, get_features
 from homefeed_core.gateway.fake import FakeGateway, make_channel, make_video
-from homefeed_core.grades import Grade
 from homefeed_core.model_features import FEATURE_NAMES
 from homefeed_core.ranker import SIMILARITY_WEIGHT
 from homefeed_core.ranking_models import RidgeModel, activate, record_version, save_model
@@ -146,10 +145,10 @@ def test_build_feed_ranks_composes_and_stores(sessions: sessionmaker[Session]) -
 def test_build_feed_stores_exploration_slots(sessions: sessionmaker[Session]) -> None:
     with sessions.begin() as session:
         add_videos(session, LOVED, range(4, 10))
-        grades: list[Grade] = ["A", "B--", "C", "S", "F"]  # 5 ratings: not explored
-        for n, grade in enumerate(grades):
-            set_rating(session, vid(LOVED, n), grade)
-        set_rating(session, vid(PLAIN, 0), "D")
+        scores = [7.8, 5.7, 4.7, 9.4, 1.6]  # 5 ratings: not explored
+        for n, score in enumerate(scores):
+            set_rating(session, vid(LOVED, n), score)
+        set_rating(session, vid(PLAIN, 0), 3.2)
         assert feeds.load_channel_ratings(session) == {
             LOVED: ChannelRatings(good=3, not_good=2),
             PLAIN: ChannelRatings(good=0, not_good=1),
@@ -181,7 +180,7 @@ def test_feed_size_is_exact_with_enough_candidates(sessions: sessionmaker[Sessio
 
 def test_watched_and_dismissed_are_left_out(sessions: sessionmaker[Session]) -> None:
     with sessions.begin() as session:
-        set_rating(session, vid(LOVED, 3), "B")
+        set_rating(session, vid(LOVED, 3), 6.3)
     first = build(sessions)
     with sessions.begin() as session:
         session.execute(
@@ -313,7 +312,7 @@ def test_active_model_is_blended_in_by_rating_count(
     with sessions.begin() as session:
         add_videos(session, PLAIN, range(10, 15))
         for n in range(10, 15):
-            set_rating(session, vid(PLAIN, n), "B")
+            set_rating(session, vid(PLAIN, n), 6.3)
         version_id = install_model(session, tmp_path)
 
     feed = build(sessions, settings=SETTINGS.model_copy(update={"data_dir": tmp_path}))
@@ -338,7 +337,7 @@ def test_unloadable_active_model_ranks_rules_only(
     sessions: sessionmaker[Session], tmp_path: Path
 ) -> None:
     with sessions.begin() as session:
-        set_rating(session, vid(PLAIN, 0), "B")
+        set_rating(session, vid(PLAIN, 0), 6.3)
         install_model(session, tmp_path, path="ranking_models/missing.json")
 
     feed = build(sessions, settings=SETTINGS.model_copy(update={"data_dir": tmp_path}))
@@ -351,7 +350,7 @@ def test_ratings_shape_channel_score(sessions: sessionmaker[Session]) -> None:
     with sessions.begin() as session:
         add_videos(session, PLAIN, range(10, 15))
         for n in range(10, 15):
-            set_rating(session, vid(PLAIN, n), "S++")
+            set_rating(session, vid(PLAIN, n), 10.0)
 
     feed = build(sessions)
 
@@ -581,8 +580,8 @@ def test_similarity_to_rated_tiers_shapes_ranking(sessions: sessionmaker[Session
     with sessions.begin() as session:
         session.execute(text("DELETE FROM candidates"))
         add_videos(session, PLAIN, range(40, 42), seen=NOW - timedelta(days=60))  # old
-        set_rating(session, loved, "S")
-        set_rating(session, hated, "F+")
+        set_rating(session, loved, 9.4)
+        set_rating(session, hated, 1.9)
         store_embedding(session, loved, unit(0))
         store_embedding(session, hated, unit(1))
         add_videos(session, LOVED, range(42, 44))
@@ -623,7 +622,7 @@ def test_explanations_name_the_nearest_top_tier_video(sessions: sessionmaker[Ses
     with sessions.begin() as session:
         session.execute(text("DELETE FROM candidates"))
         add_videos(session, PLAIN, range(40, 41), seen=NOW - timedelta(days=60))  # old
-        set_rating(session, loved, "A+")
+        set_rating(session, loved, 8.1)
         store_embedding(session, loved, unit(0))
         add_videos(session, PLAIN, range(41, 42))
         store_embedding(session, vid(PLAIN, 41), unit(0))
@@ -631,7 +630,7 @@ def test_explanations_name_the_nearest_top_tier_video(sessions: sessionmaker[Ses
     feed = build(sessions)
 
     assert [item.explanation for item in feed.items] == [
-        "New from your subscriptions · similar to Video 40 (A+)"
+        "New from your subscriptions · similar to Video 40 (8.1)"
     ]
     with sessions.begin() as session:
         stored = session.execute(text("SELECT explanation FROM feed_items")).scalar_one()

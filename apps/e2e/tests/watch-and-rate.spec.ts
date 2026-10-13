@@ -20,38 +20,38 @@ test("watch a video and rate it", async ({ page, request }) => {
   await expect(page.getByRole("heading", { name: video.title })).toBeVisible();
   await expect(page.getByText("Not rated yet.")).toBeVisible();
 
-  // One tap saves the tier; a second refines it and closes the picker.
+  // The slider starts mid-scale; nothing is saved until "Save".
   await page.getByRole("button", { name: "Rate", exact: true }).click();
-  const tiers = page.getByRole("group", { name: "Tier" });
-  await tiers.getByRole("button", { name: "A", exact: true }).click();
-  await expect(page.getByText("Saved A.")).toBeVisible();
-  await page
-    .getByRole("group", { name: /^Refine A/ })
-    .getByRole("button", { name: "A+", exact: true })
-    .click();
+  const slider = page.getByRole("slider", { name: "Score" });
+  await expect(slider).toBeFocused();
+  await expect(slider).toHaveAttribute("aria-valuetext", "5.5 out of 10");
+  await slider.press("End");
+  for (let i = 0; i < 13; i++) await slider.press("ArrowLeft");
+  await page.getByRole("button", { name: "Save 8.7", exact: true }).click();
 
-  await expect(tiers).toBeHidden();
-  await expect(page.getByText("Your rating: A+")).toBeVisible();
-  const saved = await apiGet<{ grade: string }>(
+  await expect(slider).toBeHidden();
+  await expect(page.getByText("Your rating: 8.7")).toBeVisible();
+  const saved = await apiGet<{ score: number }>(
     request,
     `/ratings/${video.id}`,
   );
-  expect(saved.body.grade).toBe("A+");
+  expect(saved.body.score).toBe(8.7);
 
   // The rating sticks across visits and can be changed.
   await page.reload();
   await waitForHydration(page);
-  await expect(page.getByText("Your rating: A+")).toBeVisible();
+  await expect(page.getByText("Your rating: 8.7")).toBeVisible();
   await page.getByRole("button", { name: "Change", exact: true }).click();
-  await page
-    .getByRole("group", { name: "Tier" })
-    .getByRole("button", { name: "C", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Done", exact: true }).click();
-  await expect(page.getByText("Your rating: C")).toBeVisible();
-  const changed = await apiGet<{ grade: string }>(
+  // It starts at the current score; Page Down moves a whole point.
+  const change = page.getByRole("slider", { name: "Score" });
+  await expect(change).toHaveAttribute("aria-valuetext", "8.7 out of 10");
+  for (let i = 0; i < 4; i++) await change.press("PageDown");
+  for (let i = 0; i < 7; i++) await change.press("ArrowLeft");
+  await page.getByRole("button", { name: "Save 4.0", exact: true }).click();
+  await expect(page.getByText("Your rating: 4.0")).toBeVisible();
+  const changed = await apiGet<{ score: number }>(
     request,
     `/ratings/${video.id}`,
   );
-  expect(changed.body.grade).toBe("C");
+  expect(changed.body.score).toBe(4);
 });

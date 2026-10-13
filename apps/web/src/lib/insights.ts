@@ -24,21 +24,21 @@ export function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-/** Ratings per tier over all `weeks`, best tier first. */
-export function totalTierCounts(
+/** Ratings per whole score over all `weeks`, best score (10) first. */
+export function totalScoreCounts(
   weeks: readonly WeekInsightsOut[],
-): { tier: string; count: number }[] {
-  const totals = new Map<string, number>();
+): { score: number; count: number }[] {
+  const totals = new Map<number, number>();
   for (const week of weeks) {
-    for (const { tier, count } of week.tier_counts) {
-      totals.set(tier, (totals.get(tier) ?? 0) + count);
+    for (const { score, count } of week.score_counts) {
+      totals.set(score, (totals.get(score) ?? 0) + count);
     }
   }
-  return [...totals].map(([tier, count]) => ({ tier, count }));
+  return [...totals].map(([score, count]) => ({ score, count }));
 }
 
-/** Good-tier rate over all `weeks` (good ratings / ratings), or null. */
-export function overallGoodTierRate(
+/** Good rate over all `weeks` (good ratings / ratings), or null. */
+export function overallGoodRate(
   weeks: readonly WeekInsightsOut[],
 ): number | null {
   const rated = weeks.reduce((sum, week) => sum + week.rated_count, 0);
@@ -73,7 +73,7 @@ export interface TrendPoint {
 }
 
 /**
- * Where each week's good-tier rate goes in the chart: weeks spread evenly
+ * Where each week's good rate goes in the chart: weeks spread evenly
  * left to right, rates 0–100% bottom to top.
  */
 export function trendPoints(
@@ -86,9 +86,9 @@ export function trendPoints(
   return weeks.map((week, index) => ({
     x: box.left + (weeks.length > 1 ? index * step : plotWidth / 2),
     y:
-      week.good_tier_rate == null
+      week.good_rate == null
         ? null
-        : box.top + (1 - week.good_tier_rate) * plotHeight,
+        : box.top + (1 - week.good_rate) * plotHeight,
     week,
   }));
 }

@@ -6,15 +6,16 @@ import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { AppShell } from "#/components/AppShell";
-import { GoodTierTrend } from "#/components/GoodTierTrend";
+import { GoodRateTrend } from "#/components/GoodRateTrend";
 import {
   formatPercent,
   formatWeek,
-  overallGoodTierRate,
+  overallGoodRate,
   overallRatingRate,
   plural,
-  totalTierCounts,
+  totalScoreCounts,
 } from "#/lib/insights";
+import { formatScore } from "#/lib/scores";
 import {
   INSIGHTS_WEEKS,
   weeklyInsightsQuery,
@@ -47,8 +48,8 @@ function Insights() {
       <div className="flex flex-col gap-1">
         <h2 className="text-xl font-semibold">Insights</h2>
         <p className="text-muted-foreground">
-          Is the feed working? The measure is the good-tier rate: the share of
-          rated videos rated {data.good_threshold} or higher. Last{" "}
+          Is the feed working? The measure is the good rate: the share of rated
+          videos scored {formatScore(data.good_threshold)} or higher. Last{" "}
           {INSIGHTS_WEEKS} weeks.
         </p>
       </div>
@@ -57,17 +58,17 @@ function Insights() {
 
       <section aria-labelledby="trend-heading" className="flex flex-col gap-3">
         <h3 id="trend-heading" className="text-lg font-semibold">
-          Good-tier rate by week
+          Good rate by week
         </h3>
         <p className="text-sm text-muted-foreground">
-          Over {INSIGHTS_WEEKS} weeks: good-tier rate{" "}
-          {formatPercent(overallGoodTierRate(weeks))}, rating rate{" "}
+          Over {INSIGHTS_WEEKS} weeks: good rate{" "}
+          {formatPercent(overallGoodRate(weeks))}, rating rate{" "}
           {formatPercent(overallRatingRate(weeks))}.
         </p>
-        <GoodTierTrend weeks={weeks} />
+        <GoodRateTrend weeks={weeks} />
       </section>
 
-      <TierDistribution weeks={weeks} />
+      <ScoreDistribution weeks={weeks} />
       <ScoreShares weeks={weeks} />
       <WeekTable weeks={weeks} />
     </AppShell>
@@ -77,8 +78,8 @@ function Insights() {
 function ThisWeek({ week }: { week: WeekInsights }) {
   const stats = [
     {
-      label: "Good-tier rate",
-      value: formatPercent(week.good_tier_rate),
+      label: "Good rate",
+      value: formatPercent(week.good_rate),
       detail:
         week.rated_count > 0
           ? `${week.good_count} of ${plural(week.rated_count, "rating")}`
@@ -130,14 +131,14 @@ function ThisWeek({ week }: { week: WeekInsights }) {
   );
 }
 
-function TierDistribution({ weeks }: { weeks: readonly WeekInsights[] }) {
-  const tiers = totalTierCounts(weeks);
-  const total = tiers.reduce((sum, { count }) => sum + count, 0);
-  const max = Math.max(1, ...tiers.map(({ count }) => count));
+function ScoreDistribution({ weeks }: { weeks: readonly WeekInsights[] }) {
+  const scores = totalScoreCounts(weeks);
+  const total = scores.reduce((sum, { count }) => sum + count, 0);
+  const max = Math.max(1, ...scores.map(({ count }) => count));
   return (
-    <section aria-labelledby="tiers-heading" className="flex flex-col gap-3">
-      <h3 id="tiers-heading" className="text-lg font-semibold">
-        Tier distribution
+    <section aria-labelledby="scores-heading" className="flex flex-col gap-3">
+      <h3 id="scores-heading" className="text-lg font-semibold">
+        Score distribution
       </h3>
       <p className="text-sm text-muted-foreground">
         {total > 0
@@ -146,12 +147,14 @@ function TierDistribution({ weeks }: { weeks: readonly WeekInsights[] }) {
       </p>
       {total > 0 && (
         <ul className="flex flex-col gap-1">
-          {tiers.map(({ tier, count }) => (
+          {scores.map(({ score, count }) => (
             <li
-              key={tier}
+              key={score}
               className="grid grid-cols-[1.5rem_1fr_5rem] items-center gap-3"
             >
-              <span className="font-semibold">{tier}</span>
+              <span className="text-right font-semibold tabular-nums">
+                {score}
+              </span>
               <span className="h-4" aria-hidden="true">
                 {count > 0 && (
                   <span
@@ -260,7 +263,7 @@ function WeekTable({ weeks }: { weeks: readonly WeekInsights[] }) {
                 Week of
               </th>
               <th scope="col" className="py-1 pr-3 font-medium">
-                Good-tier rate
+                Good rate
               </th>
               <th scope="col" className="py-1 pr-3 font-medium">
                 Rating rate
@@ -279,7 +282,7 @@ function WeekTable({ weeks }: { weeks: readonly WeekInsights[] }) {
                   {formatWeek(week.week_start)}
                 </th>
                 <td className="py-1 pr-3">
-                  {formatPercent(week.good_tier_rate)}
+                  {formatPercent(week.good_rate)}
                   {week.rated_count > 0 && (
                     <span className="text-muted-foreground">
                       {" "}

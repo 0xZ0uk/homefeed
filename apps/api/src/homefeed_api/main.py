@@ -20,7 +20,7 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from homefeed_core import (
@@ -40,6 +40,7 @@ from homefeed_core import (
     ranking_models,
     ratings,
     saved_searches,
+    scores,
     sponsorblock,
     videos,
     watch_events,
@@ -64,7 +65,6 @@ from homefeed_core.gateway import (
     create_gateway,
 )
 from homefeed_core.gateway.events import format_timestamp
-from homefeed_core.grades import GOOD_THRESHOLD, Grade
 
 
 def operation_id(route: APIRoute) -> str:
@@ -225,13 +225,22 @@ def get_extractor_status(
 
 
 class RatingInput(BaseModel):
-    grade: Grade
+    score: float = Field(
+        ge=scores.MIN_SCORE,
+        le=scores.MAX_SCORE,
+        description="1.0 to 10.0, with at most one decimal, e.g. 7.5",
+    )
+
+    @field_validator("score")
+    @classmethod
+    def _one_decimal(cls, score: float) -> float:
+        return scores.check_score(score)
 
 
 @app.put("/ratings/{video_id}", tags=["ratings"])
 def rate_video(video_id: VideoId, body: RatingInput, session: SessionDep) -> ratings.Rating:
     """Create or update the rating for a video."""
-    return ratings.set_rating(session, video_id, body.grade)
+    return ratings.set_rating(session, video_id, body.score)
 
 
 @app.delete(
@@ -575,7 +584,7 @@ class TierSimilarityOut(BaseModel):
 
 
 class SimilarityFeaturesOut(BaseModel):
-    """Similarity to the videos rated top tier (A-- and up) and bottom tier (D++ and
+    """Similarity to the videos rated top tier (7.0 and up) and bottom tier (4.0 and
     down); a side is null when no video of that set has an embedding yet."""
 
     top_tier: TierSimilarityOut | None
@@ -1202,8 +1211,8 @@ def refresh_feed(poll: FeedPollDep) -> FeedOut:
     return _feed_out(feeds.refresh_feed(poll=poll))
 
 
-class TierCountOut(BaseModel):
-    tier: Literal["S", "A", "B", "C", "D", "F"]
+class ScoreCountOut(BaseModel):
+    score: int = Field(ge=1, le=10, description="Whole score; 6.5 to 7.4 count as 7")
     count: int
 
 
@@ -1222,12 +1231,12 @@ class ScoreShareOut(BaseModel):
 class WeekInsightsOut(BaseModel):
     week_start: dt.date = Field(description="Monday of the week (local date)")
     rated_count: int = Field(description="Videos first rated this week")
-    good_count: int = Field(description="Of those, how many are rated B-- or higher")
-    good_tier_rate: float | None = Field(
+    good_count: int = Field(description="Of those, how many are rated 5.5 or higher")
+    good_rate: float | None = Field(
         description="good_count / rated_count; null when nothing was rated"
     )
-    tier_counts: list[TierCountOut] = Field(
-        description="Ratings of the week per tier, best (S) first"
+    score_counts: list[ScoreCountOut] = Field(
+        description="Ratings of the week per whole score, best (10) first"
     )
     shown_count: int = Field(
         description="Distinct videos in the week's feeds (the latest feed of each date)"
@@ -1245,7 +1254,7 @@ class WeekInsightsOut(BaseModel):
 
 
 class WeeklyInsightsOut(BaseModel):
-    good_threshold: Grade = Field(description="The lowest grade counted as good")
+    good_threshold: float = Field(description="The lowest score counted as good")
     weeks: list[WeekInsightsOut] = Field(description="Oldest first, ending with this week")
 
 
@@ -1256,10 +1265,10 @@ def get_weekly_insights(
         int, Query(ge=1, le=insights.MAX_WEEKS, description="How many weeks, up to this one")
     ] = insights.DEFAULT_WEEKS,
 ) -> WeeklyInsightsOut:
-    """Whether the feed is working, week by week: the good-tier rate (the success
-    metric), tier distribution, rating rate and model vs curation share."""
+    """Whether the feed is working, week by week: the good rate (the success
+    metric), score distribution, rating rate and model vs curation share."""
     return WeeklyInsightsOut(
-        good_threshold=GOOD_THRESHOLD,
+        good_threshold=scores.GOOD_THRESHOLD,
         weeks=[
             WeekInsightsOut.model_validate(week, from_attributes=True)
             for week in insights.weekly_insights(session, weeks=weeks)

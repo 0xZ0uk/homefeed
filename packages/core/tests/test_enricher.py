@@ -23,7 +23,6 @@ from homefeed_core.enricher import (
 )
 from homefeed_core.gateway import ExtractionError, UnavailableError, Video
 from homefeed_core.gateway.fake import FakeGateway, make_captions, make_channel, make_video
-from homefeed_core.grades import Grade
 from homefeed_core.ratings import set_rating
 from homefeed_core.videos import get_stored_video
 
@@ -329,14 +328,14 @@ def test_enrich_candidates_also_enriches_top_and_bottom_tier_rated_videos(
         session.execute(
             text("INSERT INTO channels (id, title) VALUES (:id, 'Woodworking')"), {"id": CHANNEL.id}
         )
-        rated: list[tuple[Video, Grade]] = [(loved, "A--"), (hated, "D++"), (middling, "C")]
-        for video, grade in rated:
+        rated: list[tuple[Video, float]] = [(loved, 7.2), (hated, 3.8), (middling, 4.7)]
+        for video, score in rated:
             gateway.add_video(video)
             session.execute(
                 text("INSERT INTO videos (id, channel_id, title) VALUES (:id, :channel, 'T')"),
                 {"id": video.id, "channel": CHANNEL.id},
             )
-            set_rating(session, video.id, grade)
+            set_rating(session, video.id, score)
 
     report = enrich_candidates(enricher=enricher, sessions=sessions, now=NOW)
 

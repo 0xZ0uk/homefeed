@@ -2,7 +2,7 @@
 "Training and promotion"). The worker runs `run_nightly_training` once a day.
 
 Dataset (`build_dataset`), one example per video:
-- Explicit rating: its value (-1 to 1) at weight 1.0, dated when the grade last changed.
+- Explicit rating: its value (-1 to 1) at weight 1.0, dated when the score last changed.
 - Dismissed from a feed (and not rated): value -0.5 at weight 0.3, dated at the first
   dismissal.
 - Abandoned within 60 seconds (and neither rated nor dismissed): value -0.5 at weight
@@ -55,7 +55,6 @@ from homefeed_core.config import Settings, get_settings
 from homefeed_core.curation import DEFAULT_PRIOR, Prior
 from homefeed_core.db import get_session_factory
 from homefeed_core.embeddings import Embedding, get_embeddings
-from homefeed_core.grades import is_bottom_tier, is_top_tier
 from homefeed_core.llm_tags import get_tags
 from homefeed_core.model_features import ModelInput, feature_matrix, upload_age_days
 from homefeed_core.ranker import SimilarityFeatures, TierSimilarity, channel_score
@@ -74,6 +73,7 @@ from homefeed_core.ranking_models import (
     save_model,
 )
 from homefeed_core.ratings import list_ratings
+from homefeed_core.scores import is_bottom_tier, is_top_tier
 
 logger = logging.getLogger(__name__)
 
@@ -232,12 +232,12 @@ def build_dataset(session: Session, *, now: datetime | None = None) -> list[Exam
         top={
             r.video_id: (embeddings[r.video_id], at)
             for r, at, _ in rated
-            if is_top_tier(r.grade) and r.video_id in embeddings
+            if is_top_tier(r.score) and r.video_id in embeddings
         },
         bottom={
             r.video_id: (embeddings[r.video_id], at)
             for r, at, _ in rated
-            if is_bottom_tier(r.grade) and r.video_id in embeddings
+            if is_bottom_tier(r.score) and r.video_id in embeddings
         },
     )
 

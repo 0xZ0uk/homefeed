@@ -12,7 +12,6 @@ from homefeed_core.insights import (
     RatedVideo,
     ScoreShare,
     ShownItem,
-    TierCount,
     summarize_weeks,
     week_start,
     weekly_insights,
@@ -53,38 +52,33 @@ def test_empty_weeks_have_no_rates() -> None:
 
     assert week.week_start == MONDAY
     assert week.rated_count == 0
-    assert week.good_tier_rate is None
+    assert week.good_rate is None
     assert week.rating_rate is None
     assert week.score_share is None
     assert week.feed_count == 0
-    assert [t.count for t in week.tier_counts] == [0] * 6
+    assert [c.score for c in week.score_counts] == list(range(10, 0, -1))
+    assert [c.count for c in week.score_counts] == [0] * 10
 
 
-def test_good_tier_rate_counts_b_minus_minus_and_up() -> None:
+def test_good_rate_counts_5_5_and_up() -> None:
     ratings = [
-        RatedVideo("a", "B--", MONDAY),
-        RatedVideo("b", "S++", date(2026, 10, 11)),
-        RatedVideo("c", "C++", MONDAY),
-        RatedVideo("d", "F--", date(2026, 10, 8)),
-        RatedVideo("e", "A", NEXT_MONDAY),
+        RatedVideo("a", 5.5, MONDAY),
+        RatedVideo("b", 10.0, date(2026, 10, 11)),
+        RatedVideo("c", 5.4, MONDAY),
+        RatedVideo("d", 1.0, date(2026, 10, 8)),
+        RatedVideo("e", 7.8, NEXT_MONDAY),
     ]
 
     first, second = summarize_weeks(ratings, [], first_week=MONDAY, weeks=2)
 
-    assert (first.rated_count, first.good_count, first.good_tier_rate) == (4, 2, 0.5)
-    assert first.tier_counts == [
-        TierCount("S", 1),
-        TierCount("A", 0),
-        TierCount("B", 1),
-        TierCount("C", 1),
-        TierCount("D", 0),
-        TierCount("F", 1),
-    ]
-    assert (second.rated_count, second.good_tier_rate) == (1, 1.0)
+    assert (first.rated_count, first.good_count, first.good_rate) == (4, 2, 0.5)
+    counts = {c.score: c.count for c in first.score_counts}
+    assert counts == {10: 1, 9: 0, 8: 0, 7: 0, 6: 1, 5: 1, 4: 0, 3: 0, 2: 0, 1: 1}
+    assert (second.rated_count, second.good_rate) == (1, 1.0)
 
 
 def test_ratings_outside_the_weeks_are_ignored() -> None:
-    ratings = [RatedVideo("a", "F", date(2026, 10, 4)), RatedVideo("b", "S", date(2026, 10, 19))]
+    ratings = [RatedVideo("a", 1.6, date(2026, 10, 4)), RatedVideo("b", 9.4, date(2026, 10, 19))]
 
     [week] = summarize_weeks(ratings, [], first_week=MONDAY, weeks=1)
 
@@ -165,10 +159,10 @@ def add_feed(
         )
 
 
-def rate(session: Session, video_id: str, grade: str, rated_at: str) -> None:
+def rate(session: Session, video_id: str, score: float, rated_at: str) -> None:
     session.execute(
-        text("INSERT INTO ratings (video_id, grade, value, rated_at) VALUES (:v, :g, 0, :at)"),
-        {"v": video_id, "g": grade, "at": rated_at},
+        text("INSERT INTO ratings (video_id, score, value, rated_at) VALUES (:v, :s, 0, :at)"),
+        {"v": video_id, "s": score, "at": rated_at},
     )
 
 
@@ -193,21 +187,21 @@ def test_weekly_insights_reads_ratings_and_the_feed_of_record(
             [(vid(0), rules), (vid(1), blended)],
         )
         add_feed(session, MONDAY, "2026-10-05T05:00:00.000Z", [(vid(2), rules)])
-        rate(session, vid(0), "A", "2026-10-13T10:00:00.000Z")
-        rate(session, vid(2), "C", "2026-10-06T10:00:00.000Z")
-        rate(session, vid(3), "B--", "2026-09-01T10:00:00.000Z")  # before the window
+        rate(session, vid(0), 7.8, "2026-10-13T10:00:00.000Z")
+        rate(session, vid(2), 4.7, "2026-10-06T10:00:00.000Z")
+        rate(session, vid(3), 5.7, "2026-09-01T10:00:00.000Z")  # before the window
 
     with sessions.begin() as session:
         first, second = weekly_insights(session, weeks=2, now=NOW, tz=UTC)
 
     assert first.week_start == MONDAY
-    assert (first.rated_count, first.good_tier_rate) == (1, 0.0)
+    assert (first.rated_count, first.good_rate) == (1, 0.0)
     assert (first.shown_count, first.rating_rate) == (1, 1.0)
     assert first.score_share == ScoreShare(model=0.0, curation=1.0, similarity=0.0)
     assert first.model_feed_count == 0
 
     assert second.week_start == NEXT_MONDAY
-    assert (second.rated_count, second.good_tier_rate) == (1, 1.0)
+    assert (second.rated_count, second.good_rate) == (1, 1.0)
     assert (second.shown_count, second.shown_rated_count) == (2, 1)
     # |0.25| + |-0.25| curation; then |0.25| model, |0.25| curation, |-0.25| similarity.
     assert shares(second.score_share) == pytest.approx((0.2, 0.6, 0.2))
@@ -219,7 +213,7 @@ def test_weekly_insights_puts_ratings_in_local_weeks(sessions: sessionmaker[Sess
 
     with sessions.begin() as session:
         # Sunday 23:30 UTC is already Monday in Lisbon summer time (UTC+1).
-        rate(session, vid(0), "S", "2026-10-11T23:30:00.000Z")
+        rate(session, vid(0), 9.4, "2026-10-11T23:30:00.000Z")
 
     with sessions.begin() as session:
         utc = weekly_insights(session, weeks=2, now=NOW, tz=UTC)

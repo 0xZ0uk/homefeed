@@ -15,7 +15,6 @@ from homefeed_core.db import open_database
 from homefeed_core.embeddings import EMBEDDING_DIMENSIONS, store_embedding
 from homefeed_core.feeds import load_rated_tiers
 from homefeed_core.gateway.events import format_timestamp
-from homefeed_core.grades import GRADES, grade_value, nearest_grade
 from homefeed_core.llm_tags import LLMTags, store_tags
 from homefeed_core.model_features import FEATURE_NAMES, FEATURE_VERSION, ModelInput
 from homefeed_core.ranker import (
@@ -36,6 +35,7 @@ from homefeed_core.ranking_models import (
     read_model,
     record_version,
 )
+from homefeed_core.scores import score_value, value_score
 from homefeed_core.trainer import (
     Signal,
     build_dataset,
@@ -100,18 +100,18 @@ def add_video(
 
 
 def rate(session: Session, video_id: str, value: float, at: datetime) -> None:
-    """Rate with the grade nearest to `value`, at a given time."""
-    grade = nearest_grade(value)
+    """Rate with the score nearest to `value`, at a given time."""
+    score = value_score(value)
     session.execute(
         text(
             """
-            INSERT INTO ratings (video_id, grade, value, rated_at, updated_at)
-            VALUES (:id, :grade, :value, :at, :at)
+            INSERT INTO ratings (video_id, score, value, rated_at, updated_at)
+            VALUES (:id, :score, :value, :at, :at)
             ON CONFLICT (video_id) DO UPDATE SET
-                grade = excluded.grade, value = excluded.value, updated_at = excluded.updated_at
+                score = excluded.score, value = excluded.value, updated_at = excluded.updated_at
             """
         ),
-        {"id": video_id, "grade": grade, "value": grade_value(grade), "at": format_timestamp(at)},
+        {"id": video_id, "score": score, "value": score_value(score), "at": format_timestamp(at)},
     )
 
 
@@ -197,14 +197,14 @@ def synthetic_history(
 
 
 def relabel_with_noise(sessions: sessionmaker[Session], *, seed: int = 99) -> None:
-    """Replace every rating's grade with a random one, keeping its time."""
+    """Replace every rating's score with a random one, keeping its time."""
     rng = np.random.default_rng(seed)
     with sessions.begin() as session:
         for video_id in session.execute(text("SELECT video_id FROM ratings")).scalars().all():
-            grade = GRADES[int(rng.integers(len(GRADES)))]
+            score = int(rng.integers(10, 101)) / 10
             session.execute(
-                text("UPDATE ratings SET grade = :grade, value = :value WHERE video_id = :id"),
-                {"id": video_id, "grade": grade, "value": grade_value(grade)},
+                text("UPDATE ratings SET score = :score, value = :value WHERE video_id = :id"),
+                {"id": video_id, "score": score, "value": score_value(score)},
             )
 
 
@@ -343,7 +343,7 @@ def test_dataset_features_only_use_earlier_ratings(sessions: sessionmaker[Sessio
     assert top2.similarity is not None and top2.similarity.top_tier is None
     assert examples["bottom1"].input.similarity == SimilarityFeatures(None, None)
     # Channel score from the earlier ratings: (0.9 + -1.0 + 0.8 * 5) / (2 + 5).
-    top2_value = grade_value(nearest_grade(0.9))
+    top2_value = score_value(value_score(0.9))
     assert top1.channel_score == pytest.approx((top2_value - 1.0 + 4) / 7)
     assert examples["bottom1"].input.channel_score == pytest.approx(0.8)
     assert top1.upload_age_days == pytest.approx(399)

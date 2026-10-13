@@ -22,7 +22,6 @@ from homefeed_core.channel_graph import (
 from homefeed_core.db import open_database
 from homefeed_core.gateway import Channel, ExtractionError, RateLimitedError, UnavailableError
 from homefeed_core.gateway.fake import FakeGateway, make_channel, make_video
-from homefeed_core.grades import Grade
 from homefeed_core.ratings import set_rating
 
 T0 = datetime(2026, 10, 12, 6, 0, tzinfo=UTC)
@@ -83,7 +82,7 @@ def subscribe(
         curation.update_channel(session, channel.id, prior=prior, muted=muted)
 
 
-def rate(sessions: sessionmaker[Session], video_id: str, channel: Channel, grade: Grade) -> None:
+def rate(sessions: sessionmaker[Session], video_id: str, channel: Channel, score: float) -> None:
     with sessions.begin() as session:
         session.execute(
             text("INSERT OR IGNORE INTO channels (id, title) VALUES (:id, :title)"),
@@ -93,7 +92,7 @@ def rate(sessions: sessionmaker[Session], video_id: str, channel: Channel, grade
             text("INSERT INTO videos (id, channel_id, title) VALUES (:id, :channel, :id)"),
             {"id": video_id, "channel": channel.id},
         )
-        set_rating(session, video_id, grade)
+        set_rating(session, video_id, score)
 
 
 @pytest.fixture
@@ -102,9 +101,9 @@ def curated(sessions: sessionmaker[Session], gateway: FakeGateway) -> None:
     subscribe(sessions, gateway, LOVED, "love")
     subscribe(sessions, gateway, NEUTRAL)
     subscribe(sessions, gateway, MUTED, "love", muted=True)
-    rate(sessions, "ddddddddddd", RATED, "A")
-    rate(sessions, "eeeeeeeeeee", RATED, "C")
-    rate(sessions, "mmmmmmmmmmm", MUTED, "S")
+    rate(sessions, "ddddddddddd", RATED, 7.8)
+    rate(sessions, "eeeeeeeeeee", RATED, 4.7)
+    rate(sessions, "mmmmmmmmmmm", MUTED, 9.4)
 
 
 def test_liked_channels_are_loved_liked_then_top_tier_rated_never_muted(
@@ -118,7 +117,7 @@ def test_liked_channels_are_loved_liked_then_top_tier_rated_never_muted(
 def test_a_channel_rated_below_top_tier_is_not_liked(
     sessions: sessionmaker[Session], gateway: FakeGateway
 ) -> None:
-    rate(sessions, "ddddddddddd", RATED, "B++")
+    rate(sessions, "ddddddddddd", RATED, 6.9)
     subscribe(sessions, gateway, NEUTRAL)
 
     with sessions() as session:
@@ -267,7 +266,7 @@ def test_featured_channels_falls_back_to_a_stale_copy(
 def test_source_finds_uploads_of_suggested_channels(
     sessions: sessionmaker[Session], gateway: FakeGateway, curated: None
 ) -> None:
-    rate(sessions, "y0yyyyyyyyy", Y, "B")  # rated: never a candidate
+    rate(sessions, "y0yyyyyyyyy", Y, 6.3)  # rated: never a candidate
     source = ChannelGraphSource(sessions, gateway, max_channels=2, per_channel=2, now=T0)
 
     report = generate([source], sessions=sessions, now=T0)

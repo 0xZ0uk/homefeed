@@ -7,7 +7,6 @@ import pytest
 
 from homefeed_core.curation import TopicVector
 from homefeed_core.embeddings import EMBEDDING_DIMENSIONS, normalize
-from homefeed_core.grades import grade_value
 from homefeed_core.llm_tags import LLMTags
 from homefeed_core.ranker import (
     CHANNEL_PRIOR_WEIGHT,
@@ -33,6 +32,7 @@ from homefeed_core.ranker import (
     topic_boost,
     topic_boosts,
 )
+from homefeed_core.scores import score_value
 
 CHANNEL = "UC" + "a" * 22
 OTHER = "UC" + "b" * 22
@@ -159,7 +159,7 @@ def test_channel_score_is_the_prior_without_ratings() -> None:
 
 
 def test_channel_score_moves_from_prior_toward_evidence() -> None:
-    bad = grade_value("D")
+    bad = score_value(3.2)
     scores = [channel_score("love", [bad] * n) for n in (0, 1, 5, 20, 200)]
 
     assert scores[0] == pytest.approx(0.8)

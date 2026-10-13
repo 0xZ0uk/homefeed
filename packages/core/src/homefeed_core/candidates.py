@@ -10,7 +10,7 @@ its own per-channel schedule. Every other source implements `CandidateSource`, a
 `generate` runs them: it stores what each one found and records it, and a source that
 fails is logged and skipped without failing the run. Sources:
 - `related` (`RelatedVideosSource`): videos YouTube suggests next to the ones rated
-  top tier, with the seed video's id as `source_detail` (for "Related to X (A+)").
+  top tier, with the seed video's id as `source_detail` (for "Related to X (8.5)").
 - `saved_search` (`saved_searches.SavedSearchSource`): results of the saved searches
   that are due, with the query as `source_detail`.
 - `channel_graph` (`channel_graph.ChannelGraphSource`): new uploads of channels featured
@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from homefeed_core.db import get_session_factory
 from homefeed_core.gateway import Gateway, GatewayError, create_gateway
 from homefeed_core.gateway.events import format_timestamp
-from homefeed_core.grades import GRADES, is_top_tier
+from homefeed_core.scores import TOP_TIER_THRESHOLD
 
 logger = logging.getLogger(__name__)
 
@@ -282,7 +282,7 @@ DEFAULT_RELATED_PER_SEED = 10
 
 
 class RelatedVideosSource:
-    """Videos YouTube suggests next to the ones rated top tier (`grades.is_top_tier`).
+    """Videos YouTube suggests next to the ones rated top tier (`scores.is_top_tier`).
 
     Seeds are the `max_seeds` most recently rated top-tier videos; each contributes up
     to `per_seed` related videos, attributed to it (`source_detail` = the seed's id).
@@ -340,18 +340,18 @@ class RelatedVideosSource:
 
 
 def top_tier_video_ids(session: Session, *, limit: int | None = None) -> list[str]:
-    """Videos rated top tier (A-- and up), most recently rated first."""
+    """Videos rated top tier (7.0 and up), most recently rated first."""
     rows = session.execute(
         text(
             """
             SELECT video_id FROM ratings
-            WHERE grade IN :grades
+            WHERE score >= :threshold
             ORDER BY rated_at DESC, video_id
             LIMIT :limit
             """
-        ).bindparams(bindparam("grades", expanding=True)),
+        ),
         {
-            "grades": [grade for grade in GRADES if is_top_tier(grade)],
+            "threshold": TOP_TIER_THRESHOLD,
             "limit": -1 if limit is None else limit,
         },
     )

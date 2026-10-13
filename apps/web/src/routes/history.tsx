@@ -11,6 +11,7 @@ import {
   progressFraction,
   type HistoryParams,
 } from "#/lib/history";
+import { formatScore } from "#/lib/scores";
 import { historyQuery, type HistoryEntry } from "#/server/history";
 
 /**
@@ -179,7 +180,9 @@ function EntryRow({ entry }: { entry: HistoryEntry }) {
         </h3>
         <p className="flex flex-wrap gap-x-2 text-sm text-muted-foreground">
           {entry.channel_title && <span>{entry.channel_title}</span>}
-          {entry.grade && <span>· Rated {entry.grade}</span>}
+          {entry.score != null && (
+            <span>· Rated {formatScore(entry.score)}</span>
+          )}
         </p>
         <p className="flex flex-wrap gap-x-2 text-sm text-muted-foreground">
           <span>

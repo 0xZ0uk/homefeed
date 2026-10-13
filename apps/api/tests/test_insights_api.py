@@ -33,7 +33,7 @@ def test_weekly_insights_without_data(client: TestClient) -> None:
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["good_threshold"] == "B--"
+    assert body["good_threshold"] == 5.5
     starts = [week["week_start"] for week in body["weeks"]]
     this_week = week_start(feeds.local_today())
     assert starts == [(this_week - timedelta(weeks=n)).isoformat() for n in (2, 1, 0)]
@@ -41,8 +41,8 @@ def test_weekly_insights_without_data(client: TestClient) -> None:
         "week_start": this_week.isoformat(),
         "rated_count": 0,
         "good_count": 0,
-        "good_tier_rate": None,
-        "tier_counts": [{"tier": tier, "count": 0} for tier in "SABCDF"],
+        "good_rate": None,
+        "score_counts": [{"score": score, "count": 0} for score in range(10, 0, -1)],
         "shown_count": 0,
         "shown_rated_count": 0,
         "rating_rate": None,
@@ -88,13 +88,13 @@ def test_weekly_insights_this_week(client: TestClient) -> None:
                 ),
                 {"f": feed_id, "v": video_id, "p": n, "b": json.dumps(breakdown)},
             )
-    assert client.put("/ratings/v0000000000", json={"grade": "B--"}).status_code == 200
-    assert client.put("/ratings/x0000000000", json={"grade": "C++"}).status_code == 200
+    assert client.put("/ratings/v0000000000", json={"score": 5.5}).status_code == 200
+    assert client.put("/ratings/x0000000000", json={"score": 5.4}).status_code == 200
 
     week = client.get("/insights/weekly", params={"weeks": 1}).json()["weeks"][0]
 
-    assert (week["rated_count"], week["good_count"], week["good_tier_rate"]) == (2, 1, 0.5)
-    assert {t["tier"]: t["count"] for t in week["tier_counts"]}["B"] == 1
+    assert (week["rated_count"], week["good_count"], week["good_rate"]) == (2, 1, 0.5)
+    assert {c["score"]: c["count"] for c in week["score_counts"]}[6] == 1
     assert (week["shown_count"], week["shown_rated_count"], week["rating_rate"]) == (2, 1, 0.5)
     assert (week["feed_count"], week["model_feed_count"]) == (1, 1)
     assert week["score_share"] == {"model": 0.5, "curation": 0.5, "similarity": 0.0}

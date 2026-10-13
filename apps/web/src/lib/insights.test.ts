@@ -4,10 +4,10 @@ import { describe, expect, it } from "vitest";
 import {
   formatPercent,
   formatWeek,
-  overallGoodTierRate,
+  overallGoodRate,
   overallRatingRate,
   plural,
-  totalTierCounts,
+  totalScoreCounts,
   trendPath,
   trendPoints,
   type ChartBox,
@@ -21,9 +21,9 @@ function week(
     week_start: weekStart,
     rated_count: 0,
     good_count: 0,
-    good_tier_rate: null,
-    tier_counts: ["S", "A", "B", "C", "D", "F"].map((tier) => ({
-      tier: tier as WeekInsightsOut["tier_counts"][number]["tier"],
+    good_rate: null,
+    score_counts: [10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((score) => ({
+      score,
       count: 0,
     })),
     shown_count: 0,
@@ -72,9 +72,9 @@ describe("totals", () => {
       good_count: 1,
       shown_count: 10,
       shown_rated_count: 2,
-      tier_counts: [
-        { tier: "S", count: 1 },
-        { tier: "F", count: 3 },
+      score_counts: [
+        { score: 10, count: 1 },
+        { score: 1, count: 3 },
       ],
     }),
     week("2026-10-05", {
@@ -82,27 +82,27 @@ describe("totals", () => {
       good_count: 2,
       shown_count: 5,
       shown_rated_count: 4,
-      tier_counts: [
-        { tier: "S", count: 2 },
-        { tier: "F", count: 0 },
+      score_counts: [
+        { score: 10, count: 2 },
+        { score: 1, count: 0 },
       ],
     }),
   ];
 
   it("weights rates by counts rather than averaging weeks", () => {
-    expect(overallGoodTierRate(weeks)).toBe(0.5);
+    expect(overallGoodRate(weeks)).toBe(0.5);
     expect(overallRatingRate(weeks)).toBe(0.4);
   });
 
   it("has no rates without data", () => {
-    expect(overallGoodTierRate([week("2026-10-05")])).toBeNull();
+    expect(overallGoodRate([week("2026-10-05")])).toBeNull();
     expect(overallRatingRate([])).toBeNull();
   });
 
-  it("sums tiers across weeks, keeping their order", () => {
-    expect(totalTierCounts(weeks)).toEqual([
-      { tier: "S", count: 3 },
-      { tier: "F", count: 3 },
+  it("sums scores across weeks, keeping their order", () => {
+    expect(totalScoreCounts(weeks)).toEqual([
+      { score: 10, count: 3 },
+      { score: 1, count: 3 },
     ]);
   });
 });
@@ -111,9 +111,9 @@ describe("trend chart", () => {
   it("spreads weeks across the plot and maps rates bottom to top", () => {
     const points = trendPoints(
       [
-        week("2026-09-28", { good_tier_rate: 0 }),
-        week("2026-10-05", { good_tier_rate: 0.5 }),
-        week("2026-10-12", { good_tier_rate: 1 }),
+        week("2026-09-28", { good_rate: 0 }),
+        week("2026-10-05", { good_rate: 0.5 }),
+        week("2026-10-12", { good_rate: 1 }),
       ],
       BOX,
     );
@@ -134,10 +134,10 @@ describe("trend chart", () => {
   it("breaks the line at weeks without ratings", () => {
     const points = trendPoints(
       [
-        week("2026-09-21", { good_tier_rate: 1 }),
-        week("2026-09-28", { good_tier_rate: 0.5 }),
+        week("2026-09-21", { good_rate: 1 }),
+        week("2026-09-28", { good_rate: 0.5 }),
         week("2026-10-05"),
-        week("2026-10-12", { good_tier_rate: 0 }),
+        week("2026-10-12", { good_rate: 0 }),
       ],
       BOX,
     );

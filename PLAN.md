@@ -4,11 +4,11 @@ This plan is written for Claude Code. It starts from a freshly created Turborepo
 
 ## 1. What we're building
 
-A self-hosted, single-user YouTube client. The centerpiece is a **finite daily home feed** ranked by a model trained on my explicit tier-list ratings, blended with hand curation. It does not use the official YouTube Data API.
+A self-hosted, single-user YouTube client. The centerpiece is a **finite daily home feed** ranked by a model trained on my explicit 1 to 10 ratings, blended with hand curation. It does not use the official YouTube Data API.
 
 The feed is designed against compulsion: a fixed number of items, refreshed once a day, no autoplay, no infinite scroll, no "up next", and a "why this is here" explanation on every item.
 
-Success metric: the **weekly good-tier rate**, meaning the share of rated videos rated B-- or higher. Not watch time.
+Success metric: the **weekly good rate**, meaning the share of rated videos scored 5.5 or higher. Not watch time.
 
 ### Non-goals
 
@@ -28,17 +28,19 @@ Success metric: the **weekly good-tier rate**, meaning the share of rated videos
 
 ## 3. Rating scale
 
-Ratings are tier-list grades. The main tiers are **S, A, B, C, D, F**. Each tier can optionally be refined with **++, +, -, or --**, giving five grades per tier and 30 grades in total. **B is the default for a good video.**
+Ratings are scores from **1 to 10 with one decimal**, e.g. 4.2, 6.7 or 9.9 (91 possible scores). They replaced an earlier 30-grade tier list (S to F with ++/+/-/-- modifiers); migration `0018_rating_scores` converted each grade to the score with the same value (F-- = 1.0, C = 4.7, B = 6.3, A = 7.8, S++ = 10.0).
 
 | Concept | Definition |
 | --- | --- |
-| Grade order | F--, F-, F, F+, F++, D--, … , S, S+, S++ (index 0 to 29) |
-| Numeric value | `value = -1 + 2 * index / 29` (F-- = −1.0, S++ = +1.0) |
-| Good | any B grade or higher (B-- and up) |
-| Top tier (liked set) | A-- or higher |
-| Bottom tier (disliked set) | D++ or lower |
+| Range | 1.0 to 10.0, in steps of 0.1 |
+| Numeric value | `value = (score - 5.5) / 4.5` (1.0 = −1.0, 5.5 = 0, 10.0 = +1.0) |
+| Good | 5.5 or higher |
+| Top tier (liked set) | 7.0 or higher |
+| Bottom tier (disliked set) | 4.0 or lower |
 
-Rating UX: when a video ends or the player is closed, show the tier buttons (one tap). A second, optional tap adds the modifier. The prompt is always skippable, and ratings are editable later.
+The thresholds keep every converted grade in the set it was in before (B-- = 5.7 is good, A-- = 7.2 is top tier, D++ = 3.8 is bottom tier).
+
+Rating UX: when a video ends or the player is closed, show a slider from 💩 (1) to 🔥 (10) on a red-to-green track, with the exact score in a tooltip over the thumb, and a "Save 7.4" button. Arrow keys move 0.1, Page Up/Down a whole point. The prompt is always skippable, and ratings are editable later.
 
 ## 4. Stack and repo layout
 
@@ -207,9 +209,9 @@ Before a model exists, `alpha = 0` and `model_score = 0`. Every scored item carr
 
 ## 8. Data model
 
-Tables (SQLite): `channels`, `videos`, `video_features` (embedding in a sqlite-vec virtual table, plus tags and the model/prompt versions that produced them), `video_llm_tags` (topic, depth, clickbait, rage-bait per video and prompt version, with the model that produced them), `candidates` (video, source, source_detail, first_seen), `feeds` (date, created_at, model_version), `feed_items` (feed, video, position, score breakdown JSON, explanation, is_exploration, selection_probability, dismissed_at, dismiss_reason), `ratings` (video, grade, value, rated_at, updated_at), `watch_events` (video, position, event type, at), `channel_prefs` (prior, pinned, muted), `topics` (name, description, embedding, weight, decay, reaffirmed_at), `keyword_mutes`, `saved_searches` (query, filters, schedule), `external_sources` (kind, url, schedule), `queue_items`, `playlists`, `playlist_items`, `model_versions` (path, metrics JSON, created_at, active), `extractor_events` (operation, success, error, at), `settings`.
+Tables (SQLite): `channels`, `videos`, `video_features` (embedding in a sqlite-vec virtual table, plus tags and the model/prompt versions that produced them), `video_llm_tags` (topic, depth, clickbait, rage-bait per video and prompt version, with the model that produced them), `candidates` (video, source, source_detail, first_seen), `feeds` (date, created_at, model_version), `feed_items` (feed, video, position, score breakdown JSON, explanation, is_exploration, selection_probability, dismissed_at, dismiss_reason), `ratings` (video, score, value, rated_at, updated_at), `watch_events` (video, position, event type, at), `channel_prefs` (prior, pinned, muted), `topics` (name, description, embedding, weight, decay, reaffirmed_at), `keyword_mutes`, `saved_searches` (query, filters, schedule), `external_sources` (kind, url, schedule), `queue_items`, `playlists`, `playlist_items`, `model_versions` (path, metrics JSON, created_at, active), `extractor_events` (operation, success, error, at), `settings`.
 
-Store the grade as text (`"B+"`) and the numeric value alongside it.
+Store the score as a number (`7.4`) and the numeric value alongside it.
 
 ## 9. API contract (FastAPI, JSON)
 
@@ -217,11 +219,11 @@ Store the grade as text (`"B+"`) and the numeric value alongside it.
 | --- | --- |
 | Feed | `GET /feed/today`, `GET /feed/{date}`, `GET /feeds` (history), `POST /feed/refresh`, `POST /feed-items/{id}/dismiss` `{reason?}` |
 | Videos | `GET /videos/{id}`, `GET /videos/{id}/manifest.mpd`, `GET /videos/{id}/media/{itag}` (Range proxy), `GET /videos/{id}/comments`, `GET /videos/{id}/segments` (SponsorBlock), `POST /resolve` `{url}` |
-| Ratings and watching | `GET /ratings/{video_id}`, `PUT /ratings/{video_id}` `{grade}`, `DELETE /ratings/{video_id}`, `POST /watch-events` `{video_id, event_type, position, duration}` |
+| Ratings and watching | `GET /ratings/{video_id}`, `PUT /ratings/{video_id}` `{score}`, `DELETE /ratings/{video_id}`, `POST /watch-events` `{video_id, event_type, position, duration}` |
 | Library | `GET/POST/PATCH/DELETE /queue`, `GET /history?q=`, `/playlists` CRUD |
 | Curation | `/channels` (subscribe by URL, list, update prior/pin/mute, unsubscribe), `/topics`, `/keyword-mutes`, `/saved-searches`, `/external-sources` |
 | Discovery | `GET /search?q=&filters`, `GET /channels/{id}/uploads`, `GET /channels/{id}/featured`, `GET /discover/suggested-channels` |
-| Insights and models | `GET /insights/weekly` (good-tier rate, tier distribution, rating rate, model vs curation share), `GET /models`, `POST /models/{id}/activate` |
+| Insights and models | `GET /insights/weekly` (good rate, score distribution, rating rate, model vs curation share), `GET /models`, `POST /models/{id}/activate` |
 | Ops | `GET /health`, `GET /status/extractors`, `POST /import/takeout`, `GET /export` |
 
 Auth lives in the web app (single password, session cookie). The API binds to the internal Docker network only.
@@ -260,7 +262,7 @@ Each milestone ends with tests passing, lint clean, and a short summary of what 
 - `trainer` with dataset building, weighting, decay, promotion, versioning, and rollback; nightly job.
 - `ranker`: model inference and the alpha blend.
 - `composer`: exploration slots with Thompson sampling and selection probabilities.
-- Web: insights page (good-tier rate trend, tier distribution, rating rate, model vs curation share), model list with rollback, exploration badges, dismiss with reason.
+- Web: insights page (good rate trend, score distribution, rating rate, model vs curation share), model list with rollback, exploration badges, dismiss with reason.
 
 ### Milestone 4: broader discovery
 
@@ -286,7 +288,7 @@ Test each module through its public interface; assert behavior, not internals.
 | --- | --- |
 | `ranker` | Filters remove Shorts, muted channels/keywords, out-of-range durations; channel score moves from prior toward evidence as ratings grow; alpha is 0 with no ratings; breakdown sums to the final score |
 | `composer` | Exact feed size; pins always included; per-channel cap; exploration slot count; probabilities recorded; deterministic with a seeded rng |
-| `trainer` | Grade → value mapping for all 30 grades; implicit weights; time decay; pinned items excluded; worse model not promoted; rollback works (use synthetic histories with a learnable pattern) |
+| `trainer` | Score → value mapping across the 1 to 10 range; implicit weights; time decay; pinned items excluded; worse model not promoted; rollback works (use synthetic histories with a learnable pattern) |
 | `candidates` | Dedup across sources; source attribution; one failing source doesn't fail the run (fake sources) |
 | `enricher` | Cache hits skip work; version change recomputes; missing captions handled (stub embedding/LLM providers) |
 | `gateway` | Normalization from recorded responses; failure recording. Live smoke suite is opt-in only |
@@ -299,7 +301,7 @@ Test each module through its public interface; assert behavior, not internals.
 - **Terms of Service:** undocumented endpoints go against YouTube's terms; personal-use risk is mostly IP throttling. No Google account is used.
 - **Rate limits:** stay at personal-use volume, roughly a few hundred enrichments per day, with caching.
 - **Small data:** hundreds of labels, not millions. Keep models simple and lean on curation priors until about 200 ratings.
-- **Rating fatigue:** picking a tier must take one tap, the modifier is optional, and the prompt is skippable. Track the rating rate.
+- **Rating fatigue:** rating must take one drag and one tap, and the prompt is skippable. Track the rating rate.
 
 ### Decisions
 
