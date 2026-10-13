@@ -266,7 +266,7 @@ def refresh(
 
 
 def featured_channels(
-    session: Session,
+    sessions: sessionmaker[Session],
     gateway: Gateway,
     channel_id: str,
     *,
@@ -275,11 +275,19 @@ def featured_channels(
 ) -> list[GraphChannel]:
     """The channels `channel_id` features, from storage while fresh, else through the
     Gateway (and stored when the channel is known). When the Gateway fails, a stale
-    stored copy is returned; without one, its error is raised."""
-    stored = stored_featured(session, channel_id)
-    if stored is not None and not stale_channel_ids(
-        session, [channel_id], max_age=max_age, now=now
-    ):
+    stored copy is returned; without one, its error is raised.
+
+    Storage is read and written in separate short transactions, none of them open
+    during the fetch: a read transaction held across it would fail its write with
+    "database is locked" whenever anything else commits meanwhile (the Gateway's own
+    event log, the worker), without waiting for the busy timeout."""
+    with sessions.begin() as session:
+        stored = stored_featured(session, channel_id)
+        fresh = stored is not None and not stale_channel_ids(
+            session, [channel_id], max_age=max_age, now=now
+        )
+    if fresh:
+        assert stored is not None
         return stored
     try:
         featured = gateway.get_featured_channels(channel_id)
@@ -287,15 +295,16 @@ def featured_channels(
         if stored is not None:
             return stored
         raise
-    known = session.execute(
-        text("SELECT 1 FROM channels WHERE id = :id"), {"id": channel_id}
-    ).first()
-    if known is not None:
-        store_featured(session, channel_id, featured, now=now)
-        result = stored_featured(session, channel_id)
-        assert result is not None
-        return result
-    subscribed = _subscribed_ids(session, [channel.id for channel in featured])
+    with sessions.begin() as session:
+        known = session.execute(
+            text("SELECT 1 FROM channels WHERE id = :id"), {"id": channel_id}
+        ).first()
+        if known is not None:
+            store_featured(session, channel_id, featured, now=now)
+            result = stored_featured(session, channel_id)
+            assert result is not None
+            return result
+        subscribed = _subscribed_ids(session, [channel.id for channel in featured])
     return [
         GraphChannel(
             channel_id=channel.id,

@@ -225,10 +225,8 @@ def test_suggest_fetches_liked_channels_never_fetched(
 def test_featured_channels_reads_through_storage(
     sessions: sessionmaker[Session], gateway: FakeGateway, curated: None
 ) -> None:
-    with sessions.begin() as session:
-        first = featured_channels(session, gateway, LOVED.id, now=T0)
-    with sessions.begin() as session:
-        cached = featured_channels(session, gateway, LOVED.id, now=T0 + timedelta(days=1))
+    first = featured_channels(sessions, gateway, LOVED.id, now=T0)
+    cached = featured_channels(sessions, gateway, LOVED.id, now=T0 + timedelta(days=1))
 
     assert [c.channel_id for c in first] == [X.id, Y.id, NEUTRAL.id]
     assert cached == first
@@ -238,29 +236,26 @@ def test_featured_channels_reads_through_storage(
 def test_featured_channels_of_an_unknown_channel_are_not_stored(
     sessions: sessionmaker[Session], gateway: FakeGateway, curated: None
 ) -> None:
+    featured = featured_channels(sessions, gateway, W.id, now=T0)
     with sessions.begin() as session:
-        featured = featured_channels(session, gateway, W.id, now=T0)
         assert stored_featured(session, W.id) is None
 
     assert featured == []
-    with sessions.begin() as session:
-        featured = featured_channels(session, gateway, NEUTRAL.id, now=T0)
+    featured = featured_channels(sessions, gateway, NEUTRAL.id, now=T0)
     assert [(c.channel_id, c.title, c.subscribed) for c in featured] == [(W.id, "Wren", False)]
 
 
 def test_featured_channels_falls_back_to_a_stale_copy(
     sessions: sessionmaker[Session], gateway: FakeGateway, curated: None
 ) -> None:
-    with sessions.begin() as session:
-        featured_channels(session, gateway, LOVED.id, now=T0)
+    featured_channels(sessions, gateway, LOVED.id, now=T0)
     gateway.fail("get_featured_channels", LOVED.id, ExtractionError("broken"))
     gateway.fail("get_featured_channels", LIKED.id, ExtractionError("broken"))
 
-    with sessions.begin() as session:
-        stale = featured_channels(session, gateway, LOVED.id, now=T0 + timedelta(days=30))
-        assert [c.channel_id for c in stale] == [X.id, Y.id, NEUTRAL.id]
-        with pytest.raises(ExtractionError):
-            featured_channels(session, gateway, LIKED.id, now=T0)
+    stale = featured_channels(sessions, gateway, LOVED.id, now=T0 + timedelta(days=30))
+    assert [c.channel_id for c in stale] == [X.id, Y.id, NEUTRAL.id]
+    with pytest.raises(ExtractionError):
+        featured_channels(sessions, gateway, LIKED.id, now=T0)
 
 
 def test_source_finds_uploads_of_suggested_channels(

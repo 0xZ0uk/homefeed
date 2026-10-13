@@ -8,7 +8,13 @@ from fastapi.testclient import TestClient
 from homefeed_api.main import app, get_gateway
 from homefeed_core.config import get_settings
 from homefeed_core.db import get_session_factory
-from homefeed_core.gateway import ExtractionError, UnavailableError, UploadSummary
+from homefeed_core.gateway import (
+    ExtractionError,
+    FeaturedChannel,
+    UnavailableError,
+    UploadSummary,
+)
+from homefeed_core.gateway.events import ExtractorEvent, SqlEventRecorder
 from homefeed_core.gateway.fake import FakeGateway, make_channel, make_video
 
 WOOD = make_channel("UC" + "w" * 22, title="Woodworking", handle="@wood")
@@ -101,6 +107,27 @@ def test_featured_channels_are_cached_for_known_channels(
 
     assert first == second
     assert gateway.calls.count(("get_featured_channels", WOOD.id)) == 1
+
+
+def test_featured_channels_survive_a_commit_during_the_fetch(
+    client: TestClient, gateway: FakeGateway
+) -> None:
+    subscribe(client, "@wood")  # known, so the fetched channels are stored
+    # Like the real Gateway, record an extractor event (a commit) while fetching.
+    fetch = gateway.get_featured_channels
+    recorder = SqlEventRecorder(get_session_factory())
+
+    def get_featured_channels(channel_id: str) -> list[FeaturedChannel]:
+        event = ExtractorEvent("get_featured_channels", channel_id, True, datetime.now(UTC))
+        recorder.record(event)
+        return fetch(channel_id)
+
+    gateway.get_featured_channels = get_featured_channels  # type: ignore[method-assign]
+
+    response = client.get(f"/channels/{WOOD.id}/featured")
+
+    assert response.status_code == 200, response.text
+    assert [c["channel_id"] for c in response.json()] == [CARPENTRY.id, TOOLS.id, BIRDS.id]
 
 
 def test_featured_channels_errors(client: TestClient, gateway: FakeGateway) -> None:

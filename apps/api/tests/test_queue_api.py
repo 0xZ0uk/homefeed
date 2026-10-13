@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -8,7 +9,8 @@ from fastapi.testclient import TestClient
 from homefeed_api.main import app, get_gateway, get_playback
 from homefeed_core.config import get_settings
 from homefeed_core.db import get_session_factory
-from homefeed_core.gateway import ExtractionError
+from homefeed_core.gateway import ExtractionError, Video
+from homefeed_core.gateway.events import ExtractorEvent, SqlEventRecorder
 from homefeed_core.gateway.fake import FakeGateway, make_channel, make_video
 from homefeed_core.playback import Playback
 from homefeed_core.videos import get_stored_video
@@ -187,3 +189,21 @@ def test_watching_to_the_end_removes_from_queue(client: TestClient) -> None:
     body = {"video_id": A, "event_type": "ended", "position": 600}
     assert client.post("/watch-events", json=body).status_code == 201
     assert order(client) == [B]
+
+
+def test_queueing_an_unstored_video_survives_a_commit_during_the_fetch(
+    client: TestClient, gateway: FakeGateway
+) -> None:
+    # Like the real Gateway, record an extractor event (a commit) while fetching.
+    fetch = gateway.get_video
+    recorder = SqlEventRecorder(get_session_factory())
+
+    def get_video(video_id: str) -> Video:
+        recorder.record(ExtractorEvent("get_video", video_id, True, datetime.now(UTC)))
+        return fetch(video_id)
+
+    gateway.get_video = get_video  # type: ignore[method-assign]
+
+    enqueue(client, A)
+
+    assert order(client) == [A]

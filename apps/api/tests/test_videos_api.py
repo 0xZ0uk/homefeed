@@ -1,16 +1,20 @@
+import sqlite3
 import struct
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 
 from homefeed_api.main import app, get_gateway, get_playback
 from homefeed_core.config import get_settings
 from homefeed_core.db import get_session_factory
-from homefeed_core.gateway import ByteRange, ExtractionError, MediaUrlExpiredError
+from homefeed_core.gateway import ByteRange, ExtractionError, MediaUrlExpiredError, Video
+from homefeed_core.gateway.events import ExtractorEvent, SqlEventRecorder
 from homefeed_core.gateway.fake import FakeGateway, make_channel, make_format, make_video
 from homefeed_core.playback import Playback
 from homefeed_core.tags import ProposedTag, set_llm_tags
@@ -113,6 +117,48 @@ def test_get_video_returns_its_tags(client: TestClient, gateway: FakeGateway) ->
     body = client.get(f"/videos/{VIDEO}").json()
     assert body["is_stale"] is True
     assert body["tags"] == expected
+
+
+def commit_during_fetches(gateway: FakeGateway) -> None:
+    """Make each `get_video` commit to the database on its own connection, as the real
+    Gateway does when it records its extractor event (and the worker may do any time)."""
+    fetch = gateway.get_video
+    recorder = SqlEventRecorder(get_session_factory())
+
+    def get_video(video_id: str) -> Video:
+        recorder.record(ExtractorEvent("get_video", video_id, True, datetime.now(UTC)))
+        return fetch(video_id)
+
+    gateway.get_video = get_video  # type: ignore[method-assign]
+
+
+def test_get_video_survives_a_commit_during_the_fetch(
+    client: TestClient, gateway: FakeGateway
+) -> None:
+    # A first view used to fail with "database is locked" (a bare 500): the request read
+    # in a transaction held open across the fetch, so its write lost to that commit.
+    commit_during_fetches(gateway)
+
+    response = client.get(f"/videos/{VIDEO}")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["is_stale"] is False
+    with get_session_factory().begin() as session:
+        assert get_stored_video(session, VIDEO) is not None
+
+
+def test_a_locked_database_is_a_503(client: TestClient, gateway: FakeGateway) -> None:
+    def locked(video_id: str) -> Video:
+        raise OperationalError("INSERT ...", {}, sqlite3.OperationalError("database is locked"))
+
+    gateway.get_video = locked  # type: ignore[method-assign]
+
+    response = client.get(f"/videos/{VIDEO}")
+
+    assert (response.status_code, response.json()) == (
+        503,
+        {"detail": "The database is busy; try again in a moment"},
+    )
 
 
 def test_get_video_falls_back_to_the_stored_copy(client: TestClient, gateway: FakeGateway) -> None:

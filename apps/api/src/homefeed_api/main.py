@@ -23,6 +23,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from homefeed_core import (
@@ -91,6 +92,28 @@ def embedding_unavailable(_request: Request, error: EmbeddingError) -> JSONRespo
     logger.warning("Embedding failed: %s", error)
     return JSONResponse(
         {"detail": "Couldn't embed the text right now; try again later"},
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
+
+
+# A handler that asks YouTube (or anything slow) and then
+# writes must not use `SessionDep`, whose transaction spans the whole request. Once a
+# SQLite (WAL) transaction has read, it can only write if nothing else committed since;
+# otherwise the write fails at once with "database is locked", without waiting for the
+# busy timeout. A Gateway call commits its own extractor event and the worker commits
+# all the time, so such handlers use short transactions from `get_session_factory()`
+# before and after the call instead.
+
+
+@app.exception_handler(OperationalError)
+def database_busy(_request: Request, error: OperationalError) -> JSONResponse:
+    """A write that lost a race for the database (`database is locked`) is a 503 to try
+    again, not a bare 500. Other database errors are bugs and are raised as they come."""
+    if "database is locked" not in str(error.orig):
+        raise error
+    logger.warning("Database busy: %s", error.orig)
+    return JSONResponse(
+        {"detail": "The database is busy; try again in a moment"},
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
     )
 
@@ -342,25 +365,33 @@ def list_queue(session: SessionDep) -> list[queue.QueueItem]:
         502: {"model": ErrorDetail, "description": "YouTube could not be reached"},
     },
 )
-def add_to_queue(
-    body: QueueAddInput, session: SessionDep, player: PlaybackDep, response: Response
-) -> queue.QueueItem:
+def add_to_queue(body: QueueAddInput, player: PlaybackDep, response: Response) -> queue.QueueItem:
     """Add a video to the watch queue.
 
     A video whose metadata isn't stored yet is fetched from YouTube first (404 if it
     doesn't exist, 502 if YouTube can't be reached). Queueing a video again returns 200
     with its existing item, which keeps its place.
     """
-    existing = queue.find_queued_video(session, body.video_id)
+    sessions = get_session_factory()
+    with sessions.begin() as session:
+        existing = queue.find_queued_video(session, body.video_id)
+        stored = videos.get_stored_video(session, body.video_id) is not None
     if existing is not None:
         response.status_code = status.HTTP_200_OK
         return existing
-    if videos.get_stored_video(session, body.video_id) is None:
+    # No transaction is open while YouTube is asked (see the note above `get_session`).
+    fetched = None
+    if not stored:
         try:
-            videos.store_video(session, player.video(body.video_id))
+            fetched = player.video(body.video_id)
         except GatewayError as error:
             raise _gateway_http_error(error) from error
-    item, _ = queue.add_to_queue(session, body.video_id, body.position)
+    with sessions.begin() as session:
+        if fetched is not None:
+            videos.store_video(session, fetched)
+        item, created = queue.add_to_queue(session, body.video_id, body.position)
+    if not created:
+        response.status_code = status.HTTP_200_OK
     return item
 
 
@@ -1476,25 +1507,33 @@ def _tags_of(session: Session, video_id: str) -> list[VideoTagOut]:
 
 
 @app.get("/videos/{video_id}", tags=["videos"], responses=VIDEO_ERRORS)
-def get_video(video_id: VideoId, session: SessionDep, player: PlaybackDep) -> VideoOut:
+def get_video(video_id: VideoId, player: PlaybackDep) -> VideoOut:
     """A video's metadata (title, channel, description, ...), stored in `videos`, and
     its tags.
 
     When YouTube can't be reached, the stored copy is returned with `is_stale`.
     """
-    video_tags = _tags_of(session, video_id)
+    # No transaction is open while YouTube is asked (see the note above `get_session`).
     try:
         video = player.video(video_id)
     except UnavailableError as error:
         raise _gateway_http_error(error) from error
     except GatewayError as error:
-        stored = videos.get_stored_video(session, video_id)
-        if stored is None:
-            raise _gateway_http_error(error) from error
-        return VideoOut.model_validate(
-            {**vars(stored), "chapters": [], "tags": video_tags, "is_stale": True}
-        )
-    videos.store_video(session, video)
+        with get_session_factory().begin() as session:
+            stored = videos.get_stored_video(session, video_id)
+            if stored is None:
+                raise _gateway_http_error(error) from error
+            return VideoOut.model_validate(
+                {
+                    **vars(stored),
+                    "chapters": [],
+                    "tags": _tags_of(session, video_id),
+                    "is_stale": True,
+                }
+            )
+    with get_session_factory().begin() as session:
+        videos.store_video(session, video)  # writes first, so it waits for the write lock
+        video_tags = _tags_of(session, video_id)
     return VideoOut(
         id=video.id,
         title=video.title,
@@ -1748,12 +1787,12 @@ CHANNEL_ERRORS: dict[int | str, dict[str, Any]] = {
 
 @app.get("/channels/{channel_id}/featured", tags=["discovery"], responses=CHANNEL_ERRORS)
 def get_featured_channels(
-    channel_id: ChannelId, session: SessionDep, gateway: GatewayDep
+    channel_id: ChannelId, gateway: GatewayDep
 ) -> list[channel_graph.GraphChannel]:
     """The channels a channel features on its page, in its order, with whether I'm
     subscribed to each. Kept for a week; a stale copy is served when YouTube fails."""
     try:
-        return channel_graph.featured_channels(session, gateway, channel_id)
+        return channel_graph.featured_channels(get_session_factory(), gateway, channel_id)
     except GatewayError as error:
         raise _gateway_http_error(error) from error
 
