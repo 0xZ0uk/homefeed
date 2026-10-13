@@ -30,23 +30,27 @@ to compatible answers of earlier prompt versions while a bump retags the library
 hand them to the model as features (see homefeed_core.model_features).
 """
 
+import argparse
 import json
 import logging
+import sys
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import Any, Protocol, cast
 
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from homefeed_core.candidates import list_candidates
 from homefeed_core.config import Settings, get_settings
 from homefeed_core.db import get_session_factory
 from homefeed_core.embeddings import EmbeddingProvider, get_embedding_provider
 from homefeed_core.gateway.events import format_timestamp
+from homefeed_core.ratings import list_ratings, tier_rated_video_ids
 from homefeed_core.tags import (
     DEFAULT_MERGE_THRESHOLD,
     ProposedTag,
@@ -301,8 +305,8 @@ def _count(value: Any) -> int:
 
 
 class StubLLMProvider:
-    """Answers from a function of the user message (by default, neutral tags and no
-    specific ones). For tests. `calls` records every (system, user) pair; `answers`
+    """Answers from a function of the user message (by default, neutral tags and one
+    specific tag, "misc"). For tests. `calls` records every (system, user) pair; `answers`
     overrides the answer for user messages containing a key. Each answer reports
     `usage` (100 prompt and 20 completion tokens unless given)."""
 
@@ -312,7 +316,8 @@ class StubLLMProvider:
         *,
         answers: Mapping[str, str | Exception] | None = None,
         default: str = (
-            '{"topic": "other", "depth": 0.5, "clickbait": 0, "rage_bait": 0, "tags": []}'
+            '{"topic": "other", "depth": 0.5, "clickbait": 0, "rage_bait": 0, "tags": '
+            '[{"tag": "misc", "confidence": 0.5}]}'
         ),
         usage: TokenUsage | None = None,
     ) -> None:
@@ -470,28 +475,43 @@ def parse_answer(answer: str) -> TagAnswer:
 
 def _proposed_tags(value: Any) -> tuple[ProposedTag, ...]:
     """The usable entries of an answer's "tags": objects with a "tag" that can be a tag
-    (`homefeed_core.tags.is_usable`) and a numeric "confidence" (clipped to [0, 1]).
-    Spellings with the same slug keep the highest confidence. Fewer than MIN_TAGS is
-    fine; past MAX_TAGS the least confident are dropped."""
+    (`homefeed_core.tags.is_usable`) and a "confidence" (clipped to [0, 1]). Small models
+    often answer with bare strings, or leave the confidence out: those get
+    `_positional_confidence`, since the prompt asks for the most relevant first.
+    Underscores read as spaces ("software_design"). Spellings with the same slug keep the
+    highest confidence; past MAX_TAGS the least confident are dropped. Raises LLMError
+    when no entry is usable, so the video is tried again."""
     if not isinstance(value, list):
         raise LLMError(f"Missing or non-list 'tags': {value!r}"[:200])
     best: dict[str, ProposedTag] = {}
-    for entry in cast(list[Any], value):
-        if not isinstance(entry, dict):
+    for index, entry in enumerate(cast(list[Any], value)):
+        if isinstance(entry, dict):
+            entry = cast(dict[str, Any], entry)
+            label = entry.get("tag")
+            try:
+                confidence = _score(entry, "confidence")
+            except LLMError:
+                confidence = _positional_confidence(index)
+        else:
+            label, confidence = entry, _positional_confidence(index)
+        if not isinstance(label, str):
             continue
-        entry = cast(dict[str, Any], entry)
-        label = entry.get("tag")
-        if not isinstance(label, str) or not is_usable(label):
-            continue
-        try:
-            confidence = _score(entry, "confidence")
-        except LLMError:
+        label = label.replace("_", " ")
+        if not is_usable(label):
             continue
         slug = slugify(label)
         if slug not in best or best[slug].confidence < confidence:
             best[slug] = ProposedTag(label, confidence)
+    if not best:
+        raise LLMError(f"No usable tags in {value!r}"[:200])
     ranked = sorted(best.values(), key=lambda tag: -tag.confidence)  # stable: ties keep order
     return tuple(ranked[:MAX_TAGS])
+
+
+def _positional_confidence(index: int) -> float:
+    """The confidence of a tag given without one: 0.9 for the first, 0.05 less for each
+    next, down to 0.5."""
+    return max(0.5, 0.9 - 0.05 * index)
 
 
 def _score(data: Mapping[str, Any], name: str) -> float:
@@ -752,3 +772,54 @@ def get_tagger() -> Tagger | None:
         embedder=get_embedding_provider(),
         merge_threshold=settings.tag_merge_threshold,
     )
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Tag videos now rather than at the worker's next enrichment run:
+    `uv run python -m homefeed_core.llm_tags [--all] [--limit N]`. By default it tags what
+    the worker would (the next feed's candidates and rated videos); `--all` tags every
+    stored video. Videos with tags of the current prompt version are skipped, so it can
+    be stopped and run again."""
+    parser = argparse.ArgumentParser(
+        prog="python -m homefeed_core.llm_tags", description=main.__doc__
+    )
+    parser.add_argument("--all", action="store_true", help="tag every stored video")
+    parser.add_argument("--limit", type=int, help="at most this many LLM calls (default: none)")
+    args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    settings = get_settings()
+    provider = get_llm_provider(settings)
+    if provider is None:
+        print("Tagging is off: set LLM_PROVIDER, and OPENROUTER_API_KEY for openrouter.")
+        return 1
+    sessions = get_session_factory()
+    with sessions() as session:
+        if args.all:
+            video_ids = list(
+                session.execute(
+                    text("SELECT id FROM videos ORDER BY published_at IS NULL, published_at DESC")
+                ).scalars()
+            )
+        else:
+            since = datetime.now(UTC) - timedelta(days=settings.feed_candidate_days)
+            video_ids = [c.video_id for c in list_candidates(session, since=since)]
+            video_ids += tier_rated_video_ids(session)
+            video_ids += [rating.video_id for rating in list_ratings(session)]
+    tagger = Tagger(
+        sessions,
+        provider,
+        max_per_run=args.limit,
+        embedder=get_embedding_provider(),
+        merge_threshold=settings.tag_merge_threshold,
+    )
+    report = tagger.tag_many(video_ids)
+    print(
+        f"{len(report.tagged)} tagged, {len(report.cached)} already tagged, "
+        f"{len(report.skipped)} skipped, {len(report.failed)} failed"
+        + (f" (stopped: {report.stopped})" if report.stopped else "")
+    )
+    return 0 if report.stopped is None else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
