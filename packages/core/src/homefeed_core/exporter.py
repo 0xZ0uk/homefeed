@@ -9,6 +9,9 @@ The export is one JSON object: a header (`format`, `version`, `schema_version`,
 - `feeds`: every feed built, with its items (score breakdown, explanation, dismissals).
 - `library`: the watch history (every watch event), the watch queue and local playlists
   (each with its videos in order).
+- `tags`: the tags added by hand and the tags removed by hand (`removed_at` set, for
+  LLM and manual tags alike), with the video's title when known. The LLM's own tags are
+  derived data and left out.
 - `models`: trained ranking model versions and their metrics (not the model files).
 - `settings`: the `settings` table (`stored`) and the runtime configuration from the
   environment (`config`), without secrets or file paths.
@@ -18,8 +21,9 @@ What goes in is the `SECTIONS` registry: each `ExportSection` names where its da
 export something new, write a reader and add one `ExportSection` line. Everything is read
 in the caller's transaction, so the export is a consistent snapshot.
 
-Derived and cached data is left out (embeddings, enrichment features, LLM tags, the
-candidate pool, poll state, extractor events): it is recomputed from YouTube as needed.
+Derived and cached data is left out (embeddings, enrichment features, LLM tags not edited
+by hand, the candidate pool, poll state, extractor events): it is recomputed from YouTube
+as needed.
 """
 
 import json
@@ -176,6 +180,20 @@ SECTIONS: list[ExportSection] = [
         ),
     ),
     ExportSection(("library", "playlists"), _playlists),
+    ExportSection(
+        ("tags",),
+        _rows(
+            """
+            SELECT vt.video_id, v.title, t.slug, t.label, vt.source, vt.confidence,
+                   vt.tagged_at, vt.removed_at
+            FROM video_tags AS vt
+            JOIN tags AS t ON t.id = vt.tag_id
+            LEFT JOIN videos AS v ON v.id = vt.video_id
+            WHERE vt.source = 'manual' OR vt.removed_at IS NOT NULL
+            ORDER BY vt.video_id, t.slug
+            """
+        ),
+    ),
     ExportSection(("models",), _model_versions),
     ExportSection(("settings", "stored"), _stored_settings),
     ExportSection(("settings", "config"), _config),

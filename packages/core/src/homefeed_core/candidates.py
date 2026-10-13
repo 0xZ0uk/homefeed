@@ -17,6 +17,8 @@ fails is logged and skipped without failing the run. Sources:
   by channels I like, with the featuring channel's id as `source_detail`.
 - `external` (`external_sources.ExternalSourcesSource`): YouTube videos linked from
   due subreddits, RSS feeds and link pages, with the source's label as `source_detail`.
+- `tag` (`tag_discovery.TagDiscoverySource`): YouTube search results for the subscribed
+  tags, with the tag's slug as `source_detail`.
 """
 
 import logging
@@ -28,6 +30,7 @@ from typing import Protocol
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from homefeed_core.config import get_settings
 from homefeed_core.db import get_session_factory
 from homefeed_core.gateway import Gateway, GatewayError, create_gateway
 from homefeed_core.gateway.events import format_timestamp
@@ -42,6 +45,8 @@ RELATED = "related"
 SAVED_SEARCH = "saved_search"
 # Uploads of a channel featured by a liked channel; source_detail is the liked channel's id.
 CHANNEL_GRAPH = "channel_graph"
+# Search results for a subscribed tag; source_detail is the tag's slug.
+TAG = "tag"
 
 
 @dataclass(frozen=True)
@@ -216,6 +221,7 @@ def default_sources(sessions: sessionmaker[Session] | None = None) -> list[Candi
     from homefeed_core.channel_graph import ChannelGraphSource
     from homefeed_core.external_sources import ExternalSourcesSource
     from homefeed_core.saved_searches import SavedSearchSource
+    from homefeed_core.tag_discovery import TagDiscoverySource
 
     sessions = sessions or get_session_factory()
     gateway = create_gateway(sessions)
@@ -224,6 +230,7 @@ def default_sources(sessions: sessionmaker[Session] | None = None) -> list[Candi
         SavedSearchSource(sessions, gateway),
         ChannelGraphSource(sessions, gateway),
         ExternalSourcesSource(sessions, gateway),
+        TagDiscoverySource(sessions, gateway, per_tag_per_day=get_settings().tag_discovery_per_day),
     ]
 
 

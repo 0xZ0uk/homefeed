@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from homefeed_core.curation import (
     KEYWORD_MAX_LENGTH,
+    MUTE_WEIGHT,
     PRIOR_VALUES,
     PRIORS,
     TOPIC_DESCRIPTION_MAX_LENGTH,
@@ -28,13 +29,19 @@ from homefeed_core.curation import (
     list_channels,
     list_keyword_mutes,
     list_topics,
+    mute_tag,
     muted_keywords,
     reaffirm_topic,
     refresh_topic_embeddings,
+    relink_tag_topic,
     subscribe,
+    subscribe_tag,
     subscribed_channel_ids,
+    topic_for_tag,
     topic_vectors,
+    unmute_tag,
     unsubscribe,
+    unsubscribe_tag,
     update_channel,
     update_keyword_mute,
     update_topic,
@@ -43,6 +50,7 @@ from homefeed_core.db import open_database
 from homefeed_core.embeddings import StubEmbeddingProvider
 from homefeed_core.gateway import UnavailableError, UnsupportedUrlError
 from homefeed_core.gateway.fake import FakeGateway, make_channel
+from homefeed_core.tags import Tag, resolve_tag
 
 WOOD = make_channel("UC" + "w" * 22, title="Woodworking", handle="@wood")
 BIRDS = make_channel("UC" + "b" * 22, title="birds", handle="@birds")
@@ -444,3 +452,174 @@ def test_refresh_topic_embeddings_after_a_model_change(
     assert len(refreshed) == 2 and wood.id in refreshed
     assert other.calls == [["wood", "birds"]]
     assert vectors["Wood"][0] == 1.0
+
+
+def make_tag(session: Session, label: str) -> Tag:
+    tag = resolve_tag(session, label)
+    assert tag is not None
+    return tag
+
+
+def test_subscribe_tag_makes_a_tag_backed_topic(
+    sessions: sessionmaker[Session], embedder: StubEmbeddingProvider
+) -> None:
+    with sessions.begin() as session:
+        rust = make_tag(session, "Rust")
+        topic, created = subscribe_tag(session, embedder, rust, now=NOW)
+        again, created_again = subscribe_tag(session, embedder, rust, now=NOW)
+
+    assert created and not created_again
+    assert again == topic
+    assert (topic.name, topic.description, topic.weight, topic.match_mode) == (
+        "Rust",
+        "Rust",
+        0.5,
+        "tag",
+    )
+    assert (topic.tag_id, topic.tag_slug, topic.tag_label) == (rust.id, "rust", "Rust")
+    with sessions.begin() as session:
+        assert topic_for_tag(session, rust.id, now=NOW) == topic
+        assert [v.tag_id for v in topic_vectors(session, now=NOW)] == [rust.id]
+        assert topic_vectors(session, now=NOW)[0].match_mode == "tag"
+        assert unsubscribe_tag(session, rust.id) is True
+        assert unsubscribe_tag(session, rust.id) is False
+        assert topic_for_tag(session, rust.id) is None
+        assert list_topics(session) == []
+
+
+def test_subscribe_tag_avoids_a_name_clash(
+    sessions: sessionmaker[Session], embedder: StubEmbeddingProvider
+) -> None:
+    with sessions.begin() as session:
+        add_topic(
+            session, embedder, name="rust", description="The rust programming language", weight=1
+        )
+        first, _ = subscribe_tag(session, embedder, make_tag(session, "rust"))
+        add_topic(session, embedder, name="go", description="x", weight=1)
+        add_topic(session, embedder, name="Go (tag)", description="x", weight=1)
+        second, _ = subscribe_tag(session, embedder, make_tag(session, "Go"))
+        third, _ = subscribe_tag(session, embedder, make_tag(session, "go!"))
+
+    assert first.name == "rust (tag)"
+    assert second.name == "Go (tag 2)"
+    assert third.tag_slug == "go" and third.id == second.id  # same tag
+
+
+def test_tag_topics_validate_modes_and_tags(
+    sessions: sessionmaker[Session], embedder: StubEmbeddingProvider
+) -> None:
+    with sessions.begin() as session:
+        rust = make_tag(session, "rust")
+        plain = add_topic(session, embedder, name="plain", description="plain", weight=0.1)
+        tagged = add_topic(session, embedder, name="t", weight=0.1, tag_id=rust.id)
+        assert tagged.match_mode == "tag" and tagged.description == "rust"
+        assert plain.match_mode == "embedding" and plain.tag_id is None
+
+        with pytest.raises(DuplicateTopicError):
+            add_topic(session, embedder, name="t2", weight=0.1, tag_id=rust.id)
+        with pytest.raises(ValueError, match="no tag"):
+            add_topic(session, embedder, name="t3", weight=0.1, tag_id=999)
+        with pytest.raises(ValueError, match="description"):
+            add_topic(session, embedder, name="t4", weight=0.1)
+        with pytest.raises(ValueError, match="without a tag"):
+            add_topic(session, embedder, name="t5", description="x", weight=0.1, match_mode="both")
+        with pytest.raises(ValueError, match="without a tag"):
+            update_topic(session, embedder, plain.id, match_mode="tag")
+        with pytest.raises(ValueError, match="match mode"):
+            update_topic(session, embedder, tagged.id, match_mode="nope")  # type: ignore[arg-type]
+
+        both = update_topic(session, embedder, tagged.id, match_mode="both", weight=-0.2, now=NOW)
+        assert both is not None
+        assert (both.match_mode, both.weight) == ("both", -0.2)
+        described = update_topic(session, embedder, tagged.id, description="Systems language")
+        assert described is not None and described.description == "Systems language"
+
+
+def test_deleting_a_tag_deletes_its_topic(
+    sessions: sessionmaker[Session], embedder: StubEmbeddingProvider
+) -> None:
+    with sessions.begin() as session:
+        rust = make_tag(session, "rust")
+        subscribe_tag(session, embedder, rust)
+        session.execute(text("DELETE FROM tags WHERE id = :id"), {"id": rust.id})
+        assert list_topics(session) == []
+
+
+def test_relink_tag_topic_follows_a_merge(
+    sessions: sessionmaker[Session], embedder: StubEmbeddingProvider
+) -> None:
+    with sessions.begin() as session:
+        old, new, other = (make_tag(session, label) for label in ("rust-lang", "rust", "go"))
+        topic, _ = subscribe_tag(session, embedder, old)
+        relink_tag_topic(session, old.id, new.id)  # the target has no topic: it follows
+        assert topic_for_tag(session, old.id) is None
+        moved = topic_for_tag(session, new.id)
+        assert moved is not None and moved.id == topic.id
+
+        relink_tag_topic(session, other.id, new.id)  # the source has none: nothing happens
+        assert topic_for_tag(session, new.id) == moved
+
+        subscribe_tag(session, embedder, other, weight=-1)
+        relink_tag_topic(session, other.id, new.id)  # both have one: the target's stands
+        assert topic_for_tag(session, other.id) is None
+        assert topic_for_tag(session, new.id) == moved
+
+
+def test_mute_tag_makes_a_negative_topic_or_flips_a_subscription(
+    sessions: sessionmaker[Session], embedder: StubEmbeddingProvider
+) -> None:
+    with sessions.begin() as session:
+        rust, go = make_tag(session, "rust"), make_tag(session, "go")
+        muted = mute_tag(session, embedder, rust, now=NOW)
+        subscribe_tag(session, embedder, go, now=NOW)
+        flipped = mute_tag(session, embedder, go, now=NOW)
+        update_topic(session, embedder, muted.id, weight=-0.9, now=NOW)
+        kept = mute_tag(session, embedder, rust, now=NOW)  # already muted: left alone
+
+        assert (muted.weight, muted.match_mode, muted.hide) == (MUTE_WEIGHT, "tag", False)
+        assert (flipped.weight, flipped.tag_id) == (MUTE_WEIGHT, go.id)
+        assert kept.weight == -0.9
+        assert unmute_tag(session, rust.id) is True
+        assert unmute_tag(session, rust.id) is False
+        assert topic_for_tag(session, rust.id) is None
+
+
+def test_unmute_leaves_subscriptions_alone(
+    sessions: sessionmaker[Session], embedder: StubEmbeddingProvider
+) -> None:
+    with sessions.begin() as session:
+        rust = make_tag(session, "rust")
+        subscribe_tag(session, embedder, rust, now=NOW)
+
+        assert unmute_tag(session, rust.id) is False
+        assert topic_for_tag(session, rust.id) is not None
+
+
+def test_hide_needs_a_tag_topic_at_weight_minus_one(
+    sessions: sessionmaker[Session], embedder: StubEmbeddingProvider
+) -> None:
+    with sessions.begin() as session:
+        rust = make_tag(session, "rust")
+        plain = add_topic(session, embedder, name="plain", description="plain", weight=-1)
+        tagged = mute_tag(session, embedder, rust, now=NOW)
+
+        with pytest.raises(ValueError, match="weight -1"):
+            update_topic(session, embedder, tagged.id, hide=True)  # weight is -0.5
+        with pytest.raises(ValueError, match="tag topic"):
+            update_topic(session, embedder, plain.id, hide=True)
+        with pytest.raises(ValueError, match="weight -1"):
+            update_topic(session, embedder, tagged.id, weight=0.2, hide=True)
+
+        hidden = update_topic(session, embedder, tagged.id, weight=-1, hide=True, now=NOW)
+        assert hidden is not None and hidden.hide
+        assert [v.hide for v in topic_vectors(session, now=NOW) if v.tag_id] == [True]
+        # Other changes keep it; so does setting -1 again.
+        renamed = update_topic(session, embedder, tagged.id, name="renamed", weight=-1)
+        assert renamed is not None and renamed.hide
+        # Any other weight clears it, and it stays off when the weight returns to -1.
+        raised = update_topic(session, embedder, tagged.id, weight=-0.9, now=NOW)
+        assert raised is not None and not raised.hide
+        back = update_topic(session, embedder, tagged.id, weight=-1, now=NOW)
+        assert back is not None and not back.hide
+        shown = update_topic(session, embedder, tagged.id, hide=False)
+        assert shown is not None and not shown.hide

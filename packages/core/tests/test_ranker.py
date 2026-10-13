@@ -509,3 +509,112 @@ def test_rank_adds_topic_boosts_to_the_breakdown() -> None:
     for item in scored:
         b = item.breakdown
         assert math.isclose(item.score, b.channel + sum(b.topics.values()))
+
+
+def tag_topic(mode: str, weight: float, *, tag_id: int = 7, vector: Any = None) -> TopicVector:
+    return TopicVector("rust", weight, vector or unit(0), match_mode=mode, tag_id=tag_id)  # type: ignore[arg-type]
+
+
+def test_tag_topics_boost_by_weight_times_confidence() -> None:
+    topics = [tag_topic("tag", 0.5)]
+
+    # The embedding is ignored (and not needed) in tag mode.
+    assert topic_boosts(unit(0), topics, {7: 0.8}) == {"rust": pytest.approx(0.4)}
+    assert topic_boosts(None, topics, {7: 1.0}) == {"rust": pytest.approx(0.5)}
+    assert topic_boosts(unit(0), topics, {8: 1.0}) == {}  # another tag
+    assert topic_boosts(unit(0), topics, None) == {}
+    assert topic_boosts(None, [tag_topic("tag", -0.5)], {7: 0.6}) == {"rust": pytest.approx(-0.3)}
+
+
+def test_embedding_mode_ignores_tags() -> None:
+    topics = [tag_topic("embedding", 0.5)]
+
+    assert topic_boosts(unit(1), topics, {7: 1.0}) == {}
+    assert topic_boosts(unit(0), topics, {7: 1.0}) == {"rust": pytest.approx(0.5)}
+
+
+@pytest.mark.parametrize(
+    ("weight", "embedding", "confidence", "expected"),
+    [
+        (0.5, unit(0), 0.4, 0.5),  # embedding term (0.5) beats tag term (0.2)
+        (0.5, with_similarity(0.65), 0.9, 0.45),  # tag term (0.45) beats embedding (0.25)
+        (-0.5, unit(0), 0.4, -0.5),  # negative: the more negative wins
+        (-0.5, with_similarity(0.65), 0.9, -0.45),
+        (0.5, unit(1), 0.8, 0.4),  # only the tag matches
+        (0.5, None, 0.8, 0.4),  # not enriched: tag only
+    ],
+)
+def test_both_mode_takes_the_larger_magnitude(
+    weight: float, embedding: Any, confidence: float, expected: float
+) -> None:
+    boosts = topic_boosts(embedding, [tag_topic("both", weight)], {7: confidence})
+
+    assert boosts == {"rust": pytest.approx(expected)}
+
+
+def test_both_mode_without_the_tag_uses_the_embedding() -> None:
+    assert topic_boosts(unit(0), [tag_topic("both", 0.5)], {}) == {"rust": pytest.approx(0.5)}
+
+
+def test_rank_adds_tag_boosts_and_parts_sum_to_final() -> None:
+    topics = [tag_topic("tag", 0.5), TopicVector("drama", -0.6, unit(1))]
+    videos = [candidate("tagged"), candidate("plain"), candidate("both")]
+    embeddings = {"plain": unit(2), "both": unit(1)}
+    tags = {"tagged": {7: 1.0}, "both": {7: 0.5}}
+
+    scored = rank(
+        videos,
+        curation={},
+        history=NO_HISTORY,
+        topics=topics,
+        embeddings=embeddings,
+        video_tags=tags,
+    )
+
+    by_id = {item.candidate.video_id: item for item in scored}
+    assert by_id["tagged"].breakdown.topics == {"rust": pytest.approx(0.5)}
+    assert by_id["both"].breakdown.topics == {
+        "rust": pytest.approx(0.25),
+        "drama": pytest.approx(-0.6),
+    }
+    assert by_id["plain"].breakdown.topics == {}
+    assert [item.candidate.video_id for item in scored] == ["tagged", "plain", "both"]
+    for item in scored:
+        b = item.breakdown
+        assert math.isclose(item.score, b.channel + sum(b.topics.values()))
+        assert math.isclose(b.final, item.score)
+
+
+def hiding_topic(*, hide: bool = True, tag_id: int = 7) -> TopicVector:
+    return TopicVector("rust", -1.0, unit(0), match_mode="tag", tag_id=tag_id, hide=hide)  # type: ignore[arg-type]
+
+
+def test_hide_drops_videos_carrying_the_tag() -> None:
+    videos = [candidate("hidden"), candidate("other-tag"), candidate("untagged")]
+    tags = {"hidden": {7: 0.3}, "other-tag": {8: 1.0}}
+
+    scored = rank(videos, curation={}, history=NO_HISTORY, topics=[hiding_topic()], video_tags=tags)
+
+    assert {item.candidate.video_id for item in scored} == {"other-tag", "untagged"}
+
+
+def test_a_muted_tag_without_hide_only_pushes_videos_down() -> None:
+    videos = [candidate("tagged"), candidate("plain")]
+    tags = {"tagged": {7: 1.0}}
+
+    scored = rank(
+        videos, curation={}, history=NO_HISTORY, topics=[hiding_topic(hide=False)], video_tags=tags
+    )
+
+    assert [item.candidate.video_id for item in scored] == ["plain", "tagged"]
+    assert scored[1].breakdown.topics == {"rust": pytest.approx(-1.0)}
+    assert scored[0].breakdown.topics == {}
+
+
+def test_filter_reason_names_a_hidden_tag() -> None:
+    reason = filter_reason(
+        candidate(), curation={}, history=NO_HISTORY, hidden_tags={7}, tag_ids=[3, 7]
+    )
+
+    assert reason == FilterReason.HIDDEN_TAG
+    assert filter_reason(candidate(), curation={}, history=NO_HISTORY, hidden_tags={7}) is None

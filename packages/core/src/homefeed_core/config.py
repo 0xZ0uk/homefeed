@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import find_dotenv
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # LLM providers for video tagging (see homefeed_core.llm_tags). "openrouter" is the
@@ -39,9 +39,10 @@ class Settings(BaseSettings):
     # sentence-transformers model for content embeddings (downloaded into DATA_DIR/models).
     # Changing it re-embeds every video on its next enrichment; it must be 384-dimensional.
     embedding_model: str = "BAAI/bge-small-en-v1.5"
-    # LLM tagging (topic, depth, clickbait, rage-bait); see homefeed_core.llm_tags. The
-    # default is the hosted OpenRouter API, which needs OPENROUTER_API_KEY: without one,
-    # tagging is skipped (with a warning) and ranking goes on without tags.
+    # LLM tagging (topic, depth, clickbait, rage-bait, specific tags); see
+    # homefeed_core.llm_tags. The default is the hosted OpenRouter API, which needs
+    # OPENROUTER_API_KEY: without one, tagging is skipped (with a warning) and ranking
+    # goes on without tags.
     llm_provider: LLMProviderName = "openrouter"
     # Model name for the provider; empty means the provider's default
     # (openrouter: google/gemini-2.5-flash-lite, ollama: llama3.1:8b).
@@ -52,8 +53,16 @@ class Settings(BaseSettings):
     # OpenRouter API key (https://openrouter.ai/settings/keys).
     openrouter_api_key: SecretStr | None = None
     llm_timeout_seconds: float = 60.0
-    # At most this many videos are tagged per enrichment run, to bound cost.
+    # At most this many videos are tagged per enrichment run, to bound cost (also how
+    # fast a prompt version bump retags the library).
     llm_max_tags_per_run: int = 200
+    # Cosine similarity from which a proposed tag is merged into the most similar existing
+    # one (as an alias) instead of becoming a new tag; see homefeed_core.tags. Higher
+    # merges less.
+    tag_merge_threshold: float = 0.92
+    # Tag discovery (see homefeed_core.tag_discovery): at most this many new candidates per
+    # subscribed tag per day come from searching YouTube for it (0 turns discovery off).
+    tag_discovery_per_day: int = Field(default=10, ge=0)
     # SponsorBlock (see homefeed_core.sponsorblock): the server, and the comma-separated
     # categories the watch page skips (empty turns skipping off).
     sponsorblock_url: str = "https://sponsor.ajay.app"

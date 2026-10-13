@@ -6,7 +6,8 @@ Serves the real FastAPI app (`homefeed_api.main.app`) on 127.0.0.1:$E2E_API_PORT
 - no RSS polling on feed refresh, and a stub embedding provider;
 - a throwaway data dir ($E2E_DATA_DIR, or a new temp dir removed on exit);
 - `POST /__e2e__/reset`, which recreates the database, subscribes to both channels,
-  stores their uploads as candidates and builds today's feed. Tests call it first.
+  stores their uploads as candidates (with LLM tags on some, see `VIDEO_TAGS`) and
+  builds today's feed. Tests call it first.
 
 Run it with `uv run --package homefeed-api python fake_api.py`.
 """
@@ -79,6 +80,11 @@ BIRDS_VIDEOS = [
     ("bird0000001", "Spotting warblers in spring", 30),
     ("bird0000002", "Owls at night", 31),
 ]
+# Tags as the LLM tagger would have stored them: (label, confidence) by video id.
+VIDEO_TAGS = {
+    "wood0000002": [("workbench", 0.9), ("woodworking", 0.8), ("hand tools", 0.5)],
+    "wood0000003": [("woodworking", 0.7)],
+}
 
 
 def build_app() -> "FastAPI":
@@ -90,7 +96,8 @@ def build_app() -> "FastAPI":
     app.dependency_overrides[get_gateway] = lambda: STATE["gateway"]
     app.dependency_overrides[get_playback] = lambda: STATE["playback"]
     app.dependency_overrides[get_feed_poll] = lambda: None
-    app.dependency_overrides[get_embedder] = StubEmbeddingProvider
+    # A lambda: FastAPI would read the class's constructor parameters as request fields.
+    app.dependency_overrides[get_embedder] = lambda: StubEmbeddingProvider()
 
     @app.post("/__e2e__/reset", include_in_schema=False)
     def e2e_reset() -> Response:
@@ -133,11 +140,12 @@ def make_gateway() -> "FakeGateway":
 
 def reset_data() -> None:
     """Recreate the database and seed it: two subscriptions, their uploads, a feed."""
-    from homefeed_core import curation, feeds, playback, videos
+    from homefeed_core import curation, feeds, playback, tags, videos
     from homefeed_core.candidates import SUBSCRIPTION, record
     from homefeed_core.config import get_settings
     from homefeed_core.db import get_session_factory
     from homefeed_core.gateway.urls import channel_url
+    from homefeed_core.llm_tags import TAG_PROMPT_VERSION
 
     get_settings.cache_clear()
     if get_session_factory.cache_info().currsize:
@@ -162,6 +170,13 @@ def reset_data() -> None:
                 [video.id for video in uploads],
                 source=SUBSCRIPTION,
                 source_detail=channel.id,
+            )
+        for video_id, proposals in VIDEO_TAGS.items():
+            tags.set_llm_tags(
+                session,
+                video_id,
+                [tags.ProposedTag(label, confidence) for label, confidence in proposals],
+                prompt_version=TAG_PROMPT_VERSION,
             )
         feeds.build_feed(session, rng=random.Random(0))
     gateway.calls.clear()

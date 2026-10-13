@@ -18,6 +18,10 @@ test("watch a video and rate it", async ({ page, request }) => {
 
   await expect(page).toHaveURL(`/watch/${video.id}`);
   await expect(page.getByRole("heading", { name: video.title })).toBeVisible();
+  // Its LLM tags, most confident first.
+  await expect(
+    page.getByRole("list", { name: "Tags" }).getByRole("listitem"),
+  ).toHaveText(["workbench", "woodworking", "hand tools"]);
   await expect(page.getByText("Not rated yet.")).toBeVisible();
 
   // The slider starts mid-scale; nothing is saved until "Save".

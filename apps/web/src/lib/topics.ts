@@ -40,3 +40,69 @@ export function decayNote(
   const current = `Now ${formatWeight(topic.effective_weight)}`;
   return age ? `${current}, reaffirmed ${age}` : current;
 }
+
+/** How a topic matches videos. */
+export type MatchMode = "embedding" | "tag" | "both";
+
+export const MATCH_MODES: readonly MatchMode[] = ["embedding", "tag", "both"];
+
+/** A match mode's name in the Topics tab. */
+export function matchModeLabel(mode: MatchMode): string {
+  return {
+    embedding: "Similar videos",
+    tag: "Tagged videos",
+    both: "Similar or tagged",
+  }[mode];
+}
+
+/** A subscribed tag, for the sidebar. */
+export interface SubscribedTag {
+  slug: string;
+  label: string;
+}
+
+/**
+ * The tags the user has subscribed to with a positive weight (a tag given a
+ * zero or negative weight is muted, not followed), alphabetically.
+ */
+export function subscribedTags(
+  topics: ReadonlyArray<{
+    weight: number;
+    tag_slug?: string | null;
+    tag_label?: string | null;
+  }>,
+): SubscribedTag[] {
+  return topics
+    .flatMap((topic) =>
+      topic.tag_slug && topic.weight > 0
+        ? [{ slug: topic.tag_slug, label: topic.tag_label ?? topic.tag_slug }]
+        : [],
+    )
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/** Whether a topic suppresses its videos (a negative weight): a muted tag when
+ * the topic is backed by one. */
+export function isMuted(topic: { weight: number }): boolean {
+  return topic.weight < 0;
+}
+
+/** The weight at which a muted tag can hide its videos from the feed. */
+export const HIDE_WEIGHT = -1;
+
+/** The tags the user has muted (a negative weight), alphabetically. */
+export function mutedTags(
+  topics: ReadonlyArray<{
+    weight: number;
+    tag_slug?: string | null;
+    tag_label?: string | null;
+  }>,
+): SubscribedTag[] {
+  return topics
+    .flatMap((topic) =>
+      topic.tag_slug && isMuted(topic)
+        ? [{ slug: topic.tag_slug, label: topic.tag_label ?? topic.tag_slug }]
+        : [],
+    )
+    .sort((a, b) => a.label.localeCompare(b.label));
+}

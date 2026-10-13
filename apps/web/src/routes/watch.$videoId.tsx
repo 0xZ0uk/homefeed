@@ -17,6 +17,7 @@ import { Comments } from "#/components/Comments";
 import { PlayerMediaProvider } from "#/components/PlayerMedia";
 import { SaveToPlaylist } from "#/components/SaveToPlaylist";
 import { SponsorSkip } from "#/components/SponsorSkip";
+import { VideoTags } from "#/components/VideoTags";
 import { WatchAndRate } from "#/components/WatchAndRate";
 import { NextInQueue } from "#/components/NextInQueue";
 import { QueueButton } from "#/components/QueueButton";
@@ -30,7 +31,7 @@ import { videoQuery } from "#/server/videos";
 
 /**
  * The watch page: the player and the rating (prompted when the video ends or
- * when leaving, editable any time), then title, channel, description,
+ * when leaving, editable any time), then title, tags, channel, description,
  * chapters and comments (loaded only on demand). SponsorBlock segments are
  * skipped. It never autoplays and suggests nothing when the video ends. It
  * picks up where the last visit stopped (see `fetchResumePosition`).
@@ -89,7 +90,10 @@ function Watch() {
           startAt={resumeAt}
         >
           <SponsorSkip videoId={video.id} />
-          <h2 className="text-xl leading-7 font-bold">{video.title}</h2>
+          <div className="flex flex-col gap-2">
+            <h2 className="text-xl leading-7 font-bold">{video.title}</h2>
+            <VideoTags videoId={video.id} tags={video.tags} />
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
             <div className="flex min-w-0 items-center gap-3">
               <span

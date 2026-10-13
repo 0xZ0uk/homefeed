@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { clampWeight, decayNote, formatWeight, weightEffect } from "./topics";
+import {
+  MATCH_MODES,
+  clampWeight,
+  decayNote,
+  formatWeight,
+  matchModeLabel,
+  mutedTags,
+  subscribedTags,
+  weightEffect,
+} from "./topics";
 
 describe("clampWeight", () => {
   it("rounds to the slider step", () => {
@@ -50,5 +59,50 @@ describe("decayNote", () => {
     expect(decayNote({ effective_weight: -1, reaffirmed_at: "" }, now)).toBe(
       "Now −1.00",
     );
+  });
+});
+
+describe("subscribedTags", () => {
+  it("lists tag-backed topics with a positive weight, alphabetically", () => {
+    expect(
+      subscribedTags([
+        { weight: 0.5, tag_slug: "rust", tag_label: "Rust" },
+        { weight: 0.5 }, // no tag
+        { weight: 0.5, tag_slug: null, tag_label: null },
+        { weight: 0, tag_slug: "go", tag_label: "Go" },
+        { weight: -0.5, tag_slug: "drama", tag_label: "Drama" },
+        { weight: 0.1, tag_slug: "ai", tag_label: "AI" },
+      ]),
+    ).toEqual([
+      { slug: "ai", label: "AI" },
+      { slug: "rust", label: "Rust" },
+    ]);
+  });
+});
+
+describe("matchModeLabel", () => {
+  it("names every mode", () => {
+    expect(MATCH_MODES.map(matchModeLabel)).toEqual([
+      "Similar videos",
+      "Tagged videos",
+      "Similar or tagged",
+    ]);
+  });
+});
+
+describe("mutedTags", () => {
+  it("lists tag-backed topics with a negative weight, alphabetically", () => {
+    expect(
+      mutedTags([
+        { weight: -0.5, tag_slug: "rust", tag_label: "Rust" },
+        { weight: -1 }, // no tag
+        { weight: 0, tag_slug: "go", tag_label: "Go" },
+        { weight: 0.5, tag_slug: "ai", tag_label: "AI" },
+        { weight: -0.1, tag_slug: "drama", tag_label: "Drama" },
+      ]),
+    ).toEqual([
+      { slug: "drama", label: "Drama" },
+      { slug: "rust", label: "Rust" },
+    ]);
   });
 });

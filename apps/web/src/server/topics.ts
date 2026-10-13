@@ -2,7 +2,11 @@ import {
   addTopic,
   deleteTopic,
   listTopics,
+  muteTag,
   reaffirmTopic,
+  subscribeTag,
+  unmuteTag,
+  unsubscribeTag,
   updateTopic,
   type Topic,
   type TopicUpdateInput,
@@ -10,6 +14,8 @@ import {
 import { queryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 
+import { isTagSlug } from "#/lib/tags";
+import { MATCH_MODES } from "#/lib/topics";
 import { apiClient, apiErrorMessage } from "#/server/api";
 
 /** Server functions for the curation page's topics tab. */
@@ -94,6 +100,8 @@ export const editTopic = createServerFn({ method: "POST" })
         : undefined,
     weight: data.weight == null ? undefined : checkWeight(data.weight),
     decay: typeof data.decay === "boolean" ? data.decay : undefined,
+    hide: typeof data.hide === "boolean" ? data.hide : undefined,
+    match_mode: MATCH_MODES.find((mode) => mode === data.match_mode),
   }))
   .handler(async ({ data: { id, ...body } }): Promise<TopicResult> => {
     const {
@@ -126,6 +134,72 @@ export const removeTopic = createServerFn({ method: "POST" })
     await deleteTopic({
       client: apiClient(),
       path: { topic_id: data.id },
+      throwOnError: true,
+    });
+  });
+
+/** Subscribes to a tag, creating its topic (or returning the existing one). */
+export const subscribeToTag = createServerFn({ method: "POST" })
+  .inputValidator((data: { slug: string }) => {
+    if (typeof data.slug !== "string" || !isTagSlug(data.slug)) {
+      throw new Error("Not a tag slug");
+    }
+    return { slug: data.slug };
+  })
+  .handler(async ({ data }): Promise<TopicResult> => {
+    const {
+      data: topic,
+      error,
+      response,
+    } = await subscribeTag({ client: apiClient(), path: { slug: data.slug } });
+    if (topic) return { ok: true, topic };
+    return { ok: false, message: topicError(error, response?.status) };
+  });
+
+export const unsubscribeFromTag = createServerFn({ method: "POST" })
+  .inputValidator((data: { slug: string }) => {
+    if (typeof data.slug !== "string" || !isTagSlug(data.slug)) {
+      throw new Error("Not a tag slug");
+    }
+    return { slug: data.slug };
+  })
+  .handler(async ({ data }) => {
+    await unsubscribeTag({
+      client: apiClient(),
+      path: { slug: data.slug },
+      throwOnError: true,
+    });
+  });
+
+/** Mutes a tag: its topic gets a negative weight (or an existing one is flipped). */
+export const muteTagBySlug = createServerFn({ method: "POST" })
+  .inputValidator((data: { slug: string }) => {
+    if (typeof data.slug !== "string" || !isTagSlug(data.slug)) {
+      throw new Error("Not a tag slug");
+    }
+    return { slug: data.slug };
+  })
+  .handler(async ({ data }): Promise<TopicResult> => {
+    const {
+      data: topic,
+      error,
+      response,
+    } = await muteTag({ client: apiClient(), path: { slug: data.slug } });
+    if (topic) return { ok: true, topic };
+    return { ok: false, message: topicError(error, response?.status) };
+  });
+
+export const unmuteTagBySlug = createServerFn({ method: "POST" })
+  .inputValidator((data: { slug: string }) => {
+    if (typeof data.slug !== "string" || !isTagSlug(data.slug)) {
+      throw new Error("Not a tag slug");
+    }
+    return { slug: data.slug };
+  })
+  .handler(async ({ data }) => {
+    await unmuteTag({
+      client: apiClient(),
+      path: { slug: data.slug },
       throwOnError: true,
     });
   });

@@ -1,9 +1,11 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, type LinkProps } from "@tanstack/react-router";
 import {
   Activity,
   ChartLine,
   Compass,
   Cpu,
+  EyeOff,
   History,
   House,
   ListVideo,
@@ -12,6 +14,7 @@ import {
   Settings,
   SlidersHorizontal,
   SquarePlay,
+  Tag,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -31,7 +34,9 @@ import {
   SheetDescription,
   SheetTitle,
 } from "#/components/ui/sheet";
+import { mutedTags, subscribedTags } from "#/lib/topics";
 import { cn } from "#/lib/utils";
+import { topicsQuery } from "#/server/topics";
 
 type NavItem = {
   to: LinkProps["to"];
@@ -255,8 +260,13 @@ function MastheadSearch() {
   );
 }
 
-/** The full-width guide: each section's links with icon and label. */
+/** The full-width guide: each section's links with icon and label, then the
+ * tags you subscribe to and, below them, the ones you muted. */
 function Guide({ onNavigate }: { onNavigate?: () => void }) {
+  const { data: topics } = useQuery(topicsQuery);
+  const tags = subscribedTags(topics ?? []);
+  const muted = mutedTags(topics ?? []);
+
   return (
     <nav aria-label="Main" className="flex flex-col px-3 pb-6">
       {NAV.map((section, index) => (
@@ -276,6 +286,48 @@ function Guide({ onNavigate }: { onNavigate?: () => void }) {
           ))}
         </div>
       ))}
+      {tags.length > 0 && (
+        <div className="flex flex-col">
+          <Separator className="my-3" />
+          <h2 className="px-3 py-1.5 text-base font-medium">Tags</h2>
+          <ul aria-label="Subscribed tags" className="flex flex-col">
+            {tags.map(({ slug, label }) => (
+              <li key={slug}>
+                <Link
+                  to="/tags/$slug"
+                  params={{ slug }}
+                  onClick={onNavigate}
+                  className="group flex h-10 items-center gap-6 rounded-lg px-3 text-sm outline-none hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/50 aria-[current=page]:bg-secondary aria-[current=page]:font-medium"
+                >
+                  <Tag className="size-5 shrink-0 group-aria-[current=page]:stroke-[2.5]" />
+                  <span className="min-w-0 truncate">{label}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {muted.length > 0 && (
+        <div className="flex flex-col">
+          <Separator className="my-3" />
+          <h2 className="px-3 py-1.5 text-base font-medium">Muted tags</h2>
+          <ul aria-label="Muted tags" className="flex flex-col">
+            {muted.map(({ slug, label }) => (
+              <li key={slug}>
+                <Link
+                  to="/tags/$slug"
+                  params={{ slug }}
+                  onClick={onNavigate}
+                  className="group flex h-10 items-center gap-6 rounded-lg px-3 text-sm text-muted-foreground outline-none hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/50 aria-[current=page]:bg-secondary aria-[current=page]:font-medium"
+                >
+                  <EyeOff className="size-5 shrink-0 group-aria-[current=page]:stroke-[2.5]" />
+                  <span className="min-w-0 truncate">{label}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </nav>
   );
 }

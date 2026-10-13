@@ -26,6 +26,7 @@ import { Route as WatchEventsRouteImport } from './routes/watch-events'
 import { Route as FeedDateRouteImport } from './routes/feed.$date'
 import { Route as PlaylistsIndexRouteImport } from './routes/playlists.index'
 import { Route as PlaylistsPlaylistIdRouteImport } from './routes/playlists.$playlistId'
+import { Route as TagsSlugRouteImport } from './routes/tags.$slug'
 import { Route as WatchVideoIdRouteImport } from './routes/watch.$videoId'
 import { Route as VideosVideoIdManifestDotmpdRouteImport } from './routes/videos.$videoId.manifest[.]mpd'
 import { Route as VideosVideoIdMediaItagRouteImport } from './routes/videos.$videoId.media.$itag'
@@ -115,6 +116,11 @@ const PlaylistsPlaylistIdRoute = PlaylistsPlaylistIdRouteImport.update({
   path: '/playlists/$playlistId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TagsSlugRoute = TagsSlugRouteImport.update({
+  id: '/tags/$slug',
+  path: '/tags/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WatchVideoIdRoute = WatchVideoIdRouteImport.update({
   id: '/watch/$videoId',
   path: '/watch/$videoId',
@@ -149,6 +155,7 @@ export interface FileRoutesByFullPath {
   '/watch-events': typeof WatchEventsRoute
   '/feed/$date': typeof FeedDateRoute
   '/playlists/$playlistId': typeof PlaylistsPlaylistIdRoute
+  '/tags/$slug': typeof TagsSlugRoute
   '/watch/$videoId': typeof WatchVideoIdRoute
   '/playlists/': typeof PlaylistsIndexRoute
   '/videos/$videoId/manifest.mpd': typeof VideosVideoIdManifestDotmpdRoute
@@ -171,6 +178,7 @@ export interface FileRoutesByTo {
   '/watch-events': typeof WatchEventsRoute
   '/feed/$date': typeof FeedDateRoute
   '/playlists/$playlistId': typeof PlaylistsPlaylistIdRoute
+  '/tags/$slug': typeof TagsSlugRoute
   '/watch/$videoId': typeof WatchVideoIdRoute
   '/playlists': typeof PlaylistsIndexRoute
   '/videos/$videoId/manifest.mpd': typeof VideosVideoIdManifestDotmpdRoute
@@ -194,6 +202,7 @@ export interface FileRoutesById {
   '/watch-events': typeof WatchEventsRoute
   '/feed/$date': typeof FeedDateRoute
   '/playlists/$playlistId': typeof PlaylistsPlaylistIdRoute
+  '/tags/$slug': typeof TagsSlugRoute
   '/watch/$videoId': typeof WatchVideoIdRoute
   '/playlists/': typeof PlaylistsIndexRoute
   '/videos/$videoId/manifest.mpd': typeof VideosVideoIdManifestDotmpdRoute
@@ -218,6 +227,7 @@ export interface FileRouteTypes {
     | '/watch-events'
     | '/feed/$date'
     | '/playlists/$playlistId'
+    | '/tags/$slug'
     | '/watch/$videoId'
     | '/playlists/'
     | '/videos/$videoId/manifest.mpd'
@@ -240,6 +250,7 @@ export interface FileRouteTypes {
     | '/watch-events'
     | '/feed/$date'
     | '/playlists/$playlistId'
+    | '/tags/$slug'
     | '/watch/$videoId'
     | '/playlists'
     | '/videos/$videoId/manifest.mpd'
@@ -262,6 +273,7 @@ export interface FileRouteTypes {
     | '/watch-events'
     | '/feed/$date'
     | '/playlists/$playlistId'
+    | '/tags/$slug'
     | '/watch/$videoId'
     | '/playlists/'
     | '/videos/$videoId/manifest.mpd'
@@ -285,6 +297,7 @@ export interface RootRouteChildren {
   WatchEventsRoute: typeof WatchEventsRoute
   FeedDateRoute: typeof FeedDateRoute
   PlaylistsPlaylistIdRoute: typeof PlaylistsPlaylistIdRoute
+  TagsSlugRoute: typeof TagsSlugRoute
   WatchVideoIdRoute: typeof WatchVideoIdRoute
   PlaylistsIndexRoute: typeof PlaylistsIndexRoute
   VideosVideoIdManifestDotmpdRoute: typeof VideosVideoIdManifestDotmpdRoute
@@ -412,6 +425,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlaylistsPlaylistIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tags/$slug': {
+      id: '/tags/$slug'
+      path: '/tags/$slug'
+      fullPath: '/tags/$slug'
+      preLoaderRoute: typeof TagsSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/watch/$videoId': {
       id: '/watch/$videoId'
       path: '/watch/$videoId'
@@ -453,6 +473,7 @@ const rootRouteChildren: RootRouteChildren = {
   WatchEventsRoute: WatchEventsRoute,
   FeedDateRoute: FeedDateRoute,
   PlaylistsPlaylistIdRoute: PlaylistsPlaylistIdRoute,
+  TagsSlugRoute: TagsSlugRoute,
   WatchVideoIdRoute: WatchVideoIdRoute,
   PlaylistsIndexRoute: PlaylistsIndexRoute,
   VideosVideoIdManifestDotmpdRoute: VideosVideoIdManifestDotmpdRoute,

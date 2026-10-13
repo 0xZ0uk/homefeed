@@ -23,7 +23,14 @@ have some similarity). Candidates without an embedding get no similarity feature
 Topic boosts: each topic adds `weight * max(0, cos_sim(video, topic) - 0.3) / 0.7` (see
 `topic_boost`), with the topic's effective (decayed) weight. `breakdown.topics` maps a
 topic's name to its boost, holding only the topics with a nonzero boost; videos without
-an embedding (not enriched yet) get no topic boosts.
+an embedding (not enriched yet) get no embedding-matched boosts.
+
+Tag-backed topics (see homefeed_core.curation) match by tag as well: with match mode
+'tag' a topic adds `weight * confidence` when the video carries its tag (a link that is
+not removed; manual links have confidence 1). With 'both' it adds whichever of the tag and
+embedding terms is larger in magnitude; both have the weight's sign, so that is the larger
+one for a positive weight and the more negative one for a negative weight. Tag terms need
+no embedding. `rank` takes the tags as `video_tags`, tag id to confidence for each video.
 
 Unknown metadata passes the hard filters. Subscription candidates come from RSS, which
 has no duration or live status, so most candidates have neither until they are enriched;
@@ -31,6 +38,8 @@ filtering them out would empty the feed. Shorts are still caught through `is_sho
 (RSS marks them by their /shorts/ link) and, once known, a duration under 60 seconds.
 
 Keyword mutes are matched against the title and description (see `KeywordMutes`).
+Tag-backed topics with `hide` set drop every video that carries their tag (a link that is
+not removed; any confidence), so `video_tags` must cover those topics' tags.
 
 LLM tags (topic, depth, clickbait, rage-bait; see homefeed_core.llm_tags) are passed
 to the model with the other features. They add no rules-based term: the model learns
@@ -72,6 +81,7 @@ class FilterReason(StrEnum):
     TOO_LONG = "too_long"
     MUTED_CHANNEL = "muted_channel"
     MUTED_KEYWORD = "muted_keyword"
+    HIDDEN_TAG = "hidden_tag"
     WATCHED = "watched"
     DISMISSED = "dismissed"
 
@@ -347,13 +357,27 @@ def topic_boost(weight: float, similarity: float) -> float:
     return weight * max(0.0, similarity - TOPIC_SIMILARITY_FLOOR) / (1 - TOPIC_SIMILARITY_FLOOR)
 
 
-def topic_boosts(embedding: Embedding | None, topics: Iterable[TopicVector]) -> dict[str, float]:
-    """Each topic's boost for a video with `embedding`, by topic name; zeros left out."""
-    if embedding is None:
-        return {}
+def topic_boosts(
+    embedding: Embedding | None,
+    topics: Iterable[TopicVector],
+    tag_confidences: Mapping[int, float] | None = None,
+) -> dict[str, float]:
+    """Each topic's boost for a video with `embedding` and tags (tag id to confidence), by
+    topic name; zeros left out. Embedding-matched terms need an embedding, tag-matched ones
+    a tag; with 'both', the term larger in magnitude wins."""
     boosts: dict[str, float] = {}
     for topic in topics:
-        boost = topic_boost(topic.weight, cosine_similarity(embedding, topic.embedding))
+        terms: list[float] = []
+        if embedding is not None and topic.match_mode != "tag":
+            terms.append(topic_boost(topic.weight, cosine_similarity(embedding, topic.embedding)))
+        if (
+            topic.match_mode != "embedding"
+            and tag_confidences
+            and topic.tag_id is not None
+            and topic.tag_id in tag_confidences
+        ):
+            terms.append(topic.weight * tag_confidences[topic.tag_id])
+        boost = max(terms, key=abs, default=0.0)
         if boost != 0:
             boosts[topic.name] = boost
     return boosts
@@ -366,8 +390,11 @@ def filter_reason(
     history: History,
     bounds: DurationBounds = NO_BOUNDS,
     keyword_mutes: KeywordMutes = NO_KEYWORD_MUTES,
+    hidden_tags: Collection[int] = (),
+    tag_ids: Iterable[int] = (),
 ) -> FilterReason | None:
-    """Why the candidate is dropped before scoring, or `None` if it passes."""
+    """Why the candidate is dropped before scoring, or `None` if it passes. `tag_ids` are
+    the candidate's tags, matched against `hidden_tags`."""
     duration = candidate.duration_seconds
     if candidate.is_short or (duration is not None and duration < SHORT_MAX_SECONDS):
         return FilterReason.SHORT
@@ -381,6 +408,8 @@ def filter_reason(
         return FilterReason.MUTED_CHANNEL
     if keyword_mutes.matches(candidate.title, candidate.description):
         return FilterReason.MUTED_KEYWORD
+    if hidden_tags and any(tag_id in hidden_tags for tag_id in tag_ids):
+        return FilterReason.HIDDEN_TAG
     if candidate.video_id in history.watched:
         return FilterReason.WATCHED
     if candidate.video_id in history.dismissed:
@@ -400,13 +429,17 @@ def rank(
     model: Model | None = None,
     topics: Sequence[TopicVector] = (),
     llm_tags: Mapping[str, LLMTags] | None = None,
+    video_tags: Mapping[str, Mapping[int, float]] | None = None,
 ) -> list[ScoredCandidate]:
     """Filter and score `candidates`, best first (ties keep the input order).
 
     `embeddings` holds candidate embeddings by video id, for similarity features and
     topic boosts; candidates without one get neither. `llm_tags` holds candidate LLM
-    tags by video id, passed to the model."""
+    tags by video id, passed to the model. `video_tags` holds each video's tags (not
+    removed ones) as tag id to confidence, for tag-matched topics."""
     embeddings = embeddings or {}
+    video_tags = video_tags or {}
+    hidden_tags = {t.tag_id for t in topics if t.hide and t.tag_id is not None}
     llm_tags = llm_tags or {}
     blend = alpha(history.n_ratings, has_model=model is not None)
     top_tier, bottom_tier = _normalized(rated_tiers.top), _normalized(rated_tiers.bottom)
@@ -419,6 +452,8 @@ def rank(
             history=history,
             bounds=bounds,
             keyword_mutes=keyword_mutes,
+            hidden_tags=hidden_tags,
+            tag_ids=video_tags.get(candidate.video_id, ()),
         ):
             continue
         channel_id = candidate.channel_id
@@ -450,7 +485,11 @@ def rank(
             channel=item.channel_score,
             similarity=similarity_score(item.similarity),
             similarity_features=item.similarity,
-            topics=topic_boosts(item.embedding, topics) if topics else {},
+            topics=(
+                topic_boosts(item.embedding, topics, video_tags.get(candidate.video_id))
+                if topics
+                else {}
+            ),
         )
         scored.append(
             ScoredCandidate(

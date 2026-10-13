@@ -15,7 +15,6 @@ search's query or filters makes it due again.
 """
 
 import json
-import logging
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
@@ -25,15 +24,17 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
 from homefeed_core.candidates import SAVED_SEARCH, FoundVideo
-from homefeed_core.gateway import (
-    Gateway,
-    GatewayError,
-    SearchFilters,
-    normalize_search_query,
-)
+from homefeed_core.gateway import Gateway, SearchFilters, normalize_search_query
 from homefeed_core.gateway.events import format_timestamp
-
-logger = logging.getLogger(__name__)
+from homefeed_core.scheduled_search import (
+    SCHEDULE_GRACE,
+    SearchOutcome,
+    error_message,
+    parse_timestamp,
+    raise_if_all_failed,
+    rated_video_ids,
+    run_search,
+)
 
 Schedule = Literal["daily", "weekly", "paused"]
 
@@ -43,7 +44,6 @@ SCHEDULE_INTERVALS: dict[Schedule, timedelta] = {
     "daily": timedelta(days=1),
     "weekly": timedelta(days=7),
 }
-SCHEDULE_GRACE = timedelta(hours=2)
 # How many of each search's top results become candidates per run.
 DEFAULT_RESULTS_PER_SEARCH = 10
 
@@ -218,7 +218,7 @@ def due_saved_searches(session: Session, *, now: datetime | None = None) -> list
         if search.next_run_at is not None
         and (
             search.last_run_at is None
-            or _parse_timestamp(search.next_run_at) - SCHEDULE_GRACE <= now
+            or parse_timestamp(search.next_run_at) - SCHEDULE_GRACE <= now
         )
     ]
     return sorted(due, key=lambda search: (search.last_run_at or "", search.id))
@@ -281,38 +281,26 @@ class SavedSearchSource:
         now = self._now or datetime.now(UTC)
         with self._sessions() as session:
             searches = due_saved_searches(session, now=now)
-            rated = set(session.execute(text("SELECT video_id FROM ratings")).scalars())
+            rated = rated_video_ids(session)
         found: list[FoundVideo] = []
-        errors: list[GatewayError] = []
+        outcomes: list[SearchOutcome] = []
         for search in searches:
-            try:
-                results = self._gateway.search(search.query, search.filters, limit=self._per_search)
-            except GatewayError as error:
-                logger.warning("Saved search %r failed: %s", search.query, error)
-                errors.append(error)
-                with self._sessions.begin() as session:
-                    record_run(session, search.id, error=str(error) or error.kind, now=now)
-                continue
+            outcome = run_search(
+                self._gateway,
+                search.query,
+                search.filters,
+                limit=self._per_search,
+                source_detail=search.query,
+                skip=rated,
+            )
+            outcomes.append(outcome)
             with self._sessions.begin() as session:
-                record_run(session, search.id, found_count=len(results), now=now)
-            found += [
-                FoundVideo(
-                    video_id=result.id,
-                    title=result.title,
-                    channel_id=result.channel_id,
-                    channel_title=result.channel_title,
-                    source_detail=search.query,
-                    channel_handle=result.channel_handle,
-                    duration_seconds=result.duration_seconds,
-                    view_count=result.view_count,
-                    thumbnail_url=result.thumbnail_url,
-                    live_status=result.live_status,
-                )
-                for result in results
-                if result.id not in rated
-            ]
-        if errors and len(errors) == len(searches):
-            raise errors[-1]
+                if outcome.error is not None:
+                    record_run(session, search.id, error=error_message(outcome.error), now=now)
+                else:
+                    record_run(session, search.id, found_count=outcome.found_count, now=now)
+            found += outcome.videos
+        raise_if_all_failed(outcomes)
         return found
 
 
@@ -334,7 +322,7 @@ def _saved_search(row: Sequence[Any]) -> SavedSearch:
         next_run_at = (
             created_at
             if last_run_at is None
-            else format_timestamp(_parse_timestamp(last_run_at) + SCHEDULE_INTERVALS[schedule])
+            else format_timestamp(parse_timestamp(last_run_at) + SCHEDULE_INTERVALS[schedule])
         )
     return SavedSearch(
         id=search_id,
@@ -348,7 +336,3 @@ def _saved_search(row: Sequence[Any]) -> SavedSearch:
         created_at=created_at,
         updated_at=updated_at,
     )
-
-
-def _parse_timestamp(value: str) -> datetime:
-    return datetime.fromisoformat(value).astimezone(UTC)
