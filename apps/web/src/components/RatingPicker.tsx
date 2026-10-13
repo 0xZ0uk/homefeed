@@ -72,7 +72,7 @@ export function RatingPicker({
     <form
       aria-labelledby={titleId}
       onSubmit={(event) => void submit(event)}
-      className="flex flex-col gap-3 rounded-xl bg-secondary/60 p-4"
+      className="flex flex-col gap-3 rounded-xl bg-secondary p-3"
     >
       <h3 id={titleId} className="font-semibold">
         {title}

@@ -12,7 +12,7 @@ import {
 import { Button } from "#/components/ui/button";
 import { RatingPicker } from "#/components/RatingPicker";
 import { VideoPlayer, type VideoPlayerHandle } from "#/components/VideoPlayer";
-import { formatScore } from "#/lib/scores";
+import { MAX_SCORE, MIN_SCORE, formatScore } from "#/lib/scores";
 import type { WatchEvent } from "#/lib/player-events";
 import { createWatchEventReporter, sendWatchEvent } from "#/lib/watch-reporter";
 import { ratingQuery, removeRating, saveRating } from "#/server/ratings";
@@ -24,6 +24,10 @@ interface WatchAndRateProps {
   startAt?: number | null;
   /** Shown between the player and the rating, e.g. the video's title. */
   children?: ReactNode;
+  /** Shown beside the info column on wide screens (xl). */
+  aside?: ReactNode;
+  /** Classes for the padded content area below the player. */
+  contentClassName?: string;
 }
 
 /**
@@ -45,6 +49,8 @@ export function WatchAndRate({
   poster,
   startAt,
   children,
+  aside,
+  contentClassName,
 }: WatchAndRateProps) {
   const queryClient = useQueryClient();
   const { data: rating, isError } = useQuery(ratingQuery(videoId));
@@ -146,22 +152,30 @@ export function WatchAndRate({
         loadFailed={isError}
         onEdit={() => setEditing(true)}
         onRemove={remove}
+        onRestore={rate}
       />
     );
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <VideoPlayer
-        ref={player}
-        videoId={videoId}
-        poster={poster}
-        startAt={startAt}
-        onWatchEvent={onWatchEvent}
-      />
-      {children}
-      {panel}
-    </div>
+    <VideoPlayer
+      ref={player}
+      videoId={videoId}
+      poster={poster}
+      startAt={startAt}
+      onWatchEvent={onWatchEvent}
+    >
+      {(notices) => (
+        <div className={contentClassName}>
+          <div className="flex min-w-0 flex-col gap-4">
+            {notices}
+            {children}
+            {panel}
+          </div>
+          {aside}
+        </div>
+      )}
+    </VideoPlayer>
   );
 }
 
@@ -170,25 +184,47 @@ function YourRating({
   loadFailed,
   onEdit,
   onRemove,
+  onRestore,
 }: {
   score: number | null;
   loadFailed: boolean;
   onEdit: () => void;
   onRemove: () => Promise<void>;
+  onRestore: (score: number) => Promise<void>;
 }) {
   const [error, setError] = useState<string | null>(null);
 
+  // The score that was just removed, so it can be put back.
+  const [removed, setRemoved] = useState<number | null>(null);
+
   const remove = async () => {
+    if (score === null) return;
+    const previous = score;
     setError(null);
     try {
       await onRemove();
+      setRemoved(previous);
     } catch {
       setError("Couldn't remove the rating. Try again.");
     }
   };
 
+  const undo = async () => {
+    if (removed === null) return;
+    setError(null);
+    try {
+      await onRestore(removed);
+      setRemoved(null);
+    } catch {
+      setError("Couldn't restore the rating. Try again.");
+    }
+  };
+
+  // Rating again (score is set) retires the undo.
+  const undoable = score === null ? removed : null;
+
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-secondary/60 px-4 py-3">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-secondary p-3">
       <p className="mr-auto">
         {score !== null ? (
           <>
@@ -196,6 +232,17 @@ function YourRating({
             <strong className="text-lg tabular-nums">
               {formatScore(score)}
             </strong>
+            <span
+              aria-hidden="true"
+              className="relative mx-3 inline-block h-1.5 w-24 rounded-full bg-[linear-gradient(to_right_in_oklch,var(--score-low),var(--score-mid),var(--score-high))] align-middle"
+            >
+              <span
+                className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background bg-foreground shadow-sm"
+                style={{
+                  left: `${((score - MIN_SCORE) / (MAX_SCORE - MIN_SCORE)) * 100}%`,
+                }}
+              />
+            </span>
           </>
         ) : loadFailed ? (
           "Couldn't load your rating."
@@ -205,7 +252,7 @@ function YourRating({
       </p>
       <Button
         type="button"
-        variant="secondary"
+        variant="outline"
         size="lg"
         className="px-4"
         onClick={onEdit}
@@ -223,6 +270,21 @@ function YourRating({
           Remove rating
         </Button>
       )}
+      <p role="status" className="text-sm text-muted-foreground">
+        {undoable !== null && (
+          <>
+            Rating removed.{" "}
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto p-0"
+              onClick={() => void undo()}
+            >
+              Undo
+            </Button>
+          </>
+        )}
+      </p>
       {error && (
         <p role="alert" className="w-full text-destructive">
           {error}

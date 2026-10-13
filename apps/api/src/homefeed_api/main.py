@@ -51,9 +51,7 @@ from homefeed_core import (
 from homefeed_core.db import get_session_factory
 from homefeed_core.embeddings import EmbeddingError, EmbeddingProvider, get_embedding_provider
 from homefeed_core.gateway import (
-    DEFAULT_COMMENTS_LIMIT,
     DEFAULT_SEARCH_LIMIT,
-    MAX_COMMENTS_LIMIT,
     MAX_SEARCH_LIMIT,
     SEARCH_QUERY_MAX_LENGTH,
     Gateway,
@@ -1670,49 +1668,6 @@ def get_sponsor_segments(video_id: VideoId, player: PlaybackDep) -> list[Sponsor
     except sponsorblock.SponsorBlockError as error:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(error)) from error
     return [SponsorSegmentOut.model_validate(vars(segment)) for segment in segments]
-
-
-class CommentOut(BaseModel):
-    id: str
-    text: str
-    author: str = Field(description="Display name, usually the author's @handle")
-    author_channel_id: str | None
-    author_thumbnail_url: str | None
-    author_is_uploader: bool
-    like_count: int | None
-    published_at: str | None = Field(
-        description="Estimated from YouTube's relative time (`published_text`), ISO 8601 UTC"
-    )
-    published_text: str | None = Field(description='As YouTube shows it, e.g. "2 years ago"')
-    is_pinned: bool
-    is_hearted: bool = Field(description="Hearted by the uploader")
-
-
-@app.get("/videos/{video_id}/comments", tags=["videos"], responses=VIDEO_ERRORS)
-def get_comments(
-    video_id: VideoId,
-    gateway: GatewayDep,
-    limit: Annotated[int, Query(ge=1, le=MAX_COMMENTS_LIMIT)] = DEFAULT_COMMENTS_LIMIT,
-) -> list[CommentOut]:
-    """The video's top comments (pinned first), without replies, fetched from YouTube on
-    every call. Empty when comments are off."""
-    try:
-        comments = gateway.get_comments(video_id, limit=limit)
-    except GatewayError as error:
-        raise _gateway_http_error(error) from error
-    return [
-        CommentOut.model_validate(
-            {
-                **vars(comment),
-                "published_at": (
-                    format_timestamp(comment.published_at)
-                    if comment.published_at is not None
-                    else None
-                ),
-            }
-        )
-        for comment in comments
-    ]
 
 
 class ModelVersionOut(BaseModel):

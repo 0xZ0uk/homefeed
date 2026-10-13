@@ -3,6 +3,7 @@ import {
   useImperativeHandle,
   useRef,
   useState,
+  type ReactNode,
   type Ref,
 } from "react";
 
@@ -32,6 +33,9 @@ interface VideoPlayerProps {
   /** Play, pause, seek, end and close (leaving the page), with the position. */
   onWatchEvent?: WatchEventListener;
   ref?: Ref<VideoPlayerHandle>;
+  /** Lays out what follows the player band; gets the resume notice and error
+   * message to place inside the padded content area. */
+  children?: (notices: ReactNode) => ReactNode;
 }
 
 type ShakaPlayer = InstanceType<
@@ -50,6 +54,7 @@ export function VideoPlayer({
   startAt,
   onWatchEvent,
   ref,
+  children,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   // Only the first value counts: a later one mustn't jump a playing video.
@@ -121,16 +126,8 @@ export function VideoPlayer({
     };
   }, [videoId, initialStartAt]);
 
-  return (
-    <div className="flex flex-col gap-2">
-      <video
-        ref={videoRef}
-        controls
-        playsInline
-        preload="metadata"
-        poster={poster ?? undefined}
-        className="aspect-video w-full rounded-xl bg-black"
-      />
+  const notices = (
+    <>
       <ResumeNotice startAt={initialStartAt} videoRef={videoRef} />
       {error && (
         <p role="alert" className="text-destructive">
@@ -144,7 +141,23 @@ export function VideoPlayer({
           </button>
         </p>
       )}
-    </div>
+    </>
+  );
+
+  return (
+    <>
+      <div className="flex w-full justify-center bg-black">
+        <video
+          ref={videoRef}
+          controls
+          playsInline
+          preload="metadata"
+          poster={poster ?? undefined}
+          className="aspect-video h-auto max-h-[calc(100svh-3.5rem)] w-full bg-black"
+        />
+      </div>
+      {children ? children(notices) : notices}
+    </>
   );
 }
 

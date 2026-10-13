@@ -20,7 +20,6 @@ from homefeed_core.gateway import (
 from homefeed_core.gateway.fake import (
     FakeGateway,
     make_channel,
-    make_comment,
     make_format,
     make_video,
 )
@@ -51,7 +50,6 @@ def healthy_gateway() -> FakeGateway:
         )
     )
     gateway.add_related(ZOO_VIDEO, [other])
-    gateway.add_comments(ZOO_VIDEO, [make_comment()])
     gateway.add_search(smoke_test.SEARCH_QUERY, [other])
     gateway.add_channel(channel, [other])
     gateway.add_featured(VERITASIUM, [make_channel("UC" + "b" * 22, title="Other")])
@@ -73,7 +71,6 @@ def test_a_healthy_gateway_passes_and_is_recorded() -> None:
         "get_formats",
         "get_captions",
         "get_related",
-        "get_comments",
         "search",
         "get_channel_uploads",
         "get_featured_channels",
