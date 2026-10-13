@@ -1378,6 +1378,26 @@ def dismiss_feed_item(
     return _feed_item_out(item)
 
 
+STORED_FEED_NOT_FOUND: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorDetail, "description": "No such feed"}
+}
+
+
+@app.post("/feeds/{feed_id}/more", tags=["feed"], responses=STORED_FEED_NOT_FOUND)
+def extend_feed(
+    feed_id: Annotated[int, Path(ge=1, description="Feed id")], session: SessionDep
+) -> FeedOut:
+    """Append the next page of ranked picks to a feed (the "Show more" button).
+
+    Videos already in the feed are left out. When nothing new is left, the feed is
+    returned unchanged.
+    """
+    feed = feeds.extend_feed(session, feed_id)
+    if feed is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such feed")
+    return _feed_out(feed)
+
+
 @app.post("/feed/refresh", tags=["feed"])
 def refresh_feed(poll: FeedPollDep) -> FeedOut:
     """Poll due subscriptions, then build and store a new feed for today.

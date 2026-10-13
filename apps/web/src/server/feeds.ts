@@ -1,8 +1,8 @@
 import {
   dismissFeedItem,
+  extendFeed,
   getFeed,
   getTodayFeed,
-  listFeeds,
   refreshFeed,
   type FeedOut,
 } from "@homefeed/api-client";
@@ -12,7 +12,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { isFeedDate } from "#/lib/format";
 import { apiClient } from "#/server/api";
 
-/** Server functions for the home feed and feed history. */
+/** Server functions for the home feed. */
 
 export type Feed = FeedOut;
 export type FeedItem = FeedOut["items"][number];
@@ -44,11 +44,6 @@ const fetchFeed = createServerFn({ method: "GET" })
       `Couldn't load the feed for ${data.date} (${response?.status})`,
     );
   });
-
-const fetchFeedHistory = createServerFn({ method: "GET" }).handler(async () => {
-  const { data } = await listFeeds({ client: apiClient(), throwOnError: true });
-  return data;
-});
 
 /** Poll subscriptions and build a new feed for today. */
 export const rebuildFeed = createServerFn({ method: "POST" }).handler(
@@ -82,6 +77,23 @@ export const dismissItem = createServerFn({ method: "POST" })
     return item;
   });
 
+/** Append the next page of ranked picks to a stored feed. */
+export const loadMoreFeed = createServerFn({ method: "POST" })
+  .inputValidator((data: { feedId: number }) => {
+    if (!Number.isInteger(data.feedId) || data.feedId < 1) {
+      throw new Error("feedId must be a positive integer");
+    }
+    return { feedId: data.feedId };
+  })
+  .handler(async ({ data }): Promise<Feed> => {
+    const { data: feed } = await extendFeed({
+      client: apiClient(),
+      path: { feed_id: data.feedId },
+      throwOnError: true,
+    });
+    return feed;
+  });
+
 export const todayFeedQuery = queryOptions({
   queryKey: ["feed", "today"],
   queryFn: () => fetchTodayFeed(),
@@ -92,8 +104,3 @@ export const feedQuery = (date: string) =>
     queryKey: ["feed", date],
     queryFn: () => fetchFeed({ data: { date } }),
   });
-
-export const feedHistoryQuery = queryOptions({
-  queryKey: ["feeds"],
-  queryFn: () => fetchFeedHistory(),
-});

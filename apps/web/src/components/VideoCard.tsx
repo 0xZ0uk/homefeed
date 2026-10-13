@@ -33,6 +33,7 @@ export function VideoCard({
   now,
   faded = false,
   top,
+  overlay,
   menu,
 }: {
   video: CardVideo;
@@ -41,6 +42,8 @@ export function VideoCard({
   faded?: boolean;
   /** Shown above the thumbnail. */
   top?: ReactNode;
+  /** Shown over the thumbnail. */
+  overlay?: ReactNode;
   /** Shown at the end of the title row. */
   menu?: ReactNode;
 }) {
@@ -85,6 +88,7 @@ export function VideoCard({
             {duration}
           </span>
         )}
+        {overlay}
       </div>
       <div className="flex gap-3">
         <Avatar

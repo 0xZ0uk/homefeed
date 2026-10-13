@@ -3,18 +3,14 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { AppShell } from "#/components/AppShell";
 import { FeedError } from "#/components/FeedError";
-import { FeedHistory } from "#/components/FeedHistory";
 import { FeedList } from "#/components/FeedList";
 import { RefreshFeedButton } from "#/components/RefreshFeedButton";
 import { formatFeedDate } from "#/lib/format";
-import { feedHistoryQuery, todayFeedQuery } from "#/server/feeds";
+import { todayFeedQuery } from "#/server/feeds";
 
 export const Route = createFileRoute("/")({
   loader: ({ context: { queryClient } }) =>
-    Promise.all([
-      queryClient.ensureQueryData(todayFeedQuery),
-      queryClient.ensureQueryData(feedHistoryQuery),
-    ]),
+    queryClient.ensureQueryData(todayFeedQuery),
   component: Home,
   errorComponent: FeedError,
 });
@@ -54,9 +50,6 @@ function Home() {
           <RefreshFeedButton label="Build today's feed" />
         </div>
       )}
-      <footer className="mt-12 flex flex-col gap-6 border-t pt-6">
-        <FeedHistory />
-      </footer>
     </AppShell>
   );
 }
