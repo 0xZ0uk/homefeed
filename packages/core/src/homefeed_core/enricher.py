@@ -16,9 +16,15 @@ after the same delay.
 
 The worker calls `enrich_candidates` before ranking. It also enriches the videos rated
 top or bottom tier, which the ranker's similarity features compare candidates with:
-a video can be rated without ever being a candidate (e.g. opened from a pasted URL). And
-it re-embeds topic descriptions embedded by another model (after an `EMBEDDING_MODEL`
-change), so topic boosts compare vectors from the same model.
+a video can be rated without ever being a candidate (e.g. opened from a pasted URL).
+
+After an `EMBEDDING_MODEL` change, `enrich_candidates` first re-embeds every stored video
+from its stored text (`refresh_video_embeddings`, no YouTube requests), then topic
+descriptions and tag labels, so all similarities compare vectors of one model. Stale
+vectors are dropped before re-embedding, so if the embedding API fails partway the
+videos left go without an embedding (and are tried again next run) rather than mixing
+two models' vectors. An embedding failure never fails the run: videos that couldn't be
+embedded are recorded as failed and tried again next time.
 
 With an LLM provider configured (see homefeed_core.llm_tags), `enrich_candidates` then
 tags the same videos and every rated video (training uses their tags too) with topic,
@@ -28,7 +34,8 @@ fails the run: errors are logged and the untagged videos are tried again next ti
 
 import json
 import logging
-from collections.abc import Callable, Iterable
+import sys
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
@@ -43,6 +50,7 @@ from homefeed_core.config import Settings, get_settings
 from homefeed_core.db import get_session_factory
 from homefeed_core.embeddings import (
     Embedding,
+    EmbeddingError,
     EmbeddingProvider,
     get_embedding,
     get_embedding_provider,
@@ -66,6 +74,8 @@ DESCRIPTION_CHARS = 1000
 CAPTIONS_RETRY_AFTER = timedelta(days=1)
 
 TranscriptStatus = Literal["ok", "missing", "failed"]
+# Videos re-embedded per batch (and per transaction) after a model change.
+REFRESH_BATCH_SIZE = 64
 
 
 @dataclass(frozen=True)
@@ -91,6 +101,8 @@ class EnrichReport:
     enriched: list[str] = field(default_factory=list[str])  # computed in this run
     cached: list[str] = field(default_factory=list[str])  # already up to date
     failed: dict[str, str] = field(default_factory=dict[str, str])  # video id -> error
+    # Stored videos re-embedded after an embedding model change (see `enrich_candidates`).
+    reembedded: list[str] = field(default_factory=list[str])
     # LLM tagging after enrichment (see `enrich_candidates`); None when it didn't run.
     tags: TagReport | None = None
 
@@ -131,7 +143,7 @@ class Enricher:
                 continue
             try:
                 self._compute(video_id)
-            except GatewayError as error:
+            except (GatewayError, EmbeddingError) as error:
                 logger.warning("Could not enrich %s: %s", video_id, error)
                 report.failed[video_id] = str(error)
                 continue
@@ -148,6 +160,60 @@ class Enricher:
         except Exception:
             logger.exception("LLM tagging failed; continuing without new tags")
             return None
+
+    def refresh_video_embeddings(self) -> list[str]:
+        """Re-embed the stored videos embedded by another model than the current one,
+        from their stored text (no YouTube requests), newest enrichment first. Returns
+        their ids. Raises EmbeddingError if the embedder fails; the videos not done by
+        then are left without an embedding (see the module docstring)."""
+        model = self._embedder.model
+        with self._sessions.begin() as session:
+            rows = session.execute(
+                text(
+                    """
+                    SELECT v.id, v.title, v.description, f.tags, f.transcript_excerpt
+                    FROM video_features AS f JOIN videos AS v ON v.id = f.video_id
+                    WHERE f.embedding_model != :model
+                    ORDER BY f.enriched_at DESC, v.id
+                    """
+                ),
+                {"model": model},
+            ).all()
+            if not rows:
+                return []
+            logger.info("Re-embedding %d videos with %s", len(rows), model)
+            # No vectors of two models side by side, even if re-embedding stops partway.
+            session.execute(
+                text(
+                    """
+                    DELETE FROM video_embeddings WHERE video_id IN (
+                        SELECT video_id FROM video_features WHERE embedding_model != :model
+                    )
+                    """
+                ),
+                {"model": model},
+            )
+        done: list[str] = []
+        for start in range(0, len(rows), REFRESH_BATCH_SIZE):
+            batch = rows[start : start + REFRESH_BATCH_SIZE]
+            texts = [
+                embedding_text(StoredText(title, tuple(json.loads(tags)), description), excerpt)
+                for _, title, description, tags, excerpt in batch
+            ]
+            vectors = self._embedder.embed(texts)
+            with self._sessions.begin() as session:
+                for (video_id, *_), vector in zip(batch, vectors, strict=True):
+                    store_embedding(session, video_id, vector)
+                    session.execute(
+                        text(
+                            "UPDATE video_features SET embedding_model = :model "
+                            "WHERE video_id = :id"
+                        ),
+                        {"model": model, "id": video_id},
+                    )
+                    done.append(video_id)
+        logger.info("Re-embedded %d videos with %s", len(done), model)
+        return done
 
     def refresh_topic_embeddings(self) -> list[int]:
         """Re-embed topics embedded by another model. Returns their ids."""
@@ -244,10 +310,20 @@ class Enricher:
         return excerpt, captions.language, "ok"
 
 
-def embedding_text(video: Video, transcript_excerpt: str | None) -> str:
+@dataclass(frozen=True)
+class StoredText:
+    """What `embedding_text` reads of a video, as stored (for re-embedding)."""
+
+    title: str
+    tags: Sequence[str]
+    description: str | None
+
+
+def embedding_text(video: Video | StoredText, transcript_excerpt: str | None) -> str:
     """The text embedded for a video. Bump `PROMPT_VERSION` when changing it.
 
-    Most important first, since the model truncates long inputs (512 tokens for bge).
+    Most important first, since models truncate long inputs (512 tokens for bge-small,
+    32k for pplx-embed).
     """
     parts = [video.title]
     if video.tags:
@@ -330,12 +406,18 @@ def enrich_candidates(
 ) -> EnrichReport:
     """Enrich the candidates the next feed will rank (first seen within
     `FEED_CANDIDATE_DAYS`), newest first, then the top-tier and bottom-tier rated videos
-    the ranker compares them with. Up-to-date ones are skipped. Topics embedded by
-    another model are re-embedded first, and so are tags. Then, if the enricher has a
-    tagger, those videos and every other rated video are LLM-tagged (`EnrichReport.tags`)."""
+    the ranker compares them with. Up-to-date ones are skipped. Stored videos, topics and
+    tags embedded by another model are re-embedded first (a failure there is logged and
+    retried next run). Then, if the enricher has a tagger, those videos and every other
+    rated video are LLM-tagged (`EnrichReport.tags`)."""
     enricher = enricher or get_enricher()
-    enricher.refresh_topic_embeddings()
-    enricher.refresh_tag_embeddings()
+    reembedded: list[str] = []
+    try:
+        reembedded = enricher.refresh_video_embeddings()
+        enricher.refresh_topic_embeddings()
+        enricher.refresh_tag_embeddings()
+    except EmbeddingError as error:
+        logger.warning("Re-embedding stopped; trying again next run: %s", error)
     sessions = sessions or get_session_factory()
     settings = settings or get_settings()
     since = (now or datetime.now(UTC)) - timedelta(days=settings.feed_candidate_days)
@@ -344,8 +426,27 @@ def enrich_candidates(
         video_ids += tier_rated_video_ids(session)
         rated_ids = [rating.video_id for rating in list_ratings(session)]
     report = enricher.enrich_many(video_ids)
-    return replace(report, tags=enricher.tag_many([*video_ids, *rated_ids]))
+    return replace(report, reembedded=reembedded, tags=enricher.tag_many([*video_ids, *rated_ids]))
 
 
 def _parse_timestamp(value: str) -> datetime:
     return datetime.fromisoformat(value).astimezone(UTC)
+
+
+def main() -> int:
+    """Run the worker's enrichment once, now: `uv run python -m homefeed_core.enricher`
+    (re-embeds after an `EMBEDDING_MODEL` change, enriches the next feed's candidates and
+    tags them)."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    report = enrich_candidates()
+    tags = report.tags
+    print(
+        f"{len(report.reembedded)} re-embedded, {len(report.enriched)} enriched, "
+        f"{len(report.cached)} up to date, {len(report.failed)} failed"
+        + ("" if tags is None else f"; {len(tags.tagged)} tagged, {len(tags.failed)} not")
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

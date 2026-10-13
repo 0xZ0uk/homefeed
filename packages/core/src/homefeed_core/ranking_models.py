@@ -16,7 +16,11 @@ The feed build hands `ranker_model(active.model, now=now)` to the ranker.
 Files are JSON (LightGBM's text model or the ridge coefficients, plus the feature names
 and `FEATURE_VERSION`) in `DATA_DIR/ranking_models/`, named in `model_versions.path`
 relative to `DATA_DIR`. A model trained with other features than the current
-`FEATURE_VERSION` refuses to load (`IncompatibleModelError`).
+`FEATURE_VERSION` refuses to load (`IncompatibleModelError`). The video embedding is
+part of the features, so a model also only fits the embedding model it was trained with
+(`ModelVersion.embedding_model`, from the training report): after an `EMBEDDING_MODEL`
+change `load_active_model` sets it aside and ranking is rules-only until the next
+training.
 
 At most one version is active. `activate` switches it (the trainer's promotion, and
 rollback to an earlier version); `prune_versions` drops all but the newest
@@ -40,6 +44,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from homefeed_core.config import get_settings
+from homefeed_core.embeddings import DEFAULT_EMBEDDING_MODEL
 from homefeed_core.gateway.events import format_timestamp
 from homefeed_core.model_features import FEATURE_NAMES, FEATURE_VERSION, ModelInput, feature_matrix
 from homefeed_core.ranker import Model, ModelCandidate
@@ -286,6 +291,12 @@ class ModelVersion:
         """Whether it was trained with the current features (and so can be loaded)."""
         return self.feature_version == FEATURE_VERSION
 
+    @property
+    def embedding_model(self) -> str:
+        """The embedding model of the vectors it was trained on (versions trained before
+        this was recorded used the only one there was)."""
+        return str(self.metrics.get("embedding_model", DEFAULT_EMBEDDING_MODEL))
+
 
 @dataclass(frozen=True)
 class ActiveModel:
@@ -389,11 +400,23 @@ def activate(
     return get_model_version(session, version_id)
 
 
-def load_active_model(session: Session, *, data_dir: Path | None = None) -> ActiveModel | None:
+def load_active_model(
+    session: Session, *, data_dir: Path | None = None, embedding_model: str | None = None
+) -> ActiveModel | None:
     """The active version and its model, or None when there is none or it can't be
-    loaded (missing file, other features); then ranking stays rules-only."""
+    loaded (missing file, other features, or, given `embedding_model`, trained on another
+    model's embeddings); then ranking stays rules-only."""
     version = get_active_version(session)
     if version is None:
+        return None
+    if embedding_model is not None and version.embedding_model != embedding_model:
+        logger.warning(
+            "Active model version %d was trained on %s embeddings, not %s; ranking "
+            "rules-only until the model is retrained",
+            version.id,
+            version.embedding_model,
+            embedding_model,
+        )
         return None
     try:
         return ActiveModel(version, read_model(version.path, data_dir))

@@ -1,20 +1,29 @@
 import math
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path
+from typing import Any
 
 import pytest
+from pydantic import SecretStr
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from homefeed_core.config import Settings
 from homefeed_core.db import open_database
 from homefeed_core.embeddings import (
+    CALIBRATIONS,
     EMBEDDING_DIMENSIONS,
+    Calibration,
+    EmbeddingError,
     EmbeddingProvider,
+    OpenRouterEmbeddingProvider,
     SentenceTransformerProvider,
     StubEmbeddingProvider,
+    calibration,
     cosine_similarity,
     get_embedding,
     get_embeddings,
+    make_embedding_provider,
     normalize,
     store_embedding,
 )
@@ -96,3 +105,109 @@ def test_store_and_read_embeddings(sessions: sessionmaker[Session]) -> None:
 def test_store_rejects_other_dimensions(sessions: sessionmaker[Session]) -> None:
     with sessions.begin() as session, pytest.raises(ValueError, match="384"):
         store_embedding(session, "aaaaaaaaaaa", [1.0, 0.0])
+
+
+# OpenRouter
+
+
+class FakePost:
+    """Answers embedding requests with vectors `[i + 1, 1, 0, ...]` per input i, in reverse
+    index order (the API doesn't promise order); records the requests."""
+
+    def __init__(self, *, dimensions: int = EMBEDDING_DIMENSIONS, answer: Any = None) -> None:
+        self.dimensions = dimensions
+        self.answer = answer
+        self.requests: list[tuple[str, Mapping[str, Any], Mapping[str, str]]] = []
+
+    def __call__(
+        self, url: str, body: Mapping[str, Any], headers: Mapping[str, str], timeout: float
+    ) -> Any:
+        self.requests.append((url, body, headers))
+        if self.answer is not None:
+            return self.answer
+        data = [
+            {"index": i, "embedding": [float(i + 1), 1.0] + [0.0] * (self.dimensions - 2)}
+            for i in range(len(body["input"]))
+        ]
+        return {"data": list(reversed(data)), "usage": {"prompt_tokens": 3}}
+
+
+def openrouter(post: FakePost, **kwargs: Any) -> OpenRouterEmbeddingProvider:
+    return OpenRouterEmbeddingProvider(
+        "sk-test", model="perplexity/pplx-embed-v1-0.6b", post=post, **kwargs
+    )
+
+
+def test_openrouter_embeds_in_batches_in_input_order() -> None:
+    post = FakePost()
+    provider = openrouter(post, batch_size=2, base_url="https://example.test/api/v1/")
+
+    vectors = provider.embed(["a", "b", "c"])
+
+    assert [body["input"] for _, body, _ in post.requests] == [["a", "b"], ["c"]]
+    url, body, headers = post.requests[0]
+    assert url == "https://example.test/api/v1/embeddings"
+    assert body["model"] == "perplexity/pplx-embed-v1-0.6b"
+    assert body["dimensions"] == EMBEDDING_DIMENSIONS
+    assert headers["Authorization"] == "Bearer sk-test"
+    # Ordered by index and normalized: the second of a batch is [2, 1]/sqrt(5).
+    assert vectors[1][:2] == pytest.approx((2 / math.sqrt(5), 1 / math.sqrt(5)))
+    assert vectors[2][:2] == pytest.approx((1 / math.sqrt(2), 1 / math.sqrt(2)))
+    assert all(math.isclose(math.sqrt(sum(x * x for x in v)), 1.0) for v in vectors)
+    assert provider.embed([]) == []
+
+
+def test_openrouter_rejects_other_dimensions() -> None:
+    # A model that can't shorten its vectors answers with its own size.
+    with pytest.raises(EmbeddingError, match="1024 dimensions"):
+        openrouter(FakePost(dimensions=1024)).embed(["a"])
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {"error": {"message": "No such model"}},
+        {"data": [{"index": 0}]},
+        {"data": []},  # fewer vectors than texts
+        {"data": [{"index": 0, "embedding": [0.0] * EMBEDDING_DIMENSIONS}]},
+    ],
+)
+def test_openrouter_rejects_unusable_answers(answer: Any) -> None:
+    with pytest.raises(EmbeddingError):
+        openrouter(FakePost(answer=answer)).embed(["a"])
+
+
+def test_the_provider_follows_the_settings(tmp_path: Path) -> None:
+    local = make_embedding_provider(Settings(data_dir=tmp_path))
+    remote = make_embedding_provider(
+        Settings(
+            embedding_provider="openrouter",
+            embedding_model="perplexity/pplx-embed-v1-0.6b",
+            openrouter_api_key=SecretStr("sk-test"),
+        )
+    )
+
+    assert isinstance(local, SentenceTransformerProvider)
+    assert local.model == "BAAI/bge-small-en-v1.5"
+    assert isinstance(remote, OpenRouterEmbeddingProvider)
+    assert remote.model == "perplexity/pplx-embed-v1-0.6b"
+    with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
+        make_embedding_provider(Settings(embedding_provider="openrouter", openrouter_api_key=None))
+
+
+# Calibration
+
+
+def test_calibration_is_per_model_with_overrides() -> None:
+    pplx = "perplexity/pplx-embed-v1-0.6b"
+
+    assert calibration(Settings()) == CALIBRATIONS["BAAI/bge-small-en-v1.5"]
+    assert calibration(Settings(embedding_model=pplx)) == CALIBRATIONS[pplx]
+    assert calibration(Settings(embedding_model=pplx, tag_merge_threshold=0.9)) == Calibration(
+        CALIBRATIONS[pplx].similarity_floor, CALIBRATIONS[pplx].topic_similarity_floor, 0.9
+    )
+    # An unmeasured model gets bge-small's values (and a warning).
+    assert (
+        calibration(Settings(embedding_model="some/other-model"))
+        == CALIBRATIONS["BAAI/bge-small-en-v1.5"]
+    )

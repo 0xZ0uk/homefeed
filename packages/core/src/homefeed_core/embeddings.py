@@ -1,9 +1,17 @@
 """Text embeddings: the provider interface and the stored video embeddings.
 
-Providers turn texts into unit-length vectors. Production uses
-`SentenceTransformerProvider` (`BAAI/bge-small-en-v1.5`, 384 dimensions, loaded on
-first use); tests use `StubEmbeddingProvider`, which needs no model. A provider's
-`model` names what produced a vector and is stored with it, so changing it recomputes.
+Providers turn texts into unit-length vectors of 384 floats. `EMBEDDING_PROVIDER`
+picks the production one (`get_embedding_provider`): `SentenceTransformerProvider` runs
+a sentence-transformers model in the process (`BAAI/bge-small-en-v1.5` by default,
+loaded on first use), `OpenRouterEmbeddingProvider` calls OpenRouter's embeddings API
+(e.g. `perplexity/pplx-embed-v1-0.6b`, asking for 384 dimensions). Tests use
+`StubEmbeddingProvider`, which needs no model. A provider's `model` names what produced a
+vector and is stored with it, so changing it recomputes (see
+`Enricher.refresh_video_embeddings`).
+
+Models disagree on what a similarity means (bge-small rates unrelated videos about 0.6,
+pplx-embed about 0.25), so the thresholds that read similarities come per model:
+`calibration(settings)` (see `CALIBRATIONS`).
 
 Video embeddings live in the sqlite-vec table `video_embeddings`; the enricher writes
 them, and anything ranking by similarity reads them:
@@ -14,26 +22,40 @@ them, and anything ranking by similarity reads them:
 """
 
 import hashlib
+import json
+import logging
 import math
 import random
 import struct
 import threading
-from collections.abc import Iterable, Mapping, Sequence
+import urllib.error
+import urllib.request
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
-from homefeed_core.config import get_settings
+from homefeed_core.config import OPENROUTER_BASE_URL, Settings, get_settings
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer
 
-# Dimension of the `video_embeddings` table (bge-small).
+logger = logging.getLogger(__name__)
+
+# Dimension of the `video_embeddings` table (bge-small's; API models are asked for it).
 EMBEDDING_DIMENSIONS = 384
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+# Shown for requests in the OpenRouter dashboard (its optional app attribution header).
+OPENROUTER_APP_TITLE = "Homefeed"
+
+
+class EmbeddingError(Exception):
+    """Texts couldn't be embedded (the API is unreachable, refuses, or answers badly)."""
+
 
 type Embedding = tuple[float, ...]
 
@@ -106,18 +128,174 @@ class SentenceTransformerProvider:
         return self._loaded
 
 
-@lru_cache
-def get_embedding_provider() -> SentenceTransformerProvider:
-    """The process-wide production provider (`EMBEDDING_MODEL`, cached in DATA_DIR/models).
+# Posts a JSON body (url, body, headers, timeout) and returns the decoded JSON answer.
+type PostJson = Callable[[str, Mapping[str, Any], Mapping[str, str], float], Any]
 
-    Shared so a process loads the model at most once, and only when it first embeds
-    something: the worker for videos and topics, the API only when a topic's
-    description is saved.
+
+def post_json(url: str, body: Mapping[str, Any], headers: Mapping[str, str], timeout: float) -> Any:
+    """POST `body` as JSON; the decoded answer. Raises `EmbeddingError` on any failure."""
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", **headers},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read())
+    except urllib.error.HTTPError as error:
+        detail = error.read()[:500].decode(errors="replace")
+        raise EmbeddingError(f"HTTP {error.code} from {url}: {detail}") from error
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        raise EmbeddingError(f"Can't reach {url}: {error}") from error
+    except json.JSONDecodeError as error:
+        raise EmbeddingError(f"Non-JSON answer from {url}: {error}") from error
+
+
+class OpenRouterEmbeddingProvider:
+    """OpenRouter's embeddings API (`POST {base_url}/embeddings`, OpenAI-compatible) with a
+    bearer key. Asks for `dimensions` floats, so the model must support shortening its
+    vectors (Matryoshka models such as pplx-embed, qwen3-embedding, text-embedding-3 do);
+    one that doesn't answers with another length and fails with `EmbeddingError`.
+    Sends at most `batch_size` texts per request. Raises `EmbeddingError` on any failure.
     """
-    settings = get_settings()
+
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        model: str,
+        dimensions: int = EMBEDDING_DIMENSIONS,
+        base_url: str = OPENROUTER_BASE_URL,
+        timeout: float = 60.0,
+        batch_size: int = 64,
+        post: PostJson | None = None,
+    ) -> None:
+        self.model = model
+        self.dimensions = dimensions
+        self._api_key = api_key
+        self._url = f"{base_url.rstrip('/')}/embeddings"
+        self._timeout = timeout
+        self._batch_size = batch_size
+        self._post = post or post_json
+
+    def embed(self, texts: Sequence[str]) -> list[Embedding]:
+        vectors: list[Embedding] = []
+        for start in range(0, len(texts), self._batch_size):
+            vectors += self._embed_batch(texts[start : start + self._batch_size])
+        return vectors
+
+    def _embed_batch(self, texts: Sequence[str]) -> list[Embedding]:
+        answer = self._post(
+            self._url,
+            {
+                "model": self.model,
+                "input": list(texts),
+                "dimensions": self.dimensions,
+                "encoding_format": "float",
+            },
+            {"Authorization": f"Bearer {self._api_key}", "X-Title": OPENROUTER_APP_TITLE},
+            self._timeout,
+        )
+        try:
+            data = cast(list[dict[str, Any]], answer["data"])
+            ordered = sorted(data, key=lambda item: item["index"])
+            vectors = [[float(x) for x in item["embedding"]] for item in ordered]
+        except (KeyError, TypeError, ValueError) as error:
+            raise EmbeddingError(f"Unexpected embeddings answer: {str(answer)[:300]}") from error
+        if len(vectors) != len(texts):
+            raise EmbeddingError(f"Asked for {len(texts)} embeddings, got {len(vectors)}")
+        for vector in vectors:
+            if len(vector) != self.dimensions:
+                raise EmbeddingError(
+                    f"{self.model} answered with {len(vector)} dimensions, not "
+                    f"{self.dimensions}: it may not support shortening its embeddings"
+                )
+        try:
+            return [normalize(vector) for vector in vectors]
+        except ValueError as error:
+            raise EmbeddingError(f"{self.model} answered with a zero vector") from error
+
+
+def make_embedding_provider(settings: Settings | None = None) -> EmbeddingProvider:
+    """A provider for `EMBEDDING_PROVIDER` and `EMBEDDING_MODEL`. Raises ValueError for the
+    OpenRouter provider without `OPENROUTER_API_KEY`."""
+    settings = settings or get_settings()
+    if settings.embedding_provider == "openrouter":
+        if settings.openrouter_api_key is None:
+            raise ValueError("EMBEDDING_PROVIDER=openrouter needs OPENROUTER_API_KEY")
+        return OpenRouterEmbeddingProvider(
+            settings.openrouter_api_key.get_secret_value(),
+            model=settings.embedding_model,
+            timeout=settings.embedding_timeout_seconds,
+        )
     return SentenceTransformerProvider(
         settings.embedding_model, cache_dir=settings.data_dir / "models"
     )
+
+
+@lru_cache
+def get_embedding_provider() -> EmbeddingProvider:
+    """The process-wide production provider (`make_embedding_provider`).
+
+    Shared so a process loads a local model at most once, and only when it first embeds
+    something: the worker for videos, tags and topics, the API when a topic or tag is
+    saved.
+    """
+    return make_embedding_provider()
+
+
+@dataclass(frozen=True)
+class Calibration:
+    """How an embedding model's cosine similarities read (see the module docstring)."""
+
+    # Below it a candidate counts as unrelated to a rated video (ranker.similarity_score).
+    similarity_floor: float
+    # Below it a video counts as unrelated to a topic's description (ranker.topic_boost).
+    topic_similarity_floor: float
+    # From it a proposed tag merges into the most similar existing one (homefeed_core.tags).
+    tag_merge_threshold: float
+
+
+# Measured on the library's videos, sample topic descriptions and tag pairs (plurals and
+# spelling variants should merge; "nba" / "basketball", "world war i" / "world war ii"
+# should not). bge-small keeps the values it always had: its floors sit below even
+# unrelated pairs (~0.6), so every topic boosts every video a little.
+CALIBRATIONS: dict[str, Calibration] = {
+    "BAAI/bge-small-en-v1.5": Calibration(0.3, 0.3, 0.92),
+    # Unrelated videos ~0.25 (p90 0.42); a topic's matching videos 0.35-0.5, unrelated
+    # ones under 0.2; plurals 0.94, distinct tags up to 0.71.
+    "perplexity/pplx-embed-v1-0.6b": Calibration(0.3, 0.2, 0.85),
+}
+# For models not measured: bge-small's values.
+DEFAULT_CALIBRATION = CALIBRATIONS[DEFAULT_EMBEDDING_MODEL]
+
+
+def calibration(settings: Settings | None = None) -> Calibration:
+    """The calibration of the configured embedding model, with any value set in the
+    settings (`SIMILARITY_FLOOR`, `TOPIC_SIMILARITY_FLOOR`, `TAG_MERGE_THRESHOLD`) instead
+    of the measured one."""
+    settings = settings or get_settings()
+    measured = CALIBRATIONS.get(settings.embedding_model)
+    if measured is None:
+        logger.warning(
+            "No calibration for embedding model %s; using %s's (set SIMILARITY_FLOOR, "
+            "TOPIC_SIMILARITY_FLOOR and TAG_MERGE_THRESHOLD to tune)",
+            settings.embedding_model,
+            DEFAULT_EMBEDDING_MODEL,
+        )
+        measured = DEFAULT_CALIBRATION
+    return Calibration(
+        similarity_floor=_override(settings.similarity_floor, measured.similarity_floor),
+        topic_similarity_floor=_override(
+            settings.topic_similarity_floor, measured.topic_similarity_floor
+        ),
+        tag_merge_threshold=_override(settings.tag_merge_threshold, measured.tag_merge_threshold),
+    )
+
+
+def _override(value: float | None, default: float) -> float:
+    return default if value is None else value
 
 
 class StubEmbeddingProvider:

@@ -519,6 +519,27 @@ def test_a_model_as_good_as_the_active_one_is_promoted(
     assert old.id == first.version.id and not old.active
 
 
+def test_a_model_trained_on_another_embedding_model_is_set_aside(
+    sessions: sessionmaker[Session], settings: Settings
+) -> None:
+    synthetic_history(sessions, 100)
+    with sessions.begin() as session:
+        first = train(session, data_dir=settings.data_dir, now=NOW, embedding_model="model-a")
+    assert first is not None and first.version.embedding_model == "model-a"
+
+    with sessions() as session:
+        same = load_active_model(session, data_dir=settings.data_dir, embedding_model="model-a")
+        other = load_active_model(session, data_dir=settings.data_dir, embedding_model="model-b")
+    assert same is not None and other is None
+
+    # Trained on the new model's vectors, it replaces the old one even if it scores worse.
+    relabel_with_noise(sessions)
+    with sessions.begin() as session:
+        second = train(session, data_dir=settings.data_dir, now=NOW, embedding_model="model-b")
+    assert second is not None and second.promoted
+    assert second.version.metrics["embedding_model"] == "model-b"
+
+
 def test_not_enough_ratings_trains_nothing(
     sessions: sessionmaker[Session], settings: Settings
 ) -> None:

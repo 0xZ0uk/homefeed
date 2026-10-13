@@ -1,5 +1,6 @@
 import datetime as dt
 import json
+import logging
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from functools import lru_cache
@@ -14,11 +15,12 @@ from fastapi import (
     HTTPException,
     Path,
     Query,
+    Request,
     Response,
     UploadFile,
     status,
 )
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
@@ -47,7 +49,7 @@ from homefeed_core import (
     watch_events,
 )
 from homefeed_core.db import get_session_factory
-from homefeed_core.embeddings import EmbeddingProvider, get_embedding_provider
+from homefeed_core.embeddings import EmbeddingError, EmbeddingProvider, get_embedding_provider
 from homefeed_core.gateway import (
     DEFAULT_COMMENTS_LIMIT,
     DEFAULT_SEARCH_LIMIT,
@@ -79,7 +81,20 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="Homefeed API", generate_unique_id_function=operation_id, lifespan=lifespan)
+
+
+@app.exception_handler(EmbeddingError)
+def embedding_unavailable(_request: Request, error: EmbeddingError) -> JSONResponse:
+    """Saving a topic or tag embeds its text; with the embeddings API unreachable or
+    refusing, say so rather than fail with a 500. Nothing is saved."""
+    logger.warning("Embedding failed: %s", error)
+    return JSONResponse(
+        {"detail": "Couldn't embed the text right now; try again later"},
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
 
 
 def get_session() -> Iterator[Session]:
@@ -107,10 +122,10 @@ def get_playback() -> playback.Playback:
 
 
 def get_embedder() -> EmbeddingProvider:
-    """The process-wide embedding provider, for topic descriptions.
+    """The process-wide embedding provider, for topic descriptions and tag labels.
 
-    The model loads on first use, so the API only loads it once a topic is saved. Tests
-    override this dependency with a `StubEmbeddingProvider`.
+    A local model loads on first use, so the API only loads it once a topic is saved.
+    Tests override this dependency with a `StubEmbeddingProvider`.
     """
     return get_embedding_provider()
 
