@@ -135,7 +135,7 @@ function Insights() {
             onClick={downloadCsv}
             aria-label="Download weekly insights as CSV"
           >
-            <Download aria-hidden="true" />
+            <Download aria-hidden="true" data-icon="inline-start" />
             CSV
           </Button>
         </div>
@@ -159,10 +159,10 @@ function Insights() {
               (from {formatWeek(thisWeek.week_start)})
             </span>
           </h3>
-          <dl className="mt-3 grid gap-3 sm:grid-cols-3">
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
             <StatCard
               label="Good rate"
-              value={formatPercent(thisWeek.good_rate)}
+              rate={thisWeek.good_rate}
               detail={
                 thisWeek.rated_count > 0
                   ? `${thisWeek.good_count} of ${plural(thisWeek.rated_count, "rating")}`
@@ -176,7 +176,7 @@ function Insights() {
             />
             <StatCard
               label="Rating rate"
-              value={formatPercent(thisWeek.rating_rate)}
+              rate={thisWeek.rating_rate}
               detail={
                 thisWeek.shown_count > 0
                   ? `${thisWeek.shown_rated_count} of ${plural(thisWeek.shown_count, "video")} shown`
@@ -190,7 +190,7 @@ function Insights() {
             />
             <StatCard
               label="Model share"
-              value={formatPercent(thisWeek.score_share?.model)}
+              rate={thisWeek.score_share?.model}
               detail={
                 thisWeek.feed_count > 0
                   ? `${thisWeek.model_feed_count} of ${plural(thisWeek.feed_count, "feed")} used a model`
@@ -202,7 +202,7 @@ function Insights() {
               )}
               seriesClass="text-chart-3"
             />
-          </dl>
+          </div>
         </section>
       )}
 
@@ -212,13 +212,10 @@ function Insights() {
         description={`Over ${weeks} weeks: good rate ${formatPercent(overallGoodRate(allWeeks))}, rating rate ${formatPercent(overallRatingRate(allWeeks))}.`}
         action={
           <Button
-            variant="outline"
+            variant={showRatingRate ? "secondary" : "outline"}
             size="sm"
             aria-pressed={showRatingRate}
             onClick={() => setShowRatingRate((show) => !show)}
-            className={cn(
-              showRatingRate && "bg-secondary text-secondary-foreground",
-            )}
           >
             Rating rate
           </Button>
@@ -292,28 +289,33 @@ function Panel({
 /** One "this week" figure: label, delta, big value, detail and sparkline. */
 function StatCard({
   label,
-  value,
+  rate,
   detail,
   delta,
   series,
   seriesClass,
 }: {
   label: string;
-  value: string;
+  rate: number | null | undefined;
   detail: string;
   delta: number | null;
   series: readonly (number | null)[];
   seriesClass: string;
 }) {
   return (
-    <Card className="gap-3 py-4">
+    <Card className="gap-3 p-5">
       <dl className="flex flex-col gap-2">
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex min-h-5 items-start justify-between gap-2">
           <dt className="text-sm font-medium text-muted-foreground">{label}</dt>
           <DeltaBadge delta={delta} />
         </div>
-        <dd className="text-3xl leading-tight font-semibold tabular-nums tracking-tight">
-          {value}
+        <dd
+          className={cn(
+            "text-3xl leading-tight font-semibold tabular-nums tracking-tight",
+            rate == null && "text-muted-foreground",
+          )}
+        >
+          {formatPercent(rate)}
         </dd>
         <dd className="text-sm text-muted-foreground">{detail}</dd>
       </dl>
@@ -322,20 +324,19 @@ function StatCard({
   );
 }
 
-/** A whole-percentage-point change versus the previous window, as a chip. */
+/**
+ * A whole-percentage-point change versus the previous window, as a chip.
+ * Nothing to compare yet renders nothing: the detail line already says why.
+ */
 function DeltaBadge({ delta }: { delta: number | null }) {
-  if (delta == null) {
-    return (
-      <Badge variant="outline" className="text-muted-foreground">
-        –
-      </Badge>
-    );
-  }
+  if (delta == null) return null;
   const rounded = Math.round(delta);
+  const context = <span className="sr-only"> versus the previous 4 weeks</span>;
   if (rounded === 0) {
     return (
       <Badge variant="outline" className="text-muted-foreground tabular-nums">
         0 pts
+        {context}
       </Badge>
     );
   }
@@ -347,6 +348,7 @@ function DeltaBadge({ delta }: { delta: number | null }) {
     >
       <span aria-hidden="true">{up ? "▲" : "▼"}</span>
       {`${up ? "+" : "−"}${Math.abs(rounded)} pts`}
+      {context}
     </Badge>
   );
 }
@@ -387,6 +389,8 @@ function Sparkline({
     );
     drawing = true;
   }
+  // Nothing to join yet (one week, or only isolated weeks): no empty strip.
+  if (!commands.some((command) => command.startsWith("L"))) return null;
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
@@ -610,6 +614,7 @@ function WeekTable({
         >
           <ChevronDown
             aria-hidden="true"
+            data-icon="inline-start"
             className={cn(open && "rotate-180")}
           />
           {open ? "Hide" : "Show"}
@@ -729,15 +734,13 @@ function InsightsPending() {
       </div>
       <div className="grid gap-3 sm:grid-cols-3" aria-hidden="true">
         {["good", "rating", "share"].map((key) => (
-          <Card key={key} className="gap-4 py-4">
-            <div className="flex flex-col gap-2 px-6">
+          <Card key={key} className="gap-3 p-5">
+            <div className="flex flex-col gap-2">
               <div className="h-4 w-20 rounded bg-muted motion-safe:animate-pulse" />
               <div className="h-7 w-16 rounded bg-muted motion-safe:animate-pulse" />
               <div className="h-4 w-32 rounded bg-muted motion-safe:animate-pulse" />
             </div>
-            <div className="h-5 px-6">
-              <div className="h-full w-full rounded bg-muted motion-safe:animate-pulse" />
-            </div>
+            <div className="h-5 w-full rounded bg-muted motion-safe:animate-pulse" />
           </Card>
         ))}
       </div>
