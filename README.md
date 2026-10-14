@@ -11,7 +11,7 @@ Copy `.env.example` to `.env` and adjust.
 ```sh
 nub install
 uv sync --all-packages
-nub run dev    # start all apps
+nub run dev    # start all apps (except the desktop shell, see below)
 nub run test   # run tests across packages
 nub run lint   # lint across packages
 ```
@@ -70,11 +70,25 @@ Env the shell must set for the web process (started as `srvx serve --prod --entr
 
 Start the API bound to `127.0.0.1` too (`uvicorn homefeed_api.main:app --host 127.0.0.1 --port <port>`); it has no auth of its own.
 
+## Desktop app (development)
+
+`apps/desktop` (`@homefeed/desktop`) is the Electron shell that does all of the above: it starts the API (with `RUN_WORKER_IN_API=true`) and the web server on free `127.0.0.1` ports with per-launch secrets, opens the app in a window, and keeps running in the tray. To run it from the repo (after `nub install` and `uv sync --all-packages`):
+
+```sh
+nub run desktop                                            # builds apps/web, then runs `electron .`
+HOMEFEED_USER_DATA_DIR=/tmp/homefeed-test nub run desktop  # with a throwaway profile
+```
+
+It keeps its data, logs and window state in Electron's user data dir (`~/.config/Homefeed` on Linux), never the repo's `data/` or `.env`. See [apps/desktop/README.md](apps/desktop/README.md) for what it runs, where it logs, and the runtime layout a packaged build must have.
+
+Installers (Windows NSIS, Linux AppImage) are built by `.github/workflows/desktop-release.yml` on `desktop-v*` tags and published to a public releases repo the app updates from; see "Building installers" and "Releasing" in [apps/desktop/README.md](apps/desktop/README.md). [apps/desktop/INSTALL.md](apps/desktop/INSTALL.md) is the install guide for people you share it with.
+
 ## Layout
 
 - `apps/api`: FastAPI app (`homefeed_api`), http://localhost:8000 in dev
 - `apps/worker`: APScheduler worker (`homefeed_worker`)
 - `apps/web`: TanStack Start frontend (`@homefeed/web`), served on http://localhost:3000 in dev
+- `apps/desktop`: Electron shell (`@homefeed/desktop`) running the API and web app as a desktop app
 - `packages/api-client`: TypeScript client generated from the API's OpenAPI schema (`@homefeed/api-client`)
 - `packages/core`: Python domain logic (`homefeed_core`)
 - `packages/typescript-config`: shared `tsconfig.json` bases

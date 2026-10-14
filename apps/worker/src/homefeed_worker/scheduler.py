@@ -2,7 +2,7 @@ import logging
 import signal
 import threading
 from collections.abc import Callable
-from datetime import UTC, datetime, time, tzinfo
+from datetime import UTC, datetime, time, timedelta, tzinfo
 from types import FrameType
 from typing import Any
 
@@ -13,7 +13,15 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.util import undefined
 
-from homefeed_core import candidates, enricher, feeds, poller, smoke_test, trainer
+from homefeed_core import (
+    candidates,
+    enricher,
+    feeds,
+    poller,
+    smoke_test,
+    trainer,
+    ytdlp_updates,
+)
 from homefeed_core.config import get_settings
 from homefeed_core.db import get_session_factory
 from homefeed_core.external_sources import ExternalSourcesSource
@@ -39,6 +47,10 @@ TAG_DISCOVERY_CHECK_MINUTES = 60
 # How often the user settings are read again, so a feed or training time (or time zone)
 # changed on the settings screen applies without a restart, whichever process runs the jobs.
 SETTINGS_CHECK_MINUTES = 1
+# How often the worker looks for a newer yt-dlp when YTDLP_AUTO_UPDATE is on (it also
+# looks shortly after startup).
+YTDLP_UPDATE_HOURS = 24
+YTDLP_UPDATE_STARTUP_DELAY_MINUTES = 2
 
 
 # The feed job polls too; this keeps it and the poll job from polling at the same time.
@@ -161,6 +173,18 @@ def sync_schedule(
             logger.info("Rescheduled %r: %s", job.name, trigger)
 
 
+def update_ytdlp() -> None:
+    """Install a newer yt-dlp release into DATA_DIR/ytdlp if there is one; it takes effect
+    on the next restart (see homefeed_core.ytdlp_updates). Failures are logged, not raised."""
+    try:
+        version = ytdlp_updates.update()
+    except ytdlp_updates.YtDlpUpdateError as error:
+        logger.warning("yt-dlp update failed: %s", error)
+        return
+    if version is not None:
+        logger.info("yt-dlp %s installed; restart Homefeed to use it", version)
+
+
 def register_jobs(
     scheduler: BaseScheduler,
     poll: Callable[[], None] = poll_subscriptions,
@@ -168,9 +192,11 @@ def register_jobs(
     build_feed: Callable[[], None] = build_daily_feed,
     train: Callable[[], None] = train_model,
     smoke: Callable[[], None] = run_gateway_smoke_test,
+    ytdlp_update: Callable[[], None] = update_ytdlp,
     *,
     user: UserSettings | None = None,
     gateway_smoke_test_time: time | None = None,
+    ytdlp_auto_update: bool | None = None,
     build_feed_now: bool = False,
     train_now: bool = False,
 ) -> None:
@@ -182,7 +208,9 @@ def register_jobs(
     zone; `build_feed_now` also builds the feed right away. A job re-reads the settings
     every `SETTINGS_CHECK_MINUTES` and reschedules those when they change. The live
     Gateway smoke test is opt-in: it runs daily at `gateway_smoke_test_time` (default
-    `GATEWAY_SMOKE_TEST_TIME`) and isn't scheduled when neither is set.
+    `GATEWAY_SMOKE_TEST_TIME`) and isn't scheduled when neither is set. So is the
+    yt-dlp update check (daily, and once shortly after startup): it needs
+    `ytdlp_auto_update` (default `YTDLP_AUTO_UPDATE`).
 
     `build_feed_now` and `train_now` are startup catch-up: cron runs missed while the
     process was down don't fire on their own, so those jobs also run once right away (in
@@ -254,6 +282,17 @@ def register_jobs(
             triggers["gateway_smoke_test"],
             id="gateway_smoke_test",
             name="Live Gateway smoke test",
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=None,
+        )
+    if get_settings().ytdlp_auto_update if ytdlp_auto_update is None else ytdlp_auto_update:
+        scheduler.add_job(
+            ytdlp_update,
+            IntervalTrigger(hours=YTDLP_UPDATE_HOURS, timezone=UTC),
+            id="update_ytdlp",
+            name="Update yt-dlp",
+            next_run_time=datetime.now(UTC) + timedelta(minutes=YTDLP_UPDATE_STARTUP_DELAY_MINUTES),
             max_instances=1,
             coalesce=True,
             misfire_grace_time=None,

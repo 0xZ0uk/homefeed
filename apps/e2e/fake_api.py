@@ -7,7 +7,10 @@ Serves the real FastAPI app (`homefeed_api.main.app`) on 127.0.0.1:$E2E_API_PORT
 - a throwaway data dir ($E2E_DATA_DIR, or a new temp dir removed on exit);
 - `POST /__e2e__/reset`, which recreates the database, subscribes to both channels,
   stores their uploads as candidates (with LLM tags on some, see `VIDEO_TAGS`) and
-  builds today's feed. Tests call it first.
+  builds today's feed. Tests call it first. `?fresh=true` leaves it a fresh install
+  instead: no subscriptions, no feed, first-run setup not done;
+- a feed refresh that "polls" by storing the subscribed channels' uploads as candidates
+  (the real poller would fetch RSS), so subscribing then building a feed works.
 
 Run it with `uv run --package homefeed-api python fake_api.py`.
 """
@@ -95,13 +98,13 @@ def build_app() -> "FastAPI":
 
     app.dependency_overrides[get_gateway] = lambda: STATE["gateway"]
     app.dependency_overrides[get_playback] = lambda: STATE["playback"]
-    app.dependency_overrides[get_feed_poll] = lambda: None
+    app.dependency_overrides[get_feed_poll] = lambda: poll_subscriptions
     # A lambda: FastAPI would read the class's constructor parameters as request fields.
     app.dependency_overrides[get_embedder] = lambda: StubEmbeddingProvider()
 
     @app.post("/__e2e__/reset", include_in_schema=False)
-    def e2e_reset() -> Response:
-        reset_data()
+    def e2e_reset(fresh: bool = False) -> Response:
+        reset_data(fresh=fresh)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     return app
@@ -135,11 +138,36 @@ def make_gateway() -> "FakeGateway":
                 for n, (video_id, video_title, hours) in enumerate(uploads)
             ],
         )
+        # Searching for the channel's lowercase name finds it by its newest video.
+        gateway.add_search(title.lower(), [gateway.videos[gateway.uploads[channel_id][0].id]])
     return gateway
 
 
-def reset_data() -> None:
-    """Recreate the database and seed it: two subscriptions, their uploads, a feed."""
+def poll_subscriptions() -> None:
+    """Stand in for the RSS poller: store the subscribed channels' uploads as candidates."""
+    from homefeed_core import curation, videos
+    from homefeed_core.candidates import SUBSCRIPTION, record
+    from homefeed_core.db import get_session_factory
+    from homefeed_core.gateway.fake import FakeGateway
+
+    gateway = STATE["gateway"]
+    assert isinstance(gateway, FakeGateway)
+    with get_session_factory().begin() as session:
+        for channel_id in curation.subscribed_channel_ids(session):
+            uploads = [gateway.videos[upload.id] for upload in gateway.uploads[channel_id]]
+            for video in uploads:
+                videos.store_video(session, video)
+            record(
+                session,
+                [video.id for video in uploads],
+                source=SUBSCRIPTION,
+                source_detail=channel_id,
+            )
+
+
+def reset_data(*, fresh: bool = False) -> None:
+    """Recreate the database and seed it: two subscriptions, their uploads, a feed.
+    A fresh install gets none of that."""
     from homefeed_core import curation, feeds, playback, tags, videos
     from homefeed_core.candidates import SUBSCRIPTION, record
     from homefeed_core.config import get_settings
@@ -159,6 +187,10 @@ def reset_data() -> None:
     STATE["gateway"] = gateway
     STATE["playback"] = playback.Playback(gateway)
 
+    if fresh:
+        with get_session_factory().begin():  # creates the database
+            pass
+        return
     with get_session_factory().begin() as session:
         for channel in gateway.channels.values():
             curation.subscribe(session, gateway, channel_url(channel.id))

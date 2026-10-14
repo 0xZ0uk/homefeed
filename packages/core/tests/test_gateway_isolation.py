@@ -20,7 +20,8 @@ def imports_of(path: Path) -> set[str]:
 
 def python_files() -> list[Path]:
     roots = [REPO / "apps", REPO / "packages"]
-    skip = {".venv", "node_modules", "__pycache__"}
+    # site-packages: third-party code, e.g. the desktop app's bundled Python (apps/desktop/build).
+    skip = {".venv", "node_modules", "__pycache__", "site-packages"}
     return [
         path
         for root in roots

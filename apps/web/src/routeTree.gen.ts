@@ -23,6 +23,7 @@ import { Route as SearchRouteImport } from './routes/search'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as StatusRouteImport } from './routes/status'
 import { Route as WatchEventsRouteImport } from './routes/watch-events'
+import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as ChannelsChannelIdRouteImport } from './routes/channels.$channelId'
 import { Route as FeedDateRouteImport } from './routes/feed.$date'
 import { Route as PlaylistsIndexRouteImport } from './routes/playlists.index'
@@ -102,6 +103,11 @@ const WatchEventsRoute = WatchEventsRouteImport.update({
   path: '/watch-events',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WelcomeRoute = WelcomeRouteImport.update({
+  id: '/welcome',
+  path: '/welcome',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ChannelsChannelIdRoute = ChannelsChannelIdRouteImport.update({
   id: '/channels/$channelId',
   path: '/channels/$channelId',
@@ -159,6 +165,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/status': typeof StatusRoute
   '/watch-events': typeof WatchEventsRoute
+  '/welcome': typeof WelcomeRoute
   '/channels/$channelId': typeof ChannelsChannelIdRoute
   '/feed/$date': typeof FeedDateRoute
   '/playlists/$playlistId': typeof PlaylistsPlaylistIdRoute
@@ -183,6 +190,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/status': typeof StatusRoute
   '/watch-events': typeof WatchEventsRoute
+  '/welcome': typeof WelcomeRoute
   '/channels/$channelId': typeof ChannelsChannelIdRoute
   '/feed/$date': typeof FeedDateRoute
   '/playlists/$playlistId': typeof PlaylistsPlaylistIdRoute
@@ -208,6 +216,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/status': typeof StatusRoute
   '/watch-events': typeof WatchEventsRoute
+  '/welcome': typeof WelcomeRoute
   '/channels/$channelId': typeof ChannelsChannelIdRoute
   '/feed/$date': typeof FeedDateRoute
   '/playlists/$playlistId': typeof PlaylistsPlaylistIdRoute
@@ -234,6 +243,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/status'
     | '/watch-events'
+    | '/welcome'
     | '/channels/$channelId'
     | '/feed/$date'
     | '/playlists/$playlistId'
@@ -258,6 +268,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/status'
     | '/watch-events'
+    | '/welcome'
     | '/channels/$channelId'
     | '/feed/$date'
     | '/playlists/$playlistId'
@@ -282,6 +293,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/status'
     | '/watch-events'
+    | '/welcome'
     | '/channels/$channelId'
     | '/feed/$date'
     | '/playlists/$playlistId'
@@ -307,6 +319,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   StatusRoute: typeof StatusRoute
   WatchEventsRoute: typeof WatchEventsRoute
+  WelcomeRoute: typeof WelcomeRoute
   ChannelsChannelIdRoute: typeof ChannelsChannelIdRoute
   FeedDateRoute: typeof FeedDateRoute
   PlaylistsPlaylistIdRoute: typeof PlaylistsPlaylistIdRoute
@@ -417,6 +430,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WatchEventsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/welcome': {
+      id: '/welcome'
+      path: '/welcome'
+      fullPath: '/welcome'
+      preLoaderRoute: typeof WelcomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/channels/$channelId': {
       id: '/channels/$channelId'
       path: '/channels/$channelId'
@@ -491,6 +511,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   StatusRoute: StatusRoute,
   WatchEventsRoute: WatchEventsRoute,
+  WelcomeRoute: WelcomeRoute,
   ChannelsChannelIdRoute: ChannelsChannelIdRoute,
   FeedDateRoute: FeedDateRoute,
   PlaylistsPlaylistIdRoute: PlaylistsPlaylistIdRoute,

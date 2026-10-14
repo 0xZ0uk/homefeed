@@ -1,5 +1,5 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { AppShell } from "#/components/AppShell";
 import { FeedError } from "#/components/FeedError";
@@ -7,10 +7,16 @@ import { FeedList } from "#/components/FeedList";
 import { RefreshFeedButton } from "#/components/RefreshFeedButton";
 import { formatFeedDate } from "#/lib/format";
 import { todayFeedQuery } from "#/server/feeds";
+import { onboardingQuery } from "#/server/onboarding";
 
 export const Route = createFileRoute("/")({
-  loader: ({ context: { queryClient } }) =>
-    queryClient.ensureQueryData(todayFeedQuery),
+  loader: async ({ context: { queryClient } }) => {
+    // A fresh install has nothing to show: set it up first. Only here, so other
+    // pages stay reachable.
+    const onboarding = await queryClient.fetchQuery(onboardingQuery);
+    if (onboarding.needed) throw redirect({ to: "/welcome" });
+    await queryClient.ensureQueryData(todayFeedQuery);
+  },
   component: Home,
   errorComponent: FeedError,
 });
