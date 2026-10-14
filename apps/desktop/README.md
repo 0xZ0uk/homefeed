@@ -115,7 +115,7 @@ The shell checks for the interpreter, `web/dist/server/server.js` and `web/node_
 
 Packaged builds update themselves with [electron-updater](https://www.electron.build/auto-update) (`src/main/updater.ts`): on Windows the NSIS install, on Linux only the AppImage (`APPIMAGE` set; electron-updater replaces that file). Dev builds and unpacked Linux builds don't check (`main.log` says why).
 
-- 30 s after the app is first up, then every 6 hours, it checks the latest release of the releases repo (see [Releasing](#releasing)) and downloads a newer version in the background.
+- 30 s after the app is first up, then every 6 hours, it checks the latest release of this repo (see [Releasing](#releasing)) and downloads a newer version in the background.
 - When the download is done: a notification ("Update ready — restart Homefeed to install") and a "Restart to update (x.y.z)" item at the top of the tray menu. That item stops the API and web server first (the same shutdown as Quit: their files are about to be replaced), then runs the installer silently and starts the new version.
 - Otherwise the update installs when Homefeed quits (`autoInstallOnAppQuit`), again after the children have stopped.
 - Everything is logged to `main.log` (`updater info: …`). No release or no network is a logged error, nothing more.
@@ -149,17 +149,10 @@ The app's version is `version` in this package's `package.json` (starting at 0.1
 
 1. Bump `version` (e.g. 0.2.0) and commit.
 2. Tag the commit `desktop-v0.2.0` and push the tag. The tag must match the version; the workflow fails otherwise.
-3. The `Desktop release` workflow creates a draft release `v0.2.0` in the releases repo, builds both installers and uploads them (with `latest.yml`, `latest-linux.yml` and the blockmaps), then publishes the release. Installed apps pick it up within 6 hours or at their next start.
+3. The `Desktop release` workflow creates a draft release `v0.2.0` in this repo, builds both installers and uploads them (with `latest.yml`, `latest-linux.yml` and the blockmaps), then publishes the release. Installed apps pick it up within 6 hours or at their next start.
 
 A manual run of the workflow (Actions → Desktop release → Run workflow) builds both installers as workflow artifacts and publishes nothing.
 
-### The releases repo
+### Where releases go
 
-electron-updater reads releases anonymously, and `0xZ0uk/lenstube` is private: friends' installs can't read its releases without a token, and shipping a token in the app isn't an option. So releases go to a separate repo, named in one place: `RELEASES_REPO` in `electron-builder.config.mjs` (default `0xZ0uk/homefeed-releases`; CI can override it with the `HOMEFEED_RELEASES_REPO` repository variable). It's baked into each build's `resources/app-update.yml`, so changing it only affects builds made afterwards.
-
-Options:
-
-- **A public releases-only repo (the default; recommended).** Create `0xZ0uk/homefeed-releases`, public, with at least one commit (e.g. a README; publishing a release creates its tag on the default branch). Create a fine-grained personal access token with access to only that repo and "Contents: read and write", and save it as the `RELEASES_TOKEN` Actions secret of `0xZ0uk/lenstube`. The source stays private; only installers and release notes are public.
-- **Make `0xZ0uk/lenstube` public** and publish to it: set `RELEASES_REPO` to `0xZ0uk/lenstube`. The workflow could then use the built-in `GITHUB_TOKEN` (with `contents: write`) instead of a PAT. Simpler, but publishes the source.
-
-Neither the releases repo nor the secret exists yet: until they do, tag builds fail at "Create the draft release", and installed apps log a 404 on each check (harmless).
+Releases are published to this repo (`0xZ0uk/lenstube`) by the workflow's built-in `GITHUB_TOKEN`; nothing to set up. The repo is private, so the Releases tab and downloads are only visible to people with access to it (share installers with others some other way). electron-updater reads releases anonymously, so on a private repo an install's update check gets a 404: logged, harmless, and updating means installing the new version by hand. The repo is named in one place, `RELEASES_REPO` in `electron-builder.config.mjs` (`HOMEFEED_RELEASES_REPO` overrides it at build time); it's baked into each build's `resources/app-update.yml`, so changing it only affects builds made afterwards.
