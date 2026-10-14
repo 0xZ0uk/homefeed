@@ -5,8 +5,21 @@ import {
 } from "@tanstack/react-query";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 
+import { SettingsCard } from "#/components/SettingsCard";
 import { TimezonePicker } from "#/components/TimezonePicker";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "#/components/ui/alert-dialog";
 import { Button } from "#/components/ui/button";
+import { CardContent, CardFooter } from "#/components/ui/card";
 import { Input } from "#/components/ui/input";
 import {
   DEFAULT_MODELS,
@@ -45,23 +58,29 @@ export function UserSettings() {
   const schedule = useSave();
   const tagging = useSave();
   const sponsorblock = useSave();
-  // Remount the forms with the saved values after each save.
-  const version = JSON.stringify(settings.values);
+  // Remount a form with its saved values when they change. Only its own
+  // values: unsaved edits in the other forms must survive a save.
+  const version = (section: keyof typeof SECTION_KEYS) =>
+    JSON.stringify(SECTION_KEYS[section].map((key) => settings.values[key]));
   return (
     <>
-      <FeedSettings key={`feed-${version}`} settings={settings} saver={feed} />
+      <FeedSettings
+        key={`feed-${version("feed")}`}
+        settings={settings}
+        saver={feed}
+      />
       <ScheduleSettings
-        key={`schedule-${version}`}
+        key={`schedule-${version("schedule")}`}
         settings={settings}
         saver={schedule}
       />
       <TaggingSettings
-        key={`tagging-${version}`}
+        key={`tagging-${version("tagging")}`}
         settings={settings}
         saver={tagging}
       />
       <SponsorBlockSettings
-        key={`sponsorblock-${version}`}
+        key={`sponsorblock-${version("sponsorblock")}`}
         settings={settings}
         saver={sponsorblock}
       />
@@ -69,11 +88,34 @@ export function UserSettings() {
   );
 }
 
+/** The values each form edits or shows. */
+const SECTION_KEYS = {
+  feed: [
+    "feed_size",
+    "feed_exploration_slots",
+    "feed_min_duration_seconds",
+    "feed_max_duration_seconds",
+  ],
+  schedule: ["feed_refresh_time", "model_training_time", "timezone"],
+  tagging: [
+    "llm_provider",
+    "llm_model",
+    "llm_max_tags_per_run",
+    "tag_discovery_per_day",
+    "openrouter_api_key_set",
+    "openrouter_api_key_hint",
+  ],
+  sponsorblock: ["sponsorblock_categories"],
+} as const satisfies Record<string, readonly (keyof SettingsOut["values"])[]>;
+
 type Saver = ReturnType<typeof useSave>;
 
 function useSave() {
   const queryClient = useQueryClient();
+  const errorId = useId();
   const [message, setMessage] = useState<string | null>(null);
+  // The field the message is about, if any.
+  const [invalid, setInvalid] = useState<string | null>(null);
   const mutation = useMutation({
     mutationFn: (data: { set?: SettingsChanges; reset?: UserSettingKey[] }) =>
       saveSettings({ data }),
@@ -91,8 +133,23 @@ function useSave() {
     pending: mutation.isPending,
     saved: mutation.isSuccess && mutation.data.ok,
     message,
-    setMessage,
+    errorId,
+    /** Say why the form can't be saved, mark the field at fault and focus it. */
+    fail: (failure: Failure | null) => {
+      setMessage(failure?.message ?? null);
+      setInvalid(failure?.fieldId ?? null);
+      if (failure) document.getElementById(failure.fieldId)?.focus();
+    },
+    /** An input's hint, plus the error while that input is at fault. */
+    describe: (fieldId: string) =>
+      invalid === fieldId
+        ? {
+            "aria-describedby": `${fieldId}-hint ${errorId}`,
+            "aria-invalid": true,
+          }
+        : { "aria-describedby": `${fieldId}-hint` },
     save: (set: SettingsChanges, reset: UserSettingKey[] = []) => {
+      setInvalid(null);
       if (Object.keys(set).length === 0 && reset.length === 0) {
         setMessage(null);
         return;
@@ -102,9 +159,15 @@ function useSave() {
   };
 }
 
-/** The first failed parse's message, or null when all of them worked. */
-function firstError(...parsed: Parsed<unknown>[]): string | null {
-  for (const result of parsed) if (!result.ok) return result.message;
+type Failure = { message: string; fieldId: string };
+
+/** The first failed parse and the field it came from, or null when all worked. */
+function firstFailure(
+  ...fields: [Parsed<unknown>, fieldId: string][]
+): Failure | null {
+  for (const [result, fieldId] of fields) {
+    if (!result.ok) return { message: result.message, fieldId };
+  }
   return null;
 }
 
@@ -116,6 +179,7 @@ function Section({
   pending,
   saved,
   message,
+  errorId,
   children,
 }: {
   id: string;
@@ -125,6 +189,7 @@ function Section({
   pending: boolean;
   saved: boolean;
   message: string | null;
+  errorId: string;
   children: ReactNode;
 }) {
   const submit = (event: FormEvent) => {
@@ -132,21 +197,15 @@ function Section({
     onSubmit();
   };
   return (
-    <section aria-labelledby={`${id}-heading`} className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <h3 id={`${id}-heading`} className="text-lg font-semibold">
-          {title}
-        </h3>
-        <p className="text-muted-foreground">{description}</p>
-      </div>
-      <form onSubmit={submit} noValidate className="flex flex-col gap-4">
-        {children}
-        <div className="flex flex-wrap items-center gap-3">
+    <SettingsCard id={`${id}-heading`} title={title} description={description}>
+      <form onSubmit={submit} noValidate className="flex flex-col gap-6">
+        <CardContent className="flex flex-col gap-5">{children}</CardContent>
+        <CardFooter className="flex-wrap gap-3">
           <Button type="submit" size="lg" className="px-4" disabled={pending}>
             {pending ? "Saving…" : "Save"}
           </Button>
           {message ? (
-            <p role="alert" className="text-sm text-destructive">
+            <p id={errorId} role="alert" className="text-sm text-destructive">
               {message}
             </p>
           ) : (
@@ -154,9 +213,9 @@ function Section({
               {saved && !pending ? "Saved." : ""}
             </p>
           )}
-        </div>
+        </CardFooter>
       </form>
-    </section>
+    </SettingsCard>
   );
 }
 
@@ -245,24 +304,27 @@ function FeedSettings({
     });
     const parsedShortest = parseOptionalMinutes(shortest, "Shortest video");
     const parsedLongest = parseOptionalMinutes(longest, "Longest video");
-    const error = firstError(
-      parsedSize,
-      parsedSlots,
-      parsedShortest,
-      parsedLongest,
+    const failure = firstFailure(
+      [parsedSize, `${id}-size`],
+      [parsedSlots, `${id}-slots`],
+      [parsedShortest, `${id}-shortest`],
+      [parsedLongest, `${id}-longest`],
     );
     if (
-      error ||
+      failure ||
       !parsedSize.ok ||
       !parsedSlots.ok ||
       !parsedShortest.ok ||
       !parsedLongest.ok
     ) {
-      state.setMessage(error);
+      state.fail(failure);
       return;
     }
     if (parsedSlots.value > parsedSize.value) {
-      state.setMessage("Discovery slots can't be more than videos per day.");
+      state.fail({
+        message: "Discovery slots can't be more than videos per day.",
+        fieldId: `${id}-slots`,
+      });
       return;
     }
     if (
@@ -270,7 +332,10 @@ function FeedSettings({
       parsedLongest.value !== null &&
       parsedShortest.value > parsedLongest.value
     ) {
-      state.setMessage("The shortest video can't be longer than the longest.");
+      state.fail({
+        message: "The shortest video can't be longer than the longest.",
+        fieldId: `${id}-shortest`,
+      });
       return;
     }
     save(
@@ -317,7 +382,7 @@ function FeedSettings({
             min={1}
             max={MAX_FEED_SIZE}
             value={size}
-            aria-describedby={`${id}-size-hint`}
+            {...state.describe(`${id}-size`)}
             onChange={(event) => setSize(event.target.value)}
             className="max-w-32"
           />
@@ -337,7 +402,7 @@ function FeedSettings({
             min={0}
             max={MAX_FEED_SIZE}
             value={slots}
-            aria-describedby={`${id}-slots-hint`}
+            {...state.describe(`${id}-slots`)}
             onChange={(event) => setSlots(event.target.value)}
             className="max-w-32"
           />
@@ -357,7 +422,7 @@ function FeedSettings({
             min={0}
             step="any"
             value={shortest}
-            aria-describedby={`${id}-shortest-hint`}
+            {...state.describe(`${id}-shortest`)}
             onChange={(event) => setShortest(event.target.value)}
             className="max-w-32"
           />
@@ -377,7 +442,7 @@ function FeedSettings({
             min={0}
             step="any"
             value={longest}
-            aria-describedby={`${id}-longest-hint`}
+            {...state.describe(`${id}-longest`)}
             onChange={(event) => setLongest(event.target.value)}
             className="max-w-32"
           />
@@ -405,7 +470,12 @@ function ScheduleSettings({
     const parsedRefresh = parseTime(refresh, "the daily feed");
     const parsedTraining = parseTime(training, "training");
     if (!parsedRefresh.ok || !parsedTraining.ok) {
-      state.setMessage(firstError(parsedRefresh, parsedTraining));
+      state.fail(
+        firstFailure(
+          [parsedRefresh, `${id}-refresh`],
+          [parsedTraining, `${id}-training`],
+        ),
+      );
       return;
     }
     const set: SettingsChanges = changedValues(
@@ -453,7 +523,7 @@ function ScheduleSettings({
             type="time"
             required
             value={refresh}
-            aria-describedby={`${id}-refresh-hint`}
+            {...state.describe(`${id}-refresh`)}
             onChange={(event) => setRefresh(event.target.value)}
             className="max-w-36"
           />
@@ -471,7 +541,7 @@ function ScheduleSettings({
             type="time"
             required
             value={training}
-            aria-describedby={`${id}-training-hint`}
+            {...state.describe(`${id}-training`)}
             onChange={(event) => setTraining(event.target.value)}
             className="max-w-36"
           />
@@ -526,7 +596,12 @@ function TaggingSettings({
       label: "New videos per followed tag",
     });
     if (!parsedPerRun.ok || !parsedPerDay.ok) {
-      state.setMessage(firstError(parsedPerRun, parsedPerDay));
+      state.fail(
+        firstFailure(
+          [parsedPerRun, `${id}-per-run`],
+          [parsedPerDay, `${id}-per-day`],
+        ),
+      );
       return;
     }
     const set: SettingsChanges = changedValues(
@@ -575,7 +650,7 @@ function TaggingSettings({
           <select
             id={`${id}-provider`}
             value={provider}
-            aria-describedby={`${id}-provider-hint`}
+            {...state.describe(`${id}-provider`)}
             onChange={(event) => {
               const picked = LLM_PROVIDERS.find(
                 (option) => option.value === event.target.value,
@@ -606,7 +681,7 @@ function TaggingSettings({
               placeholder={DEFAULT_MODELS[provider]}
               autoComplete="off"
               spellCheck={false}
-              aria-describedby={`${id}-model-hint`}
+              {...state.describe(`${id}-model`)}
               onChange={(event) => setModel(event.target.value)}
               className="max-w-sm"
             />
@@ -641,7 +716,7 @@ function TaggingSettings({
               min={0}
               max={MAX_TAGS_PER_RUN}
               value={perRun}
-              aria-describedby={`${id}-per-run-hint`}
+              {...state.describe(`${id}-per-run`)}
               onChange={(event) => setPerRun(event.target.value)}
               className="max-w-32"
             />
@@ -662,7 +737,7 @@ function TaggingSettings({
             min={0}
             max={MAX_TAG_DISCOVERY_PER_DAY}
             value={perDay}
-            aria-describedby={`${id}-per-day-hint`}
+            {...state.describe(`${id}-per-day`)}
             onChange={(event) => setPerDay(event.target.value)}
             className="max-w-32"
           />
@@ -689,6 +764,7 @@ function ApiKeyField({
   onChange: (value: string) => void;
   onRemove: () => void;
 }) {
+  const [confirming, setConfirming] = useState(false);
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="text-sm font-medium">
@@ -707,16 +783,44 @@ function ApiKeyField({
           className="max-w-sm"
         />
         {canRemove && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="lg"
-            className="px-3"
-            disabled={pending}
-            onClick={onRemove}
-          >
-            Remove key
-          </Button>
+          <AlertDialog open={confirming} onOpenChange={setConfirming}>
+            <AlertDialogTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="lg"
+                  className="px-3"
+                  disabled={pending}
+                />
+              }
+            >
+              Remove key
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  Remove the OpenRouter API key?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  This computer forgets the key and can&apos;t show it again.
+                  Tagging through OpenRouter stops until you enter a key.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  variant="destructive"
+                  onClick={() => {
+                    setConfirming(false);
+                    onRemove();
+                  }}
+                >
+                  Remove key
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
       </div>
       <p id={`${id}-hint`} className="text-xs text-muted-foreground">

@@ -6,7 +6,9 @@ import {
 import { Link } from "@tanstack/react-router";
 
 import { ChannelAvatar } from "#/components/ChannelAvatar";
+import { SettingsCard } from "#/components/SettingsCard";
 import { Button } from "#/components/ui/button";
+import { CardContent } from "#/components/ui/card";
 import { hideKindLabel } from "#/lib/discover";
 import {
   channelHidesQuery,
@@ -21,30 +23,32 @@ export function HiddenChannels() {
   const { data: hides } = useSuspenseQuery(channelHidesQuery);
 
   return (
-    <section
-      aria-labelledby="hidden-channels-heading"
-      className="flex flex-col gap-3"
+    <SettingsCard
+      id="hidden-channels-heading"
+      title="Hidden channels"
+      description="Channels you dismissed from Discover or kept out of your feed."
     >
-      <div className="flex flex-col gap-1">
-        <h3 id="hidden-channels-heading" className="text-lg font-semibold">
-          Hidden channels
-        </h3>
-        <p className="text-muted-foreground">
-          Channels you dismissed from Discover or kept out of your feed.
-        </p>
-      </div>
-      {hides.length === 0 ? (
-        <p className="text-muted-foreground">
-          No hidden channels. Use Dismiss or Don't show on Discover to hide one.
-        </p>
-      ) : (
-        <ul className="flex flex-col divide-y" aria-label="Hidden channels">
-          {hides.map((item) => (
-            <HiddenRow key={item.channel_id} item={item} />
-          ))}
-        </ul>
-      )}
-    </section>
+      <CardContent>
+        {hides.length === 0 ? (
+          <p className="text-sm text-pretty text-muted-foreground">
+            No hidden channels. Use Dismiss or Don't show on{" "}
+            <Link
+              to="/discover"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              Discover
+            </Link>{" "}
+            to hide one.
+          </p>
+        ) : (
+          <ul className="flex flex-col divide-y" aria-label="Hidden channels">
+            {hides.map((item) => (
+              <HiddenRow key={item.channel_id} item={item} />
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </SettingsCard>
   );
 }
 
@@ -71,7 +75,7 @@ function HiddenRow({ item }: { item: ChannelHide }) {
   const failed = restore.isError || demote.isError;
 
   return (
-    <li className="flex flex-col gap-2 py-3">
+    <li className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex min-w-48 flex-1 items-center gap-3">
           <ChannelAvatar url={item.thumbnail_url} title={item.title} />

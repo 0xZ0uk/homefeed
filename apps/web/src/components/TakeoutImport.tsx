@@ -1,6 +1,10 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 
+import { SettingsCard } from "#/components/SettingsCard";
+import { Button } from "#/components/ui/button";
+import { CardContent, CardFooter } from "#/components/ui/card";
+import { Input } from "#/components/ui/input";
 import { DEFAULT_SUBSCRIBE_MIN_WATCHES, summarizeImport } from "#/lib/takeout";
 import { uploadTakeout } from "#/server/takeout";
 
@@ -21,82 +25,94 @@ export function TakeoutImport() {
   }
 
   return (
-    <section aria-labelledby="takeout-heading" className="flex flex-col gap-3">
-      <h3 id="takeout-heading" className="text-lg font-semibold">
-        Import watch history
-      </h3>
-      <p className="text-muted-foreground">
-        Upload the YouTube watch history from Google Takeout (
-        <code>watch-history.json</code> or <code>watch-history.html</code>). Its
-        channels and your most recently watched videos are added as candidates,
-        so they can show up in your feed for rating. Nothing is rated for you.
-      </p>
-      <form onSubmit={onSubmit} className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1">
-          <label htmlFor="takeout-file" className="font-medium">
-            Watch history file
-          </label>
-          <input
-            id="takeout-file"
-            name="file"
-            type="file"
-            accept=".json,.html,application/json,text/html"
-            required
-            aria-describedby="takeout-status"
-            className="text-sm"
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            id="takeout-subscribe"
-            name="subscribe"
-            type="checkbox"
-            checked={subscribe}
-            onChange={(event) => setSubscribe(event.target.checked)}
-          />
-          <label htmlFor="takeout-subscribe">
-            Subscribe to channels I watched at least
-          </label>
-          <input
-            id="takeout-min-watches"
-            name="subscribe_min_watches"
-            type="number"
-            min={1}
-            step={1}
-            defaultValue={DEFAULT_SUBSCRIBE_MIN_WATCHES}
-            disabled={!subscribe}
-            aria-label="Minimum watches to subscribe"
-            className="w-20 rounded-lg border border-input bg-transparent outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 px-2 py-1 disabled:opacity-50"
-          />
-          <span>times</span>
-        </div>
-        <div>
-          <button
+    <SettingsCard
+      id="takeout-heading"
+      title="Import watch history"
+      description={
+        <>
+          Upload the YouTube watch history from Google Takeout (
+          <code>watch-history.json</code> or <code>watch-history.html</code>).
+          Its channels and your most recently watched videos are added as
+          candidates, so they can show up in your feed for rating. Nothing is
+          rated for you.
+        </>
+      }
+    >
+      <form onSubmit={onSubmit} className="flex flex-col gap-6">
+        <CardContent className="flex flex-col gap-5">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="takeout-file" className="text-sm font-medium">
+              Watch history file
+            </label>
+            <Input
+              id="takeout-file"
+              name="file"
+              type="file"
+              accept=".json,.html,application/json,text/html"
+              required
+              aria-describedby="takeout-status"
+              className="max-w-sm"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
+            <label className="flex items-center gap-2">
+              <input
+                name="subscribe"
+                type="checkbox"
+                checked={subscribe}
+                onChange={(event) => setSubscribe(event.target.checked)}
+              />
+              Subscribe to channels I watched at least
+            </label>
+            <span className="flex items-center gap-2">
+              <Input
+                id="takeout-min-watches"
+                name="subscribe_min_watches"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step={1}
+                defaultValue={DEFAULT_SUBSCRIBE_MIN_WATCHES}
+                disabled={!subscribe}
+                aria-label="Minimum watches to subscribe"
+                className="w-20"
+              />
+              times
+            </span>
+          </div>
+        </CardContent>
+        <CardFooter className="flex-wrap items-start gap-3">
+          <Button
             type="submit"
+            size="lg"
+            className="px-4"
             disabled={mutation.isPending}
-            className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/85 disabled:opacity-50"
           >
             {mutation.isPending ? "Importing…" : "Import"}
-          </button>
-        </div>
+          </Button>
+          <div
+            id="takeout-status"
+            role="status"
+            className="min-w-0 flex-1 basis-60 text-sm"
+          >
+            {mutation.isError && (
+              <p className="text-destructive">
+                Couldn't import that file. Try again later.
+              </p>
+            )}
+            {result?.ok === false && (
+              <p className="text-destructive">{result.message}</p>
+            )}
+            {result?.ok === true && (
+              <ul className="flex flex-col gap-1">
+                {summarizeImport(result.report).map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </CardFooter>
       </form>
-      <div id="takeout-status" role="status" className="min-h-6">
-        {mutation.isError && (
-          <p className="text-destructive">
-            Couldn't import that file. Try again later.
-          </p>
-        )}
-        {result?.ok === false && (
-          <p className="text-destructive">{result.message}</p>
-        )}
-        {result?.ok === true && (
-          <ul className="flex flex-col gap-1">
-            {summarizeImport(result.report).map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </section>
+    </SettingsCard>
   );
 }

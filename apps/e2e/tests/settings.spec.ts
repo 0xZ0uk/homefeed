@@ -39,6 +39,19 @@ test("change settings, then put them back to their defaults", async ({
   expect(after.sources.feed_size).not.toBe("user");
 });
 
+test("saving one section keeps unsaved edits in another", async ({ page }) => {
+  await open(page, "/settings");
+
+  const feed = page.getByRole("region", { name: "Feed", exact: true });
+  await feed.getByLabel("Videos per day").fill("7");
+  const schedule = page.getByRole("region", { name: "Schedule and time zone" });
+  await schedule.getByLabel("New feed every day at").fill("07:30");
+  await schedule.getByRole("button", { name: "Save" }).click();
+  await expect(schedule.getByRole("status")).toHaveText("Saved.");
+
+  await expect(feed.getByLabel("Videos per day")).toHaveValue("7");
+});
+
 test("an invalid value isn't saved", async ({ page, request }) => {
   await open(page, "/settings");
 
@@ -49,6 +62,9 @@ test("an invalid value isn't saved", async ({ page, request }) => {
   await expect(feed.getByRole("alert")).toHaveText(
     "Discovery slots must be a whole number from 0 to 200.",
   );
+  const slots = feed.getByLabel("Discovery slots");
+  await expect(slots).toBeFocused();
+  await expect(slots).toHaveAttribute("aria-invalid", "true");
   const { body } = await apiGet<Settings>(request, "/settings");
   expect(body.sources.feed_exploration_slots).not.toBe("user");
 });
@@ -73,5 +89,9 @@ test("the API key is saved but never shown", async ({ page, request }) => {
   expect(JSON.stringify(body)).not.toContain("e2e-secret");
 
   await tagging.getByRole("button", { name: "Remove key" }).click();
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: "Remove key" })
+    .click();
   await expect(tagging.getByText("Get one at openrouter.ai")).toBeVisible();
 });
