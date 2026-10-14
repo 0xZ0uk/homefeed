@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import { usePlayerMedia } from "#/components/PlayerMedia";
-import { formatDuration } from "#/lib/format";
 import {
   attachSponsorSkip,
   categoryLabel,
@@ -16,8 +15,9 @@ const NOTICE_MS = 8000;
 
 /**
  * Skips the video's SponsorBlock segments as playback reaches them, with a
- * short notice and a way to watch the skipped part. Shows nothing when the
- * video has no segments or SponsorBlock can't be reached.
+ * short notice over the player and a way to watch the skipped part. Shows
+ * nothing when the video has no segments or SponsorBlock can't be reached
+ * (the segments are marked on the progress bar).
  */
 export function SponsorSkip({ videoId }: { videoId: string }) {
   const media = usePlayerMedia();
@@ -41,34 +41,25 @@ export function SponsorSkip({ videoId }: { videoId: string }) {
     return () => clearTimeout(timer);
   }, [skipped]);
 
-  if (!segments?.length) return null;
-
   const watchSkipped = () => {
     if (skipped) skipper.current?.undo(skipped);
     setSkipped(null);
   };
 
-  const categories = [
-    ...new Set(segments.map((s) => categoryLabel(s.category))),
-  ];
   return (
-    <p role="status" className="text-sm text-muted-foreground">
-      {skipped ? (
-        <>
-          Skipped {categoryLabel(skipped.category)} (
-          {formatDuration(skipped.start_seconds)}–
-          {formatDuration(skipped.end_seconds)}).{" "}
-          <button type="button" className="underline" onClick={watchSkipped}>
-            Watch it
+    <div role="status" className="flex justify-end">
+      {skipped && (
+        <p className="pointer-events-auto flex items-center gap-3 rounded-md bg-black/80 py-1.5 ps-3 pe-1.5 text-sm text-white shadow-lg animate-in fade-in slide-in-from-right-2 motion-reduce:animate-none">
+          <span>Skipped {categoryLabel(skipped.category)}</span>
+          <button
+            type="button"
+            className="rounded px-2 py-1 font-medium hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none"
+            onClick={watchSkipped}
+          >
+            Undo
           </button>
-        </>
-      ) : (
-        <>
-          SponsorBlock: skipping {segments.length}{" "}
-          {segments.length === 1 ? "segment" : "segments"} (
-          {categories.join(", ")}).
-        </>
+        </p>
       )}
-    </p>
+    </div>
   );
 }

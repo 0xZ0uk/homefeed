@@ -1,4 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import {
+  useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -9,11 +11,19 @@ import {
 
 import { ResumeNotice } from "#/components/ResumeNotice";
 import { useRegisterPlayerMedia } from "#/components/PlayerMedia";
+import { SponsorSkip } from "#/components/SponsorSkip";
+import type { ShakaPlayer } from "#/components/player/media-state";
+import { PlayerControls } from "#/components/player/PlayerControls";
+import type { Chapter } from "#/lib/chapters";
 import {
   trackWatchEvents,
   watchPosition,
   type WatchEventListener,
 } from "#/lib/player-events";
+import {
+  sponsorSegmentsQuery,
+  type SponsorSegment,
+} from "#/server/video-extras";
 import { manifestUrl } from "#/server/videos";
 
 /** Control over the player for the page around it (e.g. the rating prompt, #15). */
@@ -30,6 +40,8 @@ interface VideoPlayerProps {
   poster?: string | null;
   /** Where to start, in seconds (the saved resume position); read once. */
   startAt?: number | null;
+  /** Marked on the progress bar. */
+  chapters?: readonly Chapter[];
   /** Play, pause, seek, end and close (leaving the page), with the position. */
   onWatchEvent?: WatchEventListener;
   ref?: Ref<VideoPlayerHandle>;
@@ -38,12 +50,10 @@ interface VideoPlayerProps {
   children?: (notices: ReactNode) => ReactNode;
 }
 
-type ShakaPlayer = InstanceType<
-  (typeof import("shaka-player/dist/shaka-player.dash"))["default"]["Player"]
->;
-
 /**
- * Shaka Player over the video's DASH manifest, proxied through this app.
+ * Shaka Player over the video's DASH manifest, proxied through this app, with
+ * YouTube-style controls: the progress bar marks chapters and the SponsorBlock
+ * segments that get skipped.
  *
  * Playback only starts when the viewer presses play (no autoplay), and when the
  * video ends nothing else is offered or played.
@@ -52,11 +62,22 @@ export function VideoPlayer({
   videoId,
   poster,
   startAt,
+  chapters = NO_CHAPTERS,
   onWatchEvent,
   ref,
   children,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [media, setMedia] = useState<HTMLVideoElement | null>(null);
+  const attachVideo = useCallback((video: HTMLVideoElement | null) => {
+    videoRef.current = video;
+    setMedia(video);
+  }, []);
+  const [player, setPlayer] = useState<ShakaPlayer | null>(null);
+  const { data: segments = NO_SEGMENTS } = useQuery(
+    sponsorSegmentsQuery(videoId),
+  );
   // Only the first value counts: a later one mustn't jump a playing video.
   const [initialStartAt] = useState(startAt);
   const listenerRef = useRef(onWatchEvent);
@@ -91,7 +112,7 @@ export function VideoPlayer({
       listenerRef.current?.(event),
     );
 
-    let player: ShakaPlayer | null = null;
+    let created: ShakaPlayer | null = null;
     let cancelled = false;
     void (async () => {
       // Shaka touches browser APIs at import time, so load it in the browser only.
@@ -104,7 +125,7 @@ export function VideoPlayer({
         return;
       }
       const instance = new shaka.Player();
-      player = instance;
+      created = instance;
       instance.addEventListener("error", (event) => {
         setError(
           playerErrorMessage((event as Event & { detail?: unknown }).detail),
@@ -114,6 +135,7 @@ export function VideoPlayer({
         await instance.attach(video);
         if (cancelled) return;
         await instance.load(manifestUrl(videoId), initialStartAt);
+        if (!cancelled) setPlayer(instance);
       } catch (loadError) {
         if (!cancelled) setError(playerErrorMessage(loadError));
       }
@@ -122,7 +144,8 @@ export function VideoPlayer({
     return () => {
       cancelled = true;
       stopTracking();
-      void player?.destroy();
+      setPlayer(null);
+      void created?.destroy();
     };
   }, [videoId, initialStartAt]);
 
@@ -147,19 +170,35 @@ export function VideoPlayer({
   return (
     <>
       <div className="flex w-full justify-center bg-black">
-        <video
-          ref={videoRef}
-          controls
-          playsInline
-          preload="metadata"
-          poster={poster ?? undefined}
-          className="aspect-video h-auto max-h-[80vh] w-full bg-black"
-        />
+        <div
+          ref={containerRef}
+          className="relative aspect-video max-h-[80vh] w-full overflow-hidden bg-black [&:fullscreen]:aspect-auto [&:fullscreen]:max-h-none"
+        >
+          <video
+            ref={attachVideo}
+            playsInline
+            preload="metadata"
+            poster={poster ?? undefined}
+            className="size-full bg-black object-contain"
+          />
+          <PlayerControls
+            media={media}
+            player={player}
+            containerRef={containerRef}
+            chapters={chapters}
+            segments={segments}
+          >
+            <SponsorSkip videoId={videoId} />
+          </PlayerControls>
+        </div>
       </div>
       {children ? children(notices) : notices}
     </>
   );
 }
+
+const NO_CHAPTERS: readonly Chapter[] = [];
+const NO_SEGMENTS: readonly SponsorSegment[] = [];
 
 /** A short explanation of a Shaka error (`shaka.util.Error`) or anything else. */
 function playerErrorMessage(error: unknown): string {

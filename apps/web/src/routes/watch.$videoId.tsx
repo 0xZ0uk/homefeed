@@ -15,7 +15,6 @@ import { AppShell } from "#/components/AppShell";
 import { Chapters } from "#/components/Chapters";
 import { PlayerMediaProvider } from "#/components/PlayerMedia";
 import { SaveToPlaylist } from "#/components/SaveToPlaylist";
-import { SponsorSkip } from "#/components/SponsorSkip";
 import { VideoTags } from "#/components/VideoTags";
 import { WatchAndRate } from "#/components/WatchAndRate";
 import { NextInQueue } from "#/components/NextInQueue";
@@ -31,9 +30,9 @@ import { videoQuery } from "#/server/videos";
 /**
  * The watch page: the player and the rating (prompted when the video ends or
  * when leaving, editable any time), then title, tags, channel, description,
- * chapters. SponsorBlock segments are skipped. It never autoplays and suggests
- * nothing when the video ends. It picks up where the last visit stopped (see
- * `fetchResumePosition`).
+ * chapters. SponsorBlock segments are marked on the progress bar and skipped.
+ * It never autoplays and suggests nothing when the video ends. It picks up
+ * where the last visit stopped (see `fetchResumePosition`).
  */
 export const Route = createFileRoute("/watch/$videoId")({
   loader: async ({ params, context: { queryClient } }) => {
@@ -86,6 +85,7 @@ function Watch() {
         videoId={video.id}
         poster={video.thumbnail_url}
         startAt={resumeAt}
+        chapters={video.chapters}
         contentClassName={CONTENT_CLASS}
         aside={
           <aside className="flex min-w-0 flex-col gap-4">
@@ -94,7 +94,6 @@ function Watch() {
           </aside>
         }
       >
-        <SponsorSkip videoId={video.id} />
         <div className="flex flex-col gap-2">
           <h2 className="text-xl leading-tight font-bold">{video.title}</h2>
           <VideoTags videoId={video.id} tags={video.tags} />
