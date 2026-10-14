@@ -2,34 +2,60 @@ import {
   useQueryErrorResetBoundary,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
+import {
+  ChartNoAxesColumn,
+  ChevronDown,
+  Download,
+  Sparkles,
+  type LucideIcon,
+} from "lucide-react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { AppShell } from "#/components/AppShell";
 import { GoodRateTrend } from "#/components/GoodRateTrend";
+import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "#/components/ui/card";
 import {
   formatPercent,
   formatWeek,
+  goodRateDelta,
+  insightsSummary,
   isGoodBucket,
+  lastN,
+  modelShareDelta,
   overallGoodRate,
   overallRatingRate,
+  parseWeekRange,
   plural,
+  ratingRateDelta,
   totalScoreCounts,
+  WEEK_RANGES,
+  weeklyInsightsCsv,
+  type WeekRange,
 } from "#/lib/insights";
 import { formatScore } from "#/lib/scores";
 import { cn } from "#/lib/utils";
-import {
-  INSIGHTS_WEEKS,
-  weeklyInsightsQuery,
-  type WeekInsights,
-} from "#/server/insights";
+import { weeklyInsightsQuery, type WeekInsights } from "#/server/insights";
 
 /** Whether the feed is working, by the success metric rather than watch time. */
 export const Route = createFileRoute("/insights")({
+  validateSearch: (search: Record<string, unknown>): { weeks: WeekRange } => ({
+    weeks: parseWeekRange(search.weeks),
+  }),
   head: () => ({ meta: [{ title: "Insights · Homefeed" }] }),
-  loader: ({ context: { queryClient } }) =>
-    queryClient.ensureQueryData(weeklyInsightsQuery),
+  loaderDeps: ({ search }) => ({ weeks: search.weeks }),
+  loader: ({ context: { queryClient }, deps }) =>
+    queryClient.ensureQueryData(weeklyInsightsQuery(deps.weeks)),
+  pendingComponent: InsightsPending,
   component: Insights,
   errorComponent: InsightsError,
 });
@@ -45,126 +71,337 @@ const SHARES = [
   { key: "similarity", label: "Similarity to ratings", swatch: "bg-chart-3" },
 ] as const;
 
+/** How many weeks a stat card's sparkline covers. */
+const SPARKLINE_WEEKS = 8;
+
 function Insights() {
-  const { data } = useSuspenseQuery(weeklyInsightsQuery);
-  const weeks = data.weeks;
-  const thisWeek = weeks.at(-1);
+  const { weeks } = Route.useSearch();
+  const { data } = useSuspenseQuery(weeklyInsightsQuery(weeks));
+  const allWeeks = data.weeks;
+  const thisWeek = allWeeks.at(-1);
+  const summary = insightsSummary(allWeeks, data.good_threshold);
+  const hasRatings = allWeeks.some((week) => week.rated_count > 0);
+  const [showRatingRate, setShowRatingRate] = useState(false);
+
+  function downloadCsv() {
+    const blob = new Blob([weeklyInsightsCsv(allWeeks)], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `insights-weekly-${weeks}wk.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
-    <AppShell className="flex max-w-4xl flex-col gap-10">
-      <header className="flex flex-col gap-1">
-        <h2 className="text-xl font-semibold">Insights</h2>
-        <p className="max-w-prose text-pretty text-muted-foreground">
-          Is the feed working? The measure is the good rate: the share of rated
-          videos scored {formatScore(data.good_threshold)} or higher. Last{" "}
-          {INSIGHTS_WEEKS} weeks.
-        </p>
+    <AppShell className="flex max-w-5xl flex-col gap-10">
+      <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+        <div className="flex max-w-prose flex-col gap-1">
+          <h2 className="text-xl font-semibold">Insights</h2>
+          <p className="text-pretty text-muted-foreground">
+            Is the feed working? The measure is the good rate: the share of
+            rated videos scored {formatScore(data.good_threshold)} or higher.
+            Last {weeks} weeks.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <nav aria-label="Time window">
+            <div className="flex gap-0.5 rounded-full bg-secondary p-1">
+              {WEEK_RANGES.map((range) => {
+                const current = range === weeks;
+                return (
+                  <Link
+                    key={range}
+                    to="/insights"
+                    search={{ weeks: range }}
+                    aria-current={current ? "page" : undefined}
+                    className={cn(
+                      "flex h-7 items-center rounded-full px-3 text-sm font-medium whitespace-nowrap outline-none transition-colors duration-150 focus-visible:ring-3 focus-visible:ring-ring/50",
+                      current
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {range} wk
+                  </Link>
+                );
+              })}
+            </div>
+          </nav>
+          <Button
+            variant="secondary"
+            onClick={downloadCsv}
+            aria-label="Download weekly insights as CSV"
+          >
+            <Download aria-hidden="true" />
+            CSV
+          </Button>
+        </div>
       </header>
 
-      {thisWeek && <ThisWeek week={thisWeek} />}
+      {summary && (
+        <Card className="flex-row items-start gap-3 bg-accent p-4 text-sm">
+          <Sparkles
+            aria-hidden="true"
+            className="mt-0.5 size-4 shrink-0 text-brand"
+          />
+          <p className="min-w-0 max-w-prose text-pretty">{summary}</p>
+        </Card>
+      )}
 
-      <Section
+      {thisWeek && (
+        <section aria-labelledby="this-week-heading">
+          <h3 id="this-week-heading" className="text-lg font-semibold">
+            This week{" "}
+            <span className="font-normal text-muted-foreground">
+              (from {formatWeek(thisWeek.week_start)})
+            </span>
+          </h3>
+          <dl className="mt-3 grid gap-3 sm:grid-cols-3">
+            <StatCard
+              label="Good rate"
+              value={formatPercent(thisWeek.good_rate)}
+              detail={
+                thisWeek.rated_count > 0
+                  ? `${thisWeek.good_count} of ${plural(thisWeek.rated_count, "rating")}`
+                  : "No ratings yet"
+              }
+              delta={goodRateDelta(allWeeks)}
+              series={lastN(allWeeks, SPARKLINE_WEEKS).map(
+                (week) => week.good_rate,
+              )}
+              seriesClass="text-chart-1"
+            />
+            <StatCard
+              label="Rating rate"
+              value={formatPercent(thisWeek.rating_rate)}
+              detail={
+                thisWeek.shown_count > 0
+                  ? `${thisWeek.shown_rated_count} of ${plural(thisWeek.shown_count, "video")} shown`
+                  : "No feed yet"
+              }
+              delta={ratingRateDelta(allWeeks)}
+              series={lastN(allWeeks, SPARKLINE_WEEKS).map(
+                (week) => week.rating_rate,
+              )}
+              seriesClass="text-chart-2"
+            />
+            <StatCard
+              label="Model share"
+              value={formatPercent(thisWeek.score_share?.model)}
+              detail={
+                thisWeek.feed_count > 0
+                  ? `${thisWeek.model_feed_count} of ${plural(thisWeek.feed_count, "feed")} used a model`
+                  : "No feed yet"
+              }
+              delta={modelShareDelta(allWeeks)}
+              series={lastN(allWeeks, SPARKLINE_WEEKS).map(
+                (week) => week.score_share?.model ?? null,
+              )}
+              seriesClass="text-chart-3"
+            />
+          </dl>
+        </section>
+      )}
+
+      <Panel
         id="trend-heading"
         title="Good rate by week"
-        description={`Over ${INSIGHTS_WEEKS} weeks: good rate ${formatPercent(
-          overallGoodRate(weeks),
-        )}, rating rate ${formatPercent(overallRatingRate(weeks))}.`}
+        description={`Over ${weeks} weeks: good rate ${formatPercent(overallGoodRate(allWeeks))}, rating rate ${formatPercent(overallRatingRate(allWeeks))}.`}
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            aria-pressed={showRatingRate}
+            onClick={() => setShowRatingRate((show) => !show)}
+            className={cn(
+              showRatingRate && "bg-secondary text-secondary-foreground",
+            )}
+          >
+            Rating rate
+          </Button>
+        }
       >
-        <GoodRateTrend weeks={weeks} goodThreshold={data.good_threshold} />
-      </Section>
+        {hasRatings ? (
+          <GoodRateTrend
+            weeks={allWeeks}
+            goodThreshold={data.good_threshold}
+            showRatingRate={showRatingRate}
+          />
+        ) : (
+          <EmptyState icon={ChartNoAxesColumn}>
+            No ratings in the last {weeks} weeks yet. Rate videos from your{" "}
+            <Link
+              to="/"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              feed
+            </Link>{" "}
+            and the weekly good rate appears here.
+          </EmptyState>
+        )}
+      </Panel>
 
-      <ScoreDistribution weeks={weeks} goodThreshold={data.good_threshold} />
-      <ScoreShares weeks={weeks} />
-      <WeekTable weeks={weeks} />
+      <ScoreDistribution weeks={allWeeks} goodThreshold={data.good_threshold} />
+      <ScoreShares weeks={allWeeks} />
+      <WeekTable weeks={allWeeks} currentWeek={thisWeek} />
     </AppShell>
   );
 }
 
-/** A titled part of the page, with an optional line under the title. */
-function Section({
+/** A titled panel: heading and description in the card, content below. */
+function Panel({
   id,
   title,
   description,
+  action,
   children,
 }: {
   id: string;
   title: ReactNode;
   description?: ReactNode;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <section aria-labelledby={id} className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <h3 id={id} className="text-lg font-semibold">
-          {title}
-        </h3>
-        {description && (
-          <p className="max-w-prose text-sm text-pretty text-muted-foreground">
-            {description}
-          </p>
+    <Card aria-labelledby={id}>
+      <CardHeader
+        className={cn(
+          action && "flex-row items-start justify-between gap-x-4 gap-y-2",
         )}
-      </div>
-      {children}
-    </section>
+      >
+        <div className="flex min-w-0 flex-col gap-1">
+          <CardTitle render={<h3 id={id} />} className="text-lg">
+            {title}
+          </CardTitle>
+          {description && (
+            <CardDescription className="max-w-prose text-pretty">
+              {description}
+            </CardDescription>
+          )}
+        </div>
+        {action}
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
   );
 }
 
-function ThisWeek({ week }: { week: WeekInsights }) {
-  const stats = [
-    {
-      label: "Good rate",
-      value: formatPercent(week.good_rate),
-      detail:
-        week.rated_count > 0
-          ? `${week.good_count} of ${plural(week.rated_count, "rating")}`
-          : "No ratings yet",
-    },
-    {
-      label: "Rating rate",
-      value: formatPercent(week.rating_rate),
-      detail:
-        week.shown_count > 0
-          ? `${week.shown_rated_count} of ${plural(week.shown_count, "video")} shown`
-          : "No feed yet",
-    },
-    {
-      label: "Model share",
-      value: formatPercent(week.score_share?.model),
-      detail:
-        week.feed_count > 0
-          ? `${week.model_feed_count} of ${plural(week.feed_count, "feed")} used a model`
-          : "No feed yet",
-    },
-  ];
+/** One "this week" figure: label, delta, big value, detail and sparkline. */
+function StatCard({
+  label,
+  value,
+  detail,
+  delta,
+  series,
+  seriesClass,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  delta: number | null;
+  series: readonly (number | null)[];
+  seriesClass: string;
+}) {
   return (
-    <Section
-      id="this-week-heading"
-      title={
-        <>
-          This week{" "}
-          <span className="font-normal text-muted-foreground">
-            (from {formatWeek(week.week_start)})
-          </span>
-        </>
-      }
-    >
-      <dl className="grid gap-3 sm:grid-cols-3">
-        {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className="flex flex-col gap-1 rounded-xl border p-4"
-          >
-            <dt className="text-sm font-medium text-muted-foreground">
-              {stat.label}
-            </dt>
-            <dd className="text-3xl leading-tight font-semibold tracking-tight">
-              {stat.value}
-            </dd>
-            <dd className="text-sm text-muted-foreground">{stat.detail}</dd>
-          </div>
-        ))}
+    <Card className="gap-3 py-4">
+      <dl className="flex flex-col gap-2">
+        <div className="flex items-start justify-between gap-2">
+          <dt className="text-sm font-medium text-muted-foreground">{label}</dt>
+          <DeltaBadge delta={delta} />
+        </div>
+        <dd className="text-3xl leading-tight font-semibold tabular-nums tracking-tight">
+          {value}
+        </dd>
+        <dd className="text-sm text-muted-foreground">{detail}</dd>
       </dl>
-    </Section>
+      <Sparkline values={series} className={seriesClass} />
+    </Card>
+  );
+}
+
+/** A whole-percentage-point change versus the previous window, as a chip. */
+function DeltaBadge({ delta }: { delta: number | null }) {
+  if (delta == null) {
+    return (
+      <Badge variant="outline" className="text-muted-foreground">
+        –
+      </Badge>
+    );
+  }
+  const rounded = Math.round(delta);
+  if (rounded === 0) {
+    return (
+      <Badge variant="outline" className="text-muted-foreground tabular-nums">
+        0 pts
+      </Badge>
+    );
+  }
+  const up = rounded > 0;
+  return (
+    <Badge
+      variant="outline"
+      className={cn("tabular-nums", up ? "text-success" : "text-destructive")}
+    >
+      <span aria-hidden="true">{up ? "▲" : "▼"}</span>
+      {`${up ? "+" : "−"}${Math.abs(rounded)} pts`}
+    </Badge>
+  );
+}
+
+/**
+ * The last few weeks of a series as a tiny line (decorative; the same numbers
+ * are in the table and chart panels). Weeks without a value break the line.
+ */
+function Sparkline({
+  values,
+  className,
+}: {
+  values: readonly (number | null)[];
+  className?: string;
+}) {
+  const width = 64;
+  const height = 20;
+  const pad = 1;
+  const count = values.length;
+  if (count < 2) return null;
+  const points = values.map((value, index) => {
+    if (value == null) return null;
+    const clamped = Math.min(1, Math.max(0, value));
+    return {
+      x: pad + (index / (count - 1)) * (width - 2 * pad),
+      y: pad + (1 - clamped) * (height - 2 * pad),
+    };
+  });
+  const commands: string[] = [];
+  let drawing = false;
+  for (const point of points) {
+    if (!point) {
+      drawing = false;
+      continue;
+    }
+    commands.push(
+      `${drawing ? "L" : "M"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`,
+    );
+    drawing = true;
+  }
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      aria-hidden="true"
+      fill="none"
+      className={cn("h-5 w-full overflow-visible", className)}
+    >
+      <path
+        d={commands.join(" ")}
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -189,6 +426,25 @@ function Legend({
   );
 }
 
+/** No data in this window yet: a muted icon and a way forward. */
+function EmptyState({
+  icon,
+  children,
+}: {
+  icon: LucideIcon;
+  children: ReactNode;
+}) {
+  const Icon = icon;
+  return (
+    <div className="flex flex-col items-center gap-2 py-8 text-center">
+      <Icon aria-hidden="true" className="size-8 text-muted-foreground/60" />
+      <p className="max-w-prose text-sm text-pretty text-muted-foreground">
+        {children}
+      </p>
+    </div>
+  );
+}
+
 function ScoreDistribution({
   weeks,
   goodThreshold,
@@ -201,16 +457,23 @@ function ScoreDistribution({
   const max = Math.max(1, ...scores.map(({ count }) => count));
   const threshold = formatScore(goodThreshold);
   return (
-    <Section
+    <Panel
       id="scores-heading"
       title="Score distribution"
-      description={
-        total > 0
-          ? `${plural(total, "rating")} over ${INSIGHTS_WEEKS} weeks.`
-          : `No ratings in the last ${INSIGHTS_WEEKS} weeks. Rate videos as you watch them to see how your scores spread.`
-      }
+      description={`Ratings per whole score over ${weeks.length} weeks.`}
     >
-      {total > 0 && (
+      {total === 0 ? (
+        <EmptyState icon={ChartNoAxesColumn}>
+          No ratings in the last {weeks.length} weeks yet. Rate videos from your{" "}
+          <Link
+            to="/"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            feed
+          </Link>{" "}
+          and how your scores spread appears here.
+        </EmptyState>
+      ) : (
         <>
           <Legend
             items={[
@@ -221,59 +484,58 @@ function ScoreDistribution({
               },
             ]}
           />
-          <ul className="flex flex-col gap-1.5" aria-label="Ratings per score">
+          <ul className="flex flex-col gap-1" aria-label="Ratings per score">
             {scores.map(({ score, count }) => (
               <li
                 key={score}
-                className="grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-3"
+                title={`${count} of ${total} ratings (${formatPercent(count / total)})`}
+                className="-mx-2 grid grid-cols-[1.5rem_minmax(0,1fr)_5rem] items-center gap-3 rounded-lg px-2 py-1 transition-colors duration-150 hover:bg-muted/50"
               >
                 <span className="text-right text-sm font-medium tabular-nums">
                   {score}
                 </span>
-                <span className="flex items-center gap-2">
+                <span className="relative block h-4 w-full overflow-hidden rounded bg-muted">
                   {count > 0 && (
                     <span
                       aria-hidden="true"
                       className={cn(
-                        "block h-4 shrink-0 rounded-r",
+                        "absolute inset-y-0 left-0 rounded",
                         isGoodBucket(score, goodThreshold)
                           ? "bg-chart-1"
                           : "bg-muted-foreground",
                       )}
-                      style={{
-                        width: `calc((100% - 6rem) * ${count / max})`,
-                      }}
+                      style={{ width: `${(count / max) * 100}%` }}
                     />
                   )}
-                  <span className="text-sm whitespace-nowrap tabular-nums">
-                    {count}{" "}
-                    <span className="text-muted-foreground">
-                      ({formatPercent(count / total)})
-                    </span>
-                  </span>
                 </span>
+                <span className="text-right text-sm tabular-nums">{count}</span>
               </li>
             ))}
           </ul>
         </>
       )}
-    </Section>
+    </Panel>
   );
 }
 
 function ScoreShares({ weeks }: { weeks: readonly WeekInsights[] }) {
   const shown = weeks.filter((week) => week.score_share != null);
   return (
-    <Section
+    <Panel
       id="shares-heading"
       title="Model vs subscriptions"
       description={
         shown.length === 0
-          ? `Where the scores of each week's feed items came from. No feeds in the last ${INSIGHTS_WEEKS} weeks.`
+          ? "Where the scores of each week's feed items came from."
           : "Where the scores of each week's feed items came from: the trained model, your channel priors and tag subscriptions, or similarity to videos you rated."
       }
     >
-      {shown.length > 0 && (
+      {shown.length === 0 ? (
+        <EmptyState icon={ChartNoAxesColumn}>
+          No feeds served in the last {weeks.length} weeks yet.{" "}
+          <Link to="/">Open your feed</Link> to start them flowing.
+        </EmptyState>
+      ) : (
         <>
           <Legend items={SHARES} />
           <ul className="flex flex-col gap-1.5">
@@ -291,7 +553,7 @@ function ScoreShares({ weeks }: { weeks: readonly WeekInsights[] }) {
           </ul>
         </>
       )}
-    </Section>
+    </Panel>
   );
 }
 
@@ -308,10 +570,11 @@ function ShareBar({ week }: { week: WeekInsights }) {
       title={summary}
       className="flex h-4 gap-0.5 overflow-hidden rounded"
     >
-      {SHARES.map(({ key, swatch }) =>
+      {SHARES.map(({ key, label, swatch }) =>
         share[key] > 0 ? (
           <span
             key={key}
+            title={`${label}: ${formatPercent(share[key])}`}
             className={cn("h-full", swatch)}
             style={{ width: `${share[key] * 100}%` }}
           />
@@ -321,76 +584,173 @@ function ShareBar({ week }: { week: WeekInsights }) {
   );
 }
 
-function WeekTable({ weeks }: { weeks: readonly WeekInsights[] }) {
+function WeekTable({
+  weeks,
+  currentWeek,
+}: {
+  weeks: readonly WeekInsights[];
+  currentWeek?: WeekInsights;
+}) {
+  const [open, setOpen] = useState(false);
+  const headingId = useId();
+  const panelId = useId();
   const cell = "py-2 pr-4 text-right last:pr-0";
   return (
-    <details className="flex flex-col">
-      <summary className="-mx-2 w-fit cursor-pointer rounded-lg px-2 py-1 text-lg font-semibold hover:bg-secondary">
-        Week by week
-      </summary>
-      <div className="mt-3 overflow-x-auto">
-        <table className="w-full text-sm tabular-nums">
-          <thead className="border-b text-muted-foreground">
-            <tr>
-              <th scope="col" className="py-2 pr-4 text-left font-medium">
-                Week of
-              </th>
-              <th scope="col" className={cn(cell, "font-medium")}>
-                Good rate
-              </th>
-              <th scope="col" className={cn(cell, "font-medium")}>
-                Rating rate
-              </th>
-              {SHARES.map(({ key, label }) => (
-                <th key={key} scope="col" className={cn(cell, "font-medium")}>
-                  {label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {[...weeks].reverse().map((week) => (
-              <tr key={week.week_start}>
+    <Card>
+      <CardHeader className="flex-row items-center justify-between gap-2">
+        <CardTitle render={<h3 id={headingId} />} className="text-lg">
+          Week by week
+        </CardTitle>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <ChevronDown
+            aria-hidden="true"
+            className={cn(open && "rotate-180")}
+          />
+          {open ? "Hide" : "Show"}
+          <span className="sr-only">the week-by-week table</span>
+        </Button>
+      </CardHeader>
+      <CardContent id={panelId} hidden={!open}>
+        <div className="max-h-96 overflow-auto">
+          <table className="w-full text-sm tabular-nums">
+            <thead className="text-muted-foreground">
+              <tr>
                 <th
-                  scope="row"
-                  className="py-2 pr-4 text-left font-normal whitespace-nowrap"
+                  scope="col"
+                  className="sticky top-0 z-10 border-b bg-card py-2 pr-4 text-left font-medium"
                 >
-                  {formatWeek(week.week_start)}
+                  Week of
                 </th>
-                <td className={cn(cell, "whitespace-nowrap")}>
-                  {formatPercent(week.good_rate)}
-                  {week.rated_count > 0 && (
-                    <span className="text-muted-foreground">
-                      {" "}
-                      ({week.good_count}/{week.rated_count})
-                    </span>
+                <th
+                  scope="col"
+                  className={cn(
+                    cell,
+                    "sticky top-0 z-10 border-b bg-card font-medium",
                   )}
-                </td>
-                <td className={cn(cell, "whitespace-nowrap")}>
-                  {formatPercent(week.rating_rate)}
-                  {week.shown_count > 0 && (
-                    <span className="text-muted-foreground">
-                      {" "}
-                      ({week.shown_rated_count}/{week.shown_count})
-                    </span>
+                >
+                  Good rate
+                </th>
+                <th
+                  scope="col"
+                  className={cn(
+                    cell,
+                    "sticky top-0 z-10 border-b bg-card font-medium",
                   )}
-                </td>
-                {SHARES.map(({ key }) => (
-                  <td key={key} className={cell}>
-                    {formatPercent(week.score_share?.[key])}
-                  </td>
+                >
+                  Rating rate
+                </th>
+                {SHARES.map(({ key, label }) => (
+                  <th
+                    key={key}
+                    scope="col"
+                    className={cn(
+                      cell,
+                      "sticky top-0 z-10 border-b bg-card font-medium",
+                    )}
+                  >
+                    {label}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y">
+              {[...weeks].reverse().map((week) => {
+                const current = week.week_start === currentWeek?.week_start;
+                return (
+                  <tr
+                    key={week.week_start}
+                    className={cn(current && "bg-muted/40")}
+                  >
+                    <th
+                      scope="row"
+                      aria-current={current ? "date" : undefined}
+                      className="py-2 pr-4 text-left font-normal whitespace-nowrap"
+                    >
+                      {formatWeek(week.week_start)}
+                    </th>
+                    <td className={cn(cell, "whitespace-nowrap")}>
+                      {formatPercent(week.good_rate)}
+                      {week.rated_count > 0 && (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          ({week.good_count}/{week.rated_count})
+                        </span>
+                      )}
+                    </td>
+                    <td className={cn(cell, "whitespace-nowrap")}>
+                      {formatPercent(week.rating_rate)}
+                      {week.shown_count > 0 && (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          ({week.shown_rated_count}/{week.shown_count})
+                        </span>
+                      )}
+                    </td>
+                    {SHARES.map(({ key }) => (
+                      <td key={key} className={cell}>
+                        {formatPercent(week.score_share?.[key])}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+      <CardFooter>
+        <p className="max-w-prose text-sm text-pretty text-muted-foreground">
+          Rating rate: of the videos shown in a week&apos;s feeds, how many you
+          have rated. Shares split the size of each item&apos;s score terms;
+          they add up to 100%.
+        </p>
+      </CardFooter>
+    </Card>
+  );
+}
+
+/** Skeleton placeholders that mirror the page while data is loading. */
+function InsightsPending() {
+  return (
+    <AppShell className="flex max-w-5xl flex-col gap-10">
+      <span className="sr-only">Loading insights…</span>
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+        <div className="flex flex-col gap-2">
+          <div className="h-5 w-24 rounded bg-muted motion-safe:animate-pulse" />
+          <div className="h-4 w-72 rounded bg-muted motion-safe:animate-pulse" />
+        </div>
+        <div className="h-9 w-56 rounded-full bg-muted motion-safe:animate-pulse" />
       </div>
-      <p className="mt-3 max-w-prose text-sm text-pretty text-muted-foreground">
-        Rating rate: of the videos shown in a week&apos;s feeds, how many you
-        have rated. Shares split the size of each item&apos;s score terms; they
-        add up to 100%.
-      </p>
-    </details>
+      <div className="grid gap-3 sm:grid-cols-3" aria-hidden="true">
+        {["good", "rating", "share"].map((key) => (
+          <Card key={key} className="gap-4 py-4">
+            <div className="flex flex-col gap-2 px-6">
+              <div className="h-4 w-20 rounded bg-muted motion-safe:animate-pulse" />
+              <div className="h-7 w-16 rounded bg-muted motion-safe:animate-pulse" />
+              <div className="h-4 w-32 rounded bg-muted motion-safe:animate-pulse" />
+            </div>
+            <div className="h-5 px-6">
+              <div className="h-full w-full rounded bg-muted motion-safe:animate-pulse" />
+            </div>
+          </Card>
+        ))}
+      </div>
+      <Card aria-hidden="true" className="gap-4">
+        <div className="flex flex-col gap-2 px-6">
+          <div className="h-5 w-40 rounded bg-muted motion-safe:animate-pulse" />
+          <div className="h-4 w-96 max-w-full rounded bg-muted motion-safe:animate-pulse" />
+        </div>
+        <div className="h-64 px-6">
+          <div className="h-full w-full rounded bg-muted motion-safe:animate-pulse" />
+        </div>
+      </Card>
+    </AppShell>
   );
 }
 
@@ -403,7 +763,7 @@ function InsightsError() {
   }, [queryErrorResetBoundary]);
 
   return (
-    <AppShell className="max-w-4xl">
+    <AppShell className="max-w-5xl">
       <div role="alert" className="mt-8 flex flex-col items-start gap-3">
         <p>Couldn&apos;t load insights. The API may be down.</p>
         <Button variant="secondary" onClick={() => void router.invalidate()}>
