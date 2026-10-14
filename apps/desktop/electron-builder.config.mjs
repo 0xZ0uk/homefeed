@@ -7,12 +7,13 @@
  * on first install (INSTALL.md explains "More info → Run anyway").
  */
 
-// The GitHub repo whose releases the app updates from (and CI publishes to). It must be
-// public: installs read its releases without a token. HOMEFEED_RELEASES_REPO overrides it
-// at build time (owner/name). See README.md, "Releasing".
+// The GitHub repo whose releases the app updates from (and CI publishes to): this one.
+// It's private, so only an install that can read it (e.g. with a token) finds updates;
+// anywhere else the check is a logged 404. HOMEFEED_RELEASES_REPO overrides it at build
+// time (owner/name). See README.md, "Releasing".
 const RELEASES_REPO =
   // eslint-disable-next-line turbo/no-undeclared-env-vars -- not a turbo task
-  process.env.HOMEFEED_RELEASES_REPO || "0xZ0uk/homefeed-releases";
+  process.env.HOMEFEED_RELEASES_REPO || "0xZ0uk/lenstube";
 const [owner, repo] = RELEASES_REPO.split("/");
 
 /** @type {import("electron-builder").Configuration} */

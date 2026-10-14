@@ -2,12 +2,9 @@
 # Homefeed-<version>-x86_64.AppImage (Linux), each natively on its own runner.
 #
 # - Tag `desktop-vX.Y.Z` (must equal apps/desktop/package.json's version): builds both and
-#   publishes them, with the updater's latest*.yml, as release vX.Y.Z of the public
-#   releases repo (apps/desktop/electron-builder.config.mjs; override with the
-#   HOMEFEED_RELEASES_REPO repository variable). Needs the RELEASES_TOKEN secret: a
-#   fine-grained PAT with "Contents: read and write" on that repo. The release is created
-#   as a draft and only published once both builds uploaded, so installs never see half
-#   a release.
+#   publishes them, with the updater's latest*.yml, as release vX.Y.Z of this repo, using
+#   the built-in GITHUB_TOKEN. The release is created as a draft and only published once
+#   both builds uploaded, so installs never see half a release.
 # - Manual run (workflow_dispatch): builds both and uploads them as workflow artifacts;
 #   publishes nothing.
 #
@@ -20,7 +17,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   # Keep in sync with the Dockerfile (UV_VERSION, NUB_VERSION) and package.json
@@ -29,7 +26,7 @@ env:
   NUB_VERSION: "0.9.6"
   NODE_VERSION: "24"
   TURBO_TELEMETRY_DISABLED: "1"
-  RELEASES_REPO: ${{ vars.HOMEFEED_RELEASES_REPO || '0xZ0uk/homefeed-releases' }}
+  RELEASES_REPO: ${{ github.repository }}
 
 jobs:
   prepare:
@@ -53,13 +50,13 @@ jobs:
         if: github.ref_type == 'tag'
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           if gh release view "v$VERSION" --repo "$RELEASES_REPO" >/dev/null 2>&1; then
             echo "Release v$VERSION already exists in $RELEASES_REPO"
           else
-            gh release create "v$VERSION" --repo "$RELEASES_REPO" --draft \
+            gh release create "v$VERSION" --repo "$RELEASES_REPO" --draft --target "$GITHUB_SHA" \
               --title "Homefeed $VERSION" --notes "Homefeed $VERSION"
           fi
 
@@ -115,7 +112,7 @@ jobs:
           # Unsigned: no certificate to look for.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           # Only set (and only used) for tag builds, which upload to the draft release.
-          GH_TOKEN: ${{ github.ref_type == 'tag' && secrets.RELEASES_TOKEN || '' }}
+          GH_TOKEN: ${{ github.ref_type == 'tag' && github.token || '' }}
         run: |
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then publish=always; else publish=never; fi
           nub exec electron-builder --config electron-builder.config.mjs --publish "$publish"
@@ -141,6 +138,6 @@ jobs:
     steps:
       - name: Publish the draft release
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: gh release edit "v$VERSION" --repo "$RELEASES_REPO" --draft=false --latest
