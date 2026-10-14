@@ -8,7 +8,7 @@ A self-hosted, single-user YouTube client. The centerpiece is a **finite daily h
 
 The feed is designed against compulsion: a fixed number of items, refreshed once a day, no autoplay, no infinite scroll, no "up next", and a "why this is here" explanation on every item.
 
-Success metric: the **weekly good rate**, meaning the share of rated videos scored 5.5 or higher. Not watch time.
+Success metric: the **weekly good rate**, meaning the share of rated videos scored 6 or higher. Not watch time.
 
 ### Non-goals
 
@@ -28,19 +28,19 @@ Success metric: the **weekly good rate**, meaning the share of rated videos scor
 
 ## 3. Rating scale
 
-Ratings are scores from **1 to 10 with one decimal**, e.g. 4.2, 6.7 or 9.9 (91 possible scores). They replaced an earlier 30-grade tier list (S to F with ++/+/-/-- modifiers); migration `0018_rating_scores` converted each grade to the score with the same value (F-- = 1.0, C = 4.7, B = 6.3, A = 7.8, S++ = 10.0).
+Ratings are **whole scores from 1 to 10**, e.g. 4, 7 or 9 (10 possible scores). They replaced an earlier 30-grade tier list (S to F with ++/+/-/-- modifiers), then a score with one decimal; migration `0018_rating_scores` converted each grade to the score with the same value (F-- = 1.0, C = 4.7, B = 6.3, A = 7.8, S++ = 10.0) and migration `0026_integer_scores` rounded every score to a whole one, halves up (6.5 became 7).
 
 | Concept | Definition |
 | --- | --- |
-| Range | 1.0 to 10.0, in steps of 0.1 |
-| Numeric value | `value = (score - 5.5) / 4.5` (1.0 = −1.0, 5.5 = 0, 10.0 = +1.0) |
-| Good | 5.5 or higher |
-| Top tier (liked set) | 7.0 or higher |
-| Bottom tier (disliked set) | 4.0 or lower |
+| Range | 1 to 10, whole scores |
+| Numeric value | `value = (score - 5.5) / 4.5` (1 = −1.0, 5 = −0.11, 6 = +0.11, 10 = +1.0) |
+| Good | 6 or higher |
+| Top tier (liked set) | 7 or higher |
+| Bottom tier (disliked set) | 4 or lower |
 
-The thresholds keep every converted grade in the set it was in before (B-- = 5.7 is good, A-- = 7.2 is top tier, D++ = 3.8 is bottom tier).
+Rounding keeps every rating in the set it was in before (5.5 and up was good, which is 6 and up now; 7.0 and up was top tier; 4.0 and down was bottom tier). The only fractional number left is a model's predicted value shown as a score in explanations ("the model predicts 7.4").
 
-Rating UX: when a video ends or the player is closed, show a slider from 💩 (1) to 🔥 (10) on a red-to-green track, with the exact score in a tooltip over the thumb, and a "Save 7.4" button. Arrow keys move 0.1, Page Up/Down a whole point. The prompt is always skippable, and ratings are editable later.
+Rating UX: when a video ends or the player is closed, show a 10-step face scale, a wail (1) through a flat "meh" (5) to a grin (10), each with a word ("Awful" to "Amazing"), one whole score per step. The prompt is always skippable, and ratings are editable later.
 
 ## 4. Stack and repo layout
 
@@ -201,7 +201,7 @@ similarity = 0.5 * (affinity(max_sim_top) - affinity(max_sim_bottom)),
 
 Before a model exists, `alpha = 0` and `model_score = 0`. Every scored item carries a breakdown `{model, alpha, channel, similarity, tags: {...}}` whose parts sum to `final`, plus the similarity features it came from (max, mean and nearest video for each tier set).
 
-**Feed composition.** Default size 15. Order: pins first (new uploads from pinned channels), then exploration slots (default 3), then top-scored items, with at most 2 items per channel. Exploration uses Thompson sampling over per-channel `Beta(good + 1, not_good + 1)` posteriors (good = B-- or higher), restricted to channels with fewer than 5 ratings or never-rated sources. Estimate each item's selection probability by Monte Carlo (e.g. 500 draws) and store it.
+**Feed composition.** Default size 15. Order: pins first (new uploads from pinned channels), then exploration slots (default 3), then top-scored items, with at most 2 items per channel. Exploration uses Thompson sampling over per-channel `Beta(good + 1, not_good + 1)` posteriors (good = 6 or higher), restricted to channels with fewer than 5 ratings or never-rated sources. Estimate each item's selection probability by Monte Carlo (e.g. 500 draws) and store it.
 
 **Explanations.** One line per item derived from its largest positive breakdown term and its source, e.g. "Related to *X* (A+) · channel you love" or "Exploring: new channel from your 'woodworking' search".
 
@@ -211,7 +211,7 @@ Before a model exists, `alpha = 0` and `model_score = 0`. Every scored item carr
 
 Tables (SQLite): `channels`, `videos`, `video_features` (embedding in a sqlite-vec virtual table, plus tags and the model/prompt versions that produced them), `video_llm_tags` (topic, depth, clickbait, rage-bait per video and prompt version, with the model that produced them), `tags` (slug, label), `tag_aliases` (alias slug, tag, source auto|user), `video_tags` (video, tag, source llm|manual, confidence, prompt_version, removed_at tombstone), `candidates` (video, source, source_detail, first_seen), `tag_discovery_runs` (tag, last run), `feeds` (date, created_at, model_version), `feed_items` (feed, video, position, score breakdown JSON, explanation, is_exploration, selection_probability, dismissed_at, dismiss_reason), `ratings` (video, score, value, rated_at, updated_at), `watch_events` (video, position, event type, at), `channel_prefs` (prior, pinned, muted), `tag_subscriptions` (tag, weight, hide), `keyword_mutes`, `saved_searches` (query, filters, schedule), `external_sources` (kind, url, schedule), `queue_items`, `playlists`, `playlist_items`, `model_versions` (path, metrics JSON, created_at, active), `extractor_events` (operation, success, error, at), `settings`.
 
-Store the score as a number (`7.4`) and the numeric value alongside it.
+Store the score as an integer (`7`) and the numeric value alongside it.
 
 ## 9. API contract (FastAPI, JSON)
 

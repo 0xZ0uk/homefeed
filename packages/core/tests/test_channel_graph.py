@@ -82,7 +82,7 @@ def subscribe(
         curation.update_channel(session, channel.id, prior=prior, muted=muted)
 
 
-def rate(sessions: sessionmaker[Session], video_id: str, channel: Channel, score: float) -> None:
+def rate(sessions: sessionmaker[Session], video_id: str, channel: Channel, score: int) -> None:
     with sessions.begin() as session:
         session.execute(
             text("INSERT OR IGNORE INTO channels (id, title) VALUES (:id, :title)"),
@@ -101,9 +101,9 @@ def curated(sessions: sessionmaker[Session], gateway: FakeGateway) -> None:
     subscribe(sessions, gateway, LOVED, "love")
     subscribe(sessions, gateway, NEUTRAL)
     subscribe(sessions, gateway, MUTED, "love", muted=True)
-    rate(sessions, "ddddddddddd", RATED, 7.8)
-    rate(sessions, "eeeeeeeeeee", RATED, 4.7)
-    rate(sessions, "mmmmmmmmmmm", MUTED, 9.4)
+    rate(sessions, "ddddddddddd", RATED, 8)
+    rate(sessions, "eeeeeeeeeee", RATED, 5)
+    rate(sessions, "mmmmmmmmmmm", MUTED, 9)
 
 
 def test_liked_channels_are_loved_liked_then_top_tier_rated_never_muted(
@@ -117,7 +117,7 @@ def test_liked_channels_are_loved_liked_then_top_tier_rated_never_muted(
 def test_a_channel_rated_below_top_tier_is_not_liked(
     sessions: sessionmaker[Session], gateway: FakeGateway
 ) -> None:
-    rate(sessions, "ddddddddddd", RATED, 6.9)
+    rate(sessions, "ddddddddddd", RATED, 6)
     subscribe(sessions, gateway, NEUTRAL)
 
     with sessions() as session:
@@ -261,7 +261,7 @@ def test_featured_channels_falls_back_to_a_stale_copy(
 def test_source_finds_uploads_of_suggested_channels(
     sessions: sessionmaker[Session], gateway: FakeGateway, curated: None
 ) -> None:
-    rate(sessions, "y0yyyyyyyyy", Y, 6.3)  # rated: never a candidate
+    rate(sessions, "y0yyyyyyyyy", Y, 6)  # rated: never a candidate
     source = ChannelGraphSource(sessions, gateway, max_channels=2, per_channel=2, now=T0)
 
     report = generate([source], sessions=sessions, now=T0)

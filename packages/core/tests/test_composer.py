@@ -278,7 +278,7 @@ def test_exploration_explanations() -> None:
     )
 
     assert {slot.item.candidate.video_id: slot.explanation for slot in slots} == {
-        "a": "Exploring: new channel · related to How to sharpen a chisel (8.1)",
+        "a": "Exploring: new channel · related to How to sharpen a chisel (8)",
         "b": "Exploring: channel with 2 ratings · new from your subscriptions",
     }
 
@@ -295,8 +295,8 @@ def test_explanations() -> None:
 
 
 RATED = {
-    "seed": VideoRef("How to sharpen a chisel", 8.1),
-    "near": VideoRef("Dovetails by hand", 9.1),
+    "seed": VideoRef("How to sharpen a chisel", 8),
+    "near": VideoRef("Dovetails by hand", 9),
     "unrated": VideoRef("Some video"),
 }
 
@@ -315,7 +315,7 @@ def test_explanations_name_the_largest_positive_term() -> None:
     disliked = scored("c", channel(1), 0, breakdown=similar_to("near", -0.3))
 
     assert explain(similar, videos=RATED) == (
-        "New from your subscriptions · similar to Dovetails by hand (9.1)"
+        "New from your subscriptions · similar to Dovetails by hand (9)"
     )
     assert explain(loved, videos=RATED) == "New from your subscriptions · channel you love"
     assert explain(disliked, videos=RATED) == "New from your subscriptions"
@@ -355,19 +355,19 @@ def test_explanations_for_related_videos() -> None:
     only_own_seed = related("seed", similar_to("seed", 0.4))
 
     assert explain(loved, videos=RATED) == (
-        "Related to How to sharpen a chisel (8.1) · channel you love"
+        "Related to How to sharpen a chisel (8) · channel you love"
     )
     assert explain(similar, videos=RATED) == (
-        "Related to How to sharpen a chisel (8.1) · similar to Dovetails by hand (9.1)"
+        "Related to How to sharpen a chisel (8) · similar to Dovetails by hand (9)"
     )
     assert explain(own_seed, videos=RATED) == (
-        "Related to How to sharpen a chisel (8.1) · channel you love"
+        "Related to How to sharpen a chisel (8) · channel you love"
     )
-    assert explain(only_own_seed, videos=RATED) == "Related to How to sharpen a chisel (8.1)"
+    assert explain(only_own_seed, videos=RATED) == "Related to How to sharpen a chisel (8)"
 
 
 def test_explanations_without_titles_or_scores() -> None:
-    long_title = {"seed": VideoRef("x" * 100, 7.8)}
+    long_title = {"seed": VideoRef("x" * 100, 8)}
     unknown = scored("a", channel(1), 0, source="related", source_detail="gone")
     unrated = scored("b", channel(1), 0, source="related", source_detail="unrated")
     long = scored("c", channel(1), 0, source="related", source_detail="seed")
@@ -375,7 +375,7 @@ def test_explanations_without_titles_or_scores() -> None:
 
     assert explain(unknown, videos=RATED) == "Related to a video you rated highly"
     assert explain(unrated, videos=RATED) == "Related to Some video"
-    assert explain(long, videos=long_title) == f"Related to {'x' * 59}… (7.8)"
+    assert explain(long, videos=long_title) == f"Related to {'x' * 59}… (8)"
     assert explain(other) == "Found via saved search"
     featured = scored("e", channel(1), 0, source="channel_graph", source_detail="UC" + "a" * 22)
     assert explain(featured) == "Featured by a channel you like"
@@ -403,8 +403,8 @@ def test_compose_explains_with_the_given_videos() -> None:
 
     assert referenced_video_ids(items) == {"seed", "near"}
     assert {slot.item.candidate.video_id: slot.explanation for slot in slots} == {
-        "a": "Related to How to sharpen a chisel (8.1)",
-        "b": "New from your subscriptions · similar to Dovetails by hand (9.1)",
+        "a": "Related to How to sharpen a chisel (8)",
+        "b": "New from your subscriptions · similar to Dovetails by hand (9)",
         "c": "New from your subscriptions",
     }
 

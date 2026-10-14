@@ -3,9 +3,8 @@
 Weeks run Monday to Sunday in local time, like feed dates. For each week:
 
 - Good rate: of the videos first rated that week (by `rated_at`), the share whose
-  current score is 5.5 or higher (`scores.is_good`). None when nothing was rated.
-- Score distribution: those same ratings counted per whole score, 1 to 10
-  (`scores.score_bucket`: 6.5 counts as 7).
+  current score is 6 or higher (`scores.is_good`). None when nothing was rated.
+- Score distribution: those same ratings counted per whole score, 1 to 10.
 - Rating rate: of the distinct videos shown that week, the share that have been rated
   (at any time). "Shown" means an item of the feed of record for a date in the week, the
   latest feed built that day (as `feeds.get_feed` serves it); dismissed items count as
@@ -33,7 +32,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from homefeed_core.feeds import local_today
-from homefeed_core.scores import is_good, score_bucket
+from homefeed_core.scores import is_good
 
 DEFAULT_WEEKS = 12
 MAX_WEEKS = 104
@@ -42,7 +41,7 @@ MAX_WEEKS = 104
 @dataclass(frozen=True)
 class RatedVideo:
     video_id: str
-    score: float
+    score: int
     rated_on: date  # local date of the first rating
 
 
@@ -115,7 +114,7 @@ def _week(start: date, ratings: Sequence[RatedVideo], shown: Sequence[ShownItem]
     good = sum(1 for rating in ratings if is_good(rating.score))
     per_score = dict.fromkeys(range(10, 0, -1), 0)
     for rating in ratings:
-        per_score[score_bucket(rating.score)] += 1
+        per_score[rating.score] += 1
     rated_by_video: dict[str, bool] = {}
     for item in shown:
         rated_by_video[item.video_id] = rated_by_video.get(item.video_id, False) or item.rated

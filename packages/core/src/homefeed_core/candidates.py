@@ -346,7 +346,7 @@ class RelatedVideosSource:
 
 
 def top_tier_video_ids(session: Session, *, limit: int | None = None) -> list[str]:
-    """Videos rated top tier (7.0 and up), most recently rated first."""
+    """Videos rated top tier (7 and up), most recently rated first."""
     rows = session.execute(
         text(
             """

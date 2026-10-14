@@ -92,7 +92,7 @@ def test_played_and_watched_videos(sessions: sessionmaker[Session]) -> None:
     record(sessions, "played", ("play", 0), ("close", 3))
     record(sessions, "opened", ("close", 0))  # page opened, never played
     with sessions.begin() as session:
-        set_rating(session, "rated", 6.3)
+        set_rating(session, "rated", 6)
 
     with sessions() as session:
         assert played_video_ids(session) == {"played"}

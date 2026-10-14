@@ -8,7 +8,7 @@ exploration included) and exactly `size` items when there are enough candidates.
 Exploration slots (`exploration_slots`, default 3) go to under-rated channels: those
 with fewer than `EXPLORATION_MAX_RATINGS` ratings, including never-rated channels from
 new sources. Each is picked by Thompson sampling: draw once from every eligible
-channel's `Beta(good + 1, not_good + 1)` posterior (good = 5.5 or higher; see
+channel's `Beta(good + 1, not_good + 1)` posterior (good = 6 or higher; see
 `ChannelRatings`) and take the channels with the highest draws, one slot each, filled
 by the channel's best-ranked video. The chance an item gets its slot is estimated by
 Monte Carlo over `exploration_draws` such draws (the first of them is the one used) and
@@ -19,7 +19,7 @@ Equal scores are common in a rules-only feed (every video of a channel shares it
 channel score), so ties go to the more recently published video, then to `rng`.
 
 Every slot gets a one-line explanation (`explain`): where the item came from, then the
-largest positive term of its score breakdown, e.g. "Related to X (8.5) · channel you
+largest positive term of its score breakdown, e.g. "Related to X (8) · channel you
 love". Explanations name rated videos (the seed of a related video, the nearest
 top-tier video of a similar one), so `compose` takes their titles and scores as
 `videos`; `referenced_video_ids` says which ones to look up.
@@ -57,7 +57,7 @@ class VideoRef:
     """A video an explanation names: its title and, if rated, its score."""
 
     title: str
-    score: float | None = None
+    score: int | None = None
 
 
 # Video refs by video id.
@@ -67,7 +67,7 @@ NO_VIDEO_REFS: VideoRefs = MappingProxyType({})
 
 @dataclass(frozen=True)
 class ChannelRatings:
-    """How a channel's videos were rated: good (5.5 or higher) and not good."""
+    """How a channel's videos were rated: good (6 or higher) and not good."""
 
     good: int = 0
     not_good: int = 0
@@ -234,9 +234,9 @@ def explain(
     videos: VideoRefs = NO_VIDEO_REFS,
 ) -> str:
     """One line on why the item is in the feed: its source, then the largest positive
-    term of its score breakdown (if any), e.g. "Related to X (8.5) · channel you love".
+    term of its score breakdown (if any), e.g. "Related to X (8) · channel you love".
     An exploration item (`exploration` holds its channel's rating counts) says so
-    first, e.g. "Exploring: new channel · related to X (8.5)".
+    first, e.g. "Exploring: new channel · related to X (8)".
 
     A term that would only repeat the source (similarity to the very video a related
     video came from) gives way to the next largest one."""
@@ -326,7 +326,7 @@ def _similarity_phrase(
 
 
 def _describe_video(ref: VideoRef | None) -> str:
-    """ "Title (8.5)", or a stand-in for an unknown title or score."""
+    """ "Title (8)", or a stand-in for an unknown title or score."""
     if ref is None:
         return "a video you rated highly"
     rated = ref.score is not None
@@ -334,8 +334,8 @@ def _describe_video(ref: VideoRef | None) -> str:
     if len(title) > TITLE_MAX_LENGTH:
         title = title[: TITLE_MAX_LENGTH - 1].rstrip() + "…"
     if not title:
-        return f"a video you rated {ref.score:.1f}" if rated else "a video you rated highly"
-    return f"{title} ({ref.score:.1f})" if rated else title
+        return f"a video you rated {ref.score}" if rated else "a video you rated highly"
+    return f"{title} ({ref.score})" if rated else title
 
 
 def _order(scored: Sequence[ScoredCandidate], rng: random.Random) -> list[ScoredCandidate]:

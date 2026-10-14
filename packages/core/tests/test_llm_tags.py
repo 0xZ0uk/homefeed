@@ -582,7 +582,7 @@ def test_enrich_candidates_tags_candidates_and_rated_videos(
     add_videos(sessions, VIDEO.id, rated.id)
     with sessions.begin() as session:
         record(session, [VIDEO.id], source=SUBSCRIPTION, now=NOW - timedelta(hours=1))
-        set_rating(session, rated.id, 4.7)
+        set_rating(session, rated.id, 5)
     provider = StubLLMProvider(default=DEEP)
     enricher = Enricher(
         sessions, gateway, StubEmbeddingProvider(), tagger=Tagger(sessions, provider)

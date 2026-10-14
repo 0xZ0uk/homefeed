@@ -33,10 +33,20 @@
   --input: oklch(0 0 0 / 16%);
   --ring: oklch(0.55 0.18 255);
   --brand: oklch(0.6 0.25 27);
-  /* The rating slider's track, 1 (red) to 10 (green); vivid on both themes. */
-  --score-low: oklch(0.63 0.22 25);
-  --score-mid: oklch(0.85 0.17 92);
-  --score-high: oklch(0.7 0.19 145);
+  /*
+   * The rating faces' discs, 1 (purple) through red, brown and yellow to 10
+   * (green); vivid on both themes.
+   */
+  --rating-1: oklch(0.66 0.17 305);
+  --rating-2: oklch(0.63 0.19 345);
+  --rating-3: oklch(0.64 0.2 25);
+  --rating-4: oklch(0.72 0.17 50);
+  --rating-5: oklch(0.66 0.1 60);
+  --rating-6: oklch(0.8 0.15 80);
+  --rating-7: oklch(0.86 0.16 95);
+  --rating-8: oklch(0.82 0.16 120);
+  --rating-9: oklch(0.74 0.15 140);
+  --rating-10: oklch(0.66 0.14 150);
   --brand-foreground: oklch(0.99 0 0);
   /* Categorical chart slots, in this fixed order: blue, orange, aqua. */
   --chart-1: oklch(0.55 0.15 255);

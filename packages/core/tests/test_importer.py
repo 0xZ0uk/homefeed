@@ -166,7 +166,7 @@ def test_keeps_stored_videos_and_skips_rated_ones(sessions: sessionmaker[Session
             ),
             {"channel": SPACE},
         )
-        set_rating(session, "rocket00001", 7.8)
+        set_rating(session, "rocket00001", 8)
 
     report = run_import(sessions, fixture("watch-history.json"))
 

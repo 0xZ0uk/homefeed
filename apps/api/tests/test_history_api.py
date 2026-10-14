@@ -86,6 +86,15 @@ def test_lists_history_newest_first(client: TestClient) -> None:
 
 
 @pytest.mark.usefixtures("watched")
+def test_history_shows_the_whole_score_of_a_rated_video(client: TestClient) -> None:
+    assert client.put(f"/ratings/{PLANE}", json={"score": 8}).status_code == 200
+
+    [entry] = [e for e in client.get("/history").json() if e["video_id"] == PLANE]
+
+    assert entry["score"] == 8 and isinstance(entry["score"], int)
+
+
+@pytest.mark.usefixtures("watched")
 def test_searches_history(client: TestClient) -> None:
     assert ids(client.get("/history", params={"q": "plane"})) == [PLANE]
     assert ids(client.get("/history", params={"q": "bread LAB"})) == [BREAD]

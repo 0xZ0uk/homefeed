@@ -123,10 +123,10 @@ describe("totals", () => {
 });
 
 describe("score buckets", () => {
-  it("counts a bucket as good when all of it reaches the threshold", () => {
-    expect(isGoodBucket(6, 5.5)).toBe(true);
-    expect(isGoodBucket(5, 5.5)).toBe(false);
-    expect(isGoodBucket(10, 5.5)).toBe(true);
+  it("counts a score as good when it reaches the threshold", () => {
+    expect(isGoodBucket(6, 6)).toBe(true);
+    expect(isGoodBucket(5, 6)).toBe(false);
+    expect(isGoodBucket(10, 6)).toBe(true);
   });
 });
 
@@ -323,14 +323,14 @@ describe("summary", () => {
   });
 
   it("needs two rated weeks", () => {
-    expect(insightsSummary([], 5.5)).toBeNull();
+    expect(insightsSummary([], 6)).toBeNull();
     expect(
-      insightsSummary([week("2026-10-12", { rated_count: 3 })], 5.5),
+      insightsSummary([week("2026-10-12", { rated_count: 3 })], 6),
     ).toBeNull();
     expect(
       insightsSummary(
         [week("2026-10-05", { rated_count: 2 }), week("2026-10-12")],
-        5.5,
+        6,
       ),
     ).toBeNull();
   });
@@ -355,8 +355,8 @@ describe("summary", () => {
       ),
     ];
     // Last four: 75%, previous four: 25%, overall: 50%.
-    expect(insightsSummary(weeks, 5.5)).toBe(
-      "Good rate over the last 4 weeks is 75% (scores of 5.5 or higher), up 50 points from the 4 weeks before, above the overall average of 50%.",
+    expect(insightsSummary(weeks, 6)).toBe(
+      "Good rate over the last 4 weeks is 75% (scores of 6 or higher), up 50 points from the 4 weeks before, above the overall average of 50%.",
     );
   });
 
@@ -379,9 +379,9 @@ describe("summary", () => {
         }),
       ),
     ];
-    const summary = insightsSummary(weeks, 5.5);
+    const summary = insightsSummary(weeks, 6);
     expect(summary).toBe(
-      "Good rate over the last 4 weeks is 25% (scores of 5.5 or higher), level with the 4 weeks before, matching the overall average of 25%, but the rating rate slipped to 20%.",
+      "Good rate over the last 4 weeks is 25% (scores of 6 or higher), level with the 4 weeks before, matching the overall average of 25%, but the rating rate slipped to 20%.",
     );
   });
 
@@ -404,7 +404,7 @@ describe("summary", () => {
         }),
       ),
     ];
-    expect(insightsSummary(weeks, 5.5)).not.toContain("rating rate");
+    expect(insightsSummary(weeks, 6)).not.toContain("rating rate");
   });
 
   it("needs ratings in the last four weeks, not just somewhere", () => {
@@ -412,7 +412,7 @@ describe("summary", () => {
       week("2026-08-03", { rated_count: 4, good_count: 3 }),
       ...[1, 2, 3, 4, 5, 6, 7].map(() => week("2026-09-07")),
     ];
-    expect(insightsSummary(weeks, 5.5)).toBeNull();
+    expect(insightsSummary(weeks, 6)).toBeNull();
   });
 });
 

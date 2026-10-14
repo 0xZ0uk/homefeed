@@ -1,7 +1,5 @@
 import type { WeekInsightsOut } from "@homefeed/api-client";
 
-import { formatScore } from "#/lib/scores";
-
 /** Pure helpers for the insights page: formatting, totals and chart geometry. */
 
 /** A rate in [0, 1] as a whole percentage, e.g. "62%", or "–" when unknown. */
@@ -39,13 +37,9 @@ export function totalScoreCounts(
   return [...totals].map(([score, count]) => ({ score, count }));
 }
 
-/**
- * Whether every rating in a whole-score bucket counts as good. A bucket holds
- * the scores that round to it (6 holds 5.5 to 6.4), so it is good when its
- * lowest score reaches `goodThreshold`.
- */
+/** Whether ratings of `score` count as good. */
 export function isGoodBucket(score: number, goodThreshold: number): boolean {
-  return score - 0.5 >= goodThreshold;
+  return score >= goodThreshold;
 }
 
 /** Good rate over all `weeks` (good ratings / ratings), or null. */
@@ -267,7 +261,7 @@ export function insightsSummary(
     rating != null && rating <= -5
       ? `, but the rating rate slipped to ${formatPercent(overallRatingRate(lastN(weeks, 4)))}`
       : "";
-  return `Good rate over the last 4 weeks is ${formatPercent(rate)} (scores of ${formatScore(goodThreshold)} or higher)${trend}${versus}${slippage}.`;
+  return `Good rate over the last 4 weeks is ${formatPercent(rate)} (scores of ${goodThreshold} or higher)${trend}${versus}${slippage}.`;
 }
 
 /** How the last window compares with the pooled average. */

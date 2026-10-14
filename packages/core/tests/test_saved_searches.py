@@ -272,7 +272,7 @@ def test_source_limits_results_and_skips_rated_videos(sessions: sessionmaker[Ses
             text("INSERT INTO videos (id, channel_id, title) VALUES ('aaaaaaaaaaa', :c, 'A')"),
             {"c": WOOD.id},
         )
-        set_rating(session, "aaaaaaaaaaa", 7.8)
+        set_rating(session, "aaaaaaaaaaa", 8)
 
     everything = SavedSearchSource(sessions, gateway, now=T0).fetch()
     with sessions.begin() as session:

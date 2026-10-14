@@ -22,64 +22,62 @@ test("watch a video and rate it", async ({ page, request }) => {
   await expect(
     page.getByRole("list", { name: "Tags" }).getByRole("listitem"),
   ).toHaveText(["workbench", "woodworking", "hand tools"]);
-  await expect(
-    page.getByRole("heading", { name: "Rate this video" }),
-  ).toBeVisible();
+  // The scale is on the page with no face lit.
+  const scale = page.getByRole("group", { name: "Rate this video" });
+  const face = (name: string) => scale.getByRole("button", { name });
+  const storedScore = async () => {
+    const { status, body } = await apiGet<{ score: number }>(
+      request,
+      `/ratings/${video.id}`,
+    );
+    return status === 404 ? null : body.score;
+  };
+  await expect(scale.getByRole("button", { pressed: true })).toHaveCount(0);
 
-  // The slider is on the page, mid-scale; nothing is saved until "Save".
-  const slider = page.getByRole("slider", { name: "Score" });
-  await expect(slider).toHaveAttribute("aria-valuetext", "5.5 out of 10");
-  await slider.focus();
-  await slider.press("End");
-  for (let i = 0; i < 13; i++) await slider.press("ArrowLeft");
-  await page.getByRole("button", { name: "Save 8.7", exact: true }).click();
-
-  await expect(
-    page.getByRole("heading", { name: "Your rating: 8.7" }),
-  ).toBeVisible();
-  // Saved: the slider stays at the score, with no Save left to press.
-  await expect(slider).toHaveAttribute("aria-valuetext", "8.7 out of 10");
-  await expect(page.getByRole("button", { name: /^Save/ })).toBeHidden();
-  const saved = await apiGet<{ score: number }>(
-    request,
-    `/ratings/${video.id}`,
+  // Arrow keys only move focus; Enter saves at once.
+  await face("Great, 8 out of 10").focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(face("Excellent, 9 out of 10")).toBeFocused();
+  await expect(scale.getByRole("button", { pressed: true })).toHaveCount(0);
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("Enter");
+  await expect(face("Great, 8 out of 10")).toHaveAttribute(
+    "aria-pressed",
+    "true",
   );
-  expect(saved.body.score).toBe(8.7);
+  await expect.poll(storedScore).toBe(8);
 
-  // The rating sticks across visits and can be changed; Reset goes back.
+  // The rating sticks across visits; clicking another face changes it.
   await page.reload();
   await waitForHydration(page);
-  await expect(
-    page.getByRole("heading", { name: "Your rating: 8.7" }),
-  ).toBeVisible();
-  const change = page.getByRole("slider", { name: "Score" });
-  await expect(change).toHaveAttribute("aria-valuetext", "8.7 out of 10");
-  await change.focus();
-  await change.press("PageDown");
-  await page.getByRole("button", { name: "Reset", exact: true }).click();
-  await expect(change).toHaveAttribute("aria-valuetext", "8.7 out of 10");
-  // Page Down moves a whole point.
-  await change.focus();
-  for (let i = 0; i < 4; i++) await change.press("PageDown");
-  for (let i = 0; i < 7; i++) await change.press("ArrowLeft");
-  await page.getByRole("button", { name: "Save 4.0", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Your rating: 4.0" }),
-  ).toBeVisible();
-  const changed = await apiGet<{ score: number }>(
-    request,
-    `/ratings/${video.id}`,
+  await expect(face("Great, 8 out of 10")).toHaveAttribute(
+    "aria-pressed",
+    "true",
   );
-  expect(changed.body.score).toBe(4);
+  await face("Poor, 4 out of 10").click();
+  await expect(face("Poor, 4 out of 10")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect.poll(storedScore).toBe(4);
 
-  // Removing it can be undone.
-  await page.getByRole("button", { name: "Remove rating" }).click();
-  await expect(page.getByText("Rating removed.")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Rate this video" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Undo" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Your rating: 4.0" }),
-  ).toBeVisible();
+  // Clicking the lit face again removes the rating; clicking it once more
+  // puts it back.
+  await face("Poor, 4 out of 10").click();
+  await expect(scale.getByRole("button", { pressed: true })).toHaveCount(0);
+  await expect.poll(storedScore).toBeNull();
+  await face("Poor, 4 out of 10").click();
+  await expect.poll(storedScore).toBe(4);
+
+  // Quick clicks save in order: the last one sticks.
+  await face("Bad, 3 out of 10").click();
+  await face("Amazing, 10 out of 10").click();
+  await face("Good, 7 out of 10").click();
+  await expect.poll(storedScore).toBe(7);
+  await page.reload();
+  await waitForHydration(page);
+  await expect(face("Good, 7 out of 10")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 });

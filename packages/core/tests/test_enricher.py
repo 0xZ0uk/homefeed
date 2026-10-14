@@ -334,7 +334,7 @@ def test_enrich_candidates_also_enriches_top_and_bottom_tier_rated_videos(
         session.execute(
             text("INSERT INTO channels (id, title) VALUES (:id, 'Woodworking')"), {"id": CHANNEL.id}
         )
-        rated: list[tuple[Video, float]] = [(loved, 7.2), (hated, 3.8), (middling, 4.7)]
+        rated: list[tuple[Video, int]] = [(loved, 7), (hated, 4), (middling, 5)]
         for video, score in rated:
             gateway.add_video(video)
             session.execute(

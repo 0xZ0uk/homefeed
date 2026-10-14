@@ -9,10 +9,13 @@ import {
   trendPoints,
   type ChartBox,
 } from "#/lib/insights";
-import { formatScore } from "#/lib/scores";
 import type { WeekInsights } from "#/server/insights";
 
-import { areaPath, describeWeekRates, seriesPoints } from "./GoodRateTrendHelpers";
+import {
+  areaPath,
+  describeWeekRates,
+  seriesPoints,
+} from "./GoodRateTrendHelpers";
 
 // The width is the rendered one once measured, so text stays at 12px however
 // wide the page is; 640 is what the server renders with.
@@ -337,9 +340,8 @@ export function GoodRateTrend({
         </div>
       )}
       <figcaption className="text-sm text-muted-foreground">
-        Share of each week&apos;s new ratings scored{" "}
-        {formatScore(goodThreshold)} or higher. Weeks without ratings leave a
-        gap.
+        Share of each week&apos;s new ratings scored {goodThreshold} or higher.
+        Weeks without ratings leave a gap.
       </figcaption>
     </figure>
   );

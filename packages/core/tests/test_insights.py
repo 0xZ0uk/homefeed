@@ -60,13 +60,13 @@ def test_empty_weeks_have_no_rates() -> None:
     assert [c.count for c in week.score_counts] == [0] * 10
 
 
-def test_good_rate_counts_5_5_and_up() -> None:
+def test_good_rate_counts_6_and_up() -> None:
     ratings = [
-        RatedVideo("a", 5.5, MONDAY),
-        RatedVideo("b", 10.0, date(2026, 10, 11)),
-        RatedVideo("c", 5.4, MONDAY),
-        RatedVideo("d", 1.0, date(2026, 10, 8)),
-        RatedVideo("e", 7.8, NEXT_MONDAY),
+        RatedVideo("a", 6, MONDAY),
+        RatedVideo("b", 10, date(2026, 10, 11)),
+        RatedVideo("c", 5, MONDAY),
+        RatedVideo("d", 1, date(2026, 10, 8)),
+        RatedVideo("e", 8, NEXT_MONDAY),
     ]
 
     first, second = summarize_weeks(ratings, [], first_week=MONDAY, weeks=2)
@@ -78,7 +78,7 @@ def test_good_rate_counts_5_5_and_up() -> None:
 
 
 def test_ratings_outside_the_weeks_are_ignored() -> None:
-    ratings = [RatedVideo("a", 1.6, date(2026, 10, 4)), RatedVideo("b", 9.4, date(2026, 10, 19))]
+    ratings = [RatedVideo("a", 2, date(2026, 10, 4)), RatedVideo("b", 9, date(2026, 10, 19))]
 
     [week] = summarize_weeks(ratings, [], first_week=MONDAY, weeks=1)
 
@@ -159,7 +159,7 @@ def add_feed(
         )
 
 
-def rate(session: Session, video_id: str, score: float, rated_at: str) -> None:
+def rate(session: Session, video_id: str, score: int, rated_at: str) -> None:
     session.execute(
         text("INSERT INTO ratings (video_id, score, value, rated_at) VALUES (:v, :s, 0, :at)"),
         {"v": video_id, "s": score, "at": rated_at},
@@ -187,9 +187,9 @@ def test_weekly_insights_reads_ratings_and_the_feed_of_record(
             [(vid(0), rules), (vid(1), blended)],
         )
         add_feed(session, MONDAY, "2026-10-05T05:00:00.000Z", [(vid(2), rules)])
-        rate(session, vid(0), 7.8, "2026-10-13T10:00:00.000Z")
-        rate(session, vid(2), 4.7, "2026-10-06T10:00:00.000Z")
-        rate(session, vid(3), 5.7, "2026-09-01T10:00:00.000Z")  # before the window
+        rate(session, vid(0), 8, "2026-10-13T10:00:00.000Z")
+        rate(session, vid(2), 5, "2026-10-06T10:00:00.000Z")
+        rate(session, vid(3), 6, "2026-09-01T10:00:00.000Z")  # before the window
 
     with sessions.begin() as session:
         first, second = weekly_insights(session, weeks=2, now=NOW, tz=UTC)
@@ -213,7 +213,7 @@ def test_weekly_insights_puts_ratings_in_local_weeks(sessions: sessionmaker[Sess
 
     with sessions.begin() as session:
         # Sunday 23:30 UTC is already Monday in Lisbon summer time (UTC+1).
-        rate(session, vid(0), 9.4, "2026-10-11T23:30:00.000Z")
+        rate(session, vid(0), 9, "2026-10-11T23:30:00.000Z")
 
     with sessions.begin() as session:
         utc = weekly_insights(session, weeks=2, now=NOW, tz=UTC)

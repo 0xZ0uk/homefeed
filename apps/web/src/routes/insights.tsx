@@ -42,7 +42,8 @@ import {
   weeklyInsightsCsv,
   type WeekRange,
 } from "#/lib/insights";
-import { formatScore } from "#/lib/scores";
+import { ScoreFace } from "#/components/ScoreFace";
+import { scoreLabel } from "#/lib/scores";
 import { cn } from "#/lib/utils";
 import { weeklyInsightsQuery, type WeekInsights } from "#/server/insights";
 
@@ -102,8 +103,8 @@ function Insights() {
           <h2 className="text-xl font-semibold">Insights</h2>
           <p className="text-pretty text-muted-foreground">
             Is the feed working? The measure is the good rate: the share of
-            rated videos scored {formatScore(data.good_threshold)} or higher.
-            Last {weeks} weeks.
+            rated videos scored {data.good_threshold} or higher. Last {weeks}{" "}
+            weeks.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -459,7 +460,7 @@ function ScoreDistribution({
   const scores = totalScoreCounts(weeks);
   const total = scores.reduce((sum, { count }) => sum + count, 0);
   const max = Math.max(1, ...scores.map(({ count }) => count));
-  const threshold = formatScore(goodThreshold);
+  const threshold = String(goodThreshold);
   return (
     <Panel
       id="scores-heading"
@@ -493,9 +494,15 @@ function ScoreDistribution({
               <li
                 key={score}
                 title={`${count} of ${total} ratings (${formatPercent(count / total)})`}
-                className="-mx-2 grid grid-cols-[1.5rem_minmax(0,1fr)_5rem] items-center gap-3 rounded-lg px-2 py-1 transition-colors duration-150 hover:bg-muted/50"
+                className="-mx-2 grid grid-cols-[2.75rem_minmax(0,1fr)_5rem] items-center gap-3 rounded-lg px-2 py-1 transition-colors duration-150 hover:bg-muted/50"
               >
-                <span className="text-right text-sm font-medium tabular-nums">
+                <span className="flex items-center justify-end gap-1.5 text-sm font-medium tabular-nums">
+                  <ScoreFace
+                    score={score}
+                    filled
+                    title={scoreLabel(score)}
+                    className="size-4"
+                  />
                   {score}
                 </span>
                 <span className="relative block h-4 w-full overflow-hidden rounded bg-muted">

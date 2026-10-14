@@ -253,7 +253,7 @@ def test_rated_and_stored_videos(sessions: sessionmaker[Session]) -> None:
                 "VALUES ('ggggggggggg', 'UCstored', 'Kept'), ('hhhhhhhhhhh', 'UCstored', 'R')"
             )
         )
-        set_rating(session, "hhhhhhhhhhh", 8.1)
+        set_rating(session, "hhhhhhhhhhh", 8)
     fetch = FakeFetcher({PAGE: fixture("link_page.html")})
 
     found = ExternalSourcesSource(sessions, gateway, fetch, now=Clock(T0)).fetch()

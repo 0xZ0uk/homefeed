@@ -158,7 +158,7 @@ def test_channel_score_is_the_prior_without_ratings() -> None:
 
 
 def test_channel_score_moves_from_prior_toward_evidence() -> None:
-    bad = score_value(3.2)
+    bad = score_value(3)
     scores = [channel_score("love", [bad] * n) for n in (0, 1, 5, 20, 200)]
 
     assert scores[0] == pytest.approx(0.8)

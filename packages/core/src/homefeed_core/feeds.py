@@ -419,7 +419,7 @@ def load_history(session: Session) -> History:
 
 
 def load_channel_ratings(session: Session) -> dict[str, ChannelRatings]:
-    """Good (5.5 or higher) and not-good rating counts per channel, for exploration."""
+    """Good (6 or higher) and not-good rating counts per channel, for exploration."""
     rows = session.execute(
         text("SELECT v.channel_id, r.score FROM ratings AS r JOIN videos AS v ON v.id = r.video_id")
     )

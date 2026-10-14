@@ -285,16 +285,18 @@ def get_extractor_status(
 
 
 class RatingInput(BaseModel):
-    score: float = Field(
+    score: int = Field(
         ge=scores.MIN_SCORE,
         le=scores.MAX_SCORE,
-        description="1.0 to 10.0, with at most one decimal, e.g. 7.5",
+        description="Whole score from 1 to 10, e.g. 7; a whole-valued 7.0 is accepted too",
     )
 
-    @field_validator("score")
+    @field_validator("score", mode="before")
     @classmethod
-    def _one_decimal(cls, score: float) -> float:
-        return scores.check_score(score)
+    def _not_a_bool(cls, score: object) -> object:
+        if isinstance(score, bool):
+            raise ValueError("Score must be a number, not a boolean")
+        return score
 
 
 @app.put("/ratings/{video_id}", tags=["ratings"])
@@ -672,7 +674,7 @@ class TierSimilarityOut(BaseModel):
 
 
 class SimilarityFeaturesOut(BaseModel):
-    """Similarity to the videos rated top tier (7.0 and up) and bottom tier (4.0 and
+    """Similarity to the videos rated top tier (7 and up) and bottom tier (4 and
     down); a side is null when no video of that set has an embedding yet."""
 
     top_tier: TierSimilarityOut | None
@@ -1284,7 +1286,7 @@ def refresh_feed(poll: FeedPollDep) -> FeedOut:
 
 
 class ScoreCountOut(BaseModel):
-    score: int = Field(ge=1, le=10, description="Whole score; 6.5 to 7.4 count as 7")
+    score: int = Field(ge=1, le=10, description="Whole score, 1 to 10")
     count: int
 
 
@@ -1305,7 +1307,7 @@ class ScoreShareOut(BaseModel):
 class WeekInsightsOut(BaseModel):
     week_start: dt.date = Field(description="Monday of the week (local date)")
     rated_count: int = Field(description="Videos first rated this week")
-    good_count: int = Field(description="Of those, how many are rated 5.5 or higher")
+    good_count: int = Field(description="Of those, how many are rated 6 or higher")
     good_rate: float | None = Field(
         description="good_count / rated_count; null when nothing was rated"
     )
@@ -1328,7 +1330,7 @@ class WeekInsightsOut(BaseModel):
 
 
 class WeeklyInsightsOut(BaseModel):
-    good_threshold: float = Field(description="The lowest score counted as good")
+    good_threshold: int = Field(description="The lowest score counted as good")
     weeks: list[WeekInsightsOut] = Field(description="Oldest first, ending with this week")
 
 

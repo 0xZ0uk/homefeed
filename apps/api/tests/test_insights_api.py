@@ -33,7 +33,7 @@ def test_weekly_insights_without_data(client: TestClient) -> None:
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["good_threshold"] == 5.5
+    assert body["good_threshold"] == 6
     starts = [week["week_start"] for week in body["weeks"]]
     this_week = week_start(feeds.local_today())
     assert starts == [(this_week - timedelta(weeks=n)).isoformat() for n in (2, 1, 0)]
@@ -88,8 +88,8 @@ def test_weekly_insights_this_week(client: TestClient) -> None:
                 ),
                 {"f": feed_id, "v": video_id, "p": n, "b": json.dumps(breakdown)},
             )
-    assert client.put("/ratings/v0000000000", json={"score": 5.5}).status_code == 200
-    assert client.put("/ratings/x0000000000", json={"score": 5.4}).status_code == 200
+    assert client.put("/ratings/v0000000000", json={"score": 6}).status_code == 200
+    assert client.put("/ratings/x0000000000", json={"score": 5}).status_code == 200
 
     week = client.get("/insights/weekly", params={"weeks": 1}).json()["weeks"][0]
 

@@ -11,7 +11,7 @@ from homefeed_core.scores import check_score, is_bottom_tier, is_top_tier, score
 @dataclass(frozen=True)
 class Rating:
     video_id: str
-    score: float  # 1.0 to 10.0, one decimal
+    score: int  # whole score, 1 to 10
     value: float
     rated_at: str  # ISO 8601 UTC; when the video was first rated
     updated_at: str  # ISO 8601 UTC; when the score last changed
@@ -20,9 +20,9 @@ class Rating:
 _COLUMNS = "video_id, score, value, rated_at, updated_at"
 
 
-def set_rating(session: Session, video_id: str, score: float) -> Rating:
+def set_rating(session: Session, video_id: str, score: int) -> Rating:
     """Create or update the rating for `video_id`. Keeps `rated_at` on update. Raises
-    ValueError for a score outside 1 to 10 or with more than one decimal."""
+    ValueError for a score outside 1 to 10 or not whole (7.0 counts as 7)."""
     score = check_score(score)
     row = session.execute(
         text(
@@ -55,7 +55,7 @@ def list_ratings(session: Session) -> list[Rating]:
 
 
 def tier_rated_video_ids(session: Session) -> list[str]:
-    """Videos rated top tier (7.0 and up) or bottom tier (4.0 and down), oldest rating
+    """Videos rated top tier (7 and up) or bottom tier (4 and down), oldest rating
     first: the sets the ranker's similarity features compare candidates with."""
     return [
         rating.video_id

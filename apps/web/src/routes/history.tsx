@@ -3,6 +3,7 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
 import { AppShell } from "#/components/AppShell";
+import { ScoreFace } from "#/components/ScoreFace";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
 import { formatAge, formatDuration } from "#/lib/format";
@@ -13,7 +14,7 @@ import {
   progressFraction,
   type HistoryParams,
 } from "#/lib/history";
-import { formatScore } from "#/lib/scores";
+import { scoreLabel, scoreText } from "#/lib/scores";
 import { historyQuery, type HistoryEntry } from "#/server/history";
 
 /**
@@ -188,7 +189,12 @@ function EntryRow({ entry }: { entry: HistoryEntry }) {
         <p className="flex flex-wrap gap-x-2 text-sm text-muted-foreground">
           {entry.channel_title && <span>{entry.channel_title}</span>}
           {entry.score != null && (
-            <span>· Rated {formatScore(entry.score)}</span>
+            <span className="inline-flex items-center gap-1">
+              · Rated
+              <ScoreFace score={entry.score} filled className="size-4" />
+              <span aria-hidden="true">{scoreLabel(entry.score)}</span>
+              <span className="sr-only">{scoreText(entry.score)}</span>
+            </span>
           )}
         </p>
         <p className="flex flex-wrap gap-x-2 text-sm text-muted-foreground">

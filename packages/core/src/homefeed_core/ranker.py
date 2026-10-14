@@ -12,7 +12,7 @@ channel score is a Bayesian average of the channel's rating values shrunk toward
 curation prior with weight `k = 5`.
 
 Similarity features compare a candidate's embedding with those of the videos rated top
-tier (rated 7.0 and up) and bottom tier (4.0 and down): the max and mean cosine similarity to
+tier (rated 7 and up) and bottom tier (4 and down): the max and mean cosine similarity to
 each set (`SimilarityFeatures`). They are passed to the model and, until the model can
 weigh them itself, also make the rules-based `similarity` term: how much closer the
 candidate's nearest top-tier video is than its nearest bottom-tier one, each counted
@@ -163,7 +163,7 @@ class History:
 
 @dataclass(frozen=True)
 class RatedTiers:
-    """Embeddings of the rated top-tier (7.0 and up) and bottom-tier (4.0 and down)
+    """Embeddings of the rated top-tier (7 and up) and bottom-tier (4 and down)
     videos, by video id. Rated videos without an embedding are left out."""
 
     top: Mapping[str, Embedding] = field(default_factory=dict)

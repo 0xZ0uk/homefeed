@@ -6,7 +6,7 @@ through the Gateway and stored in `featured_channels`, with the fetch time in
 `channel_graph_fetches`; they are refetched once older than `FEATURED_MAX_AGE`.
 
 Liked channels are the subscribed, unmuted channels with a love or like prior, then the
-channels of videos rated top tier (7.0 and up), and never a muted or blocked (see
+channels of videos rated top tier (7 and up), and never a muted or blocked (see
 `channel_hides`) channel. Their featured channels that I'm not subscribed to or have
 hidden are the suggested channels, ordered by how many liked channels feature them.
 `ChannelGraphSource` turns the top suggestions' newest uploads into candidates,

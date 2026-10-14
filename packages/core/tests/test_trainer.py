@@ -101,8 +101,8 @@ def add_video(
 
 
 def rate(session: Session, video_id: str, value: float, at: datetime) -> None:
-    """Rate with the score nearest to `value`, at a given time."""
-    score = value_score(value)
+    """Rate with the whole score nearest to `value` (halves up), at a given time."""
+    score = math.floor(value_score(value) + 0.5)
     session.execute(
         text(
             """
@@ -202,7 +202,7 @@ def relabel_with_noise(sessions: sessionmaker[Session], *, seed: int = 99) -> No
     rng = np.random.default_rng(seed)
     with sessions.begin() as session:
         for video_id in session.execute(text("SELECT video_id FROM ratings")).scalars().all():
-            score = int(rng.integers(10, 101)) / 10
+            score = int(rng.integers(1, 11))
             session.execute(
                 text("UPDATE ratings SET score = :score, value = :value WHERE video_id = :id"),
                 {"id": video_id, "score": score, "value": score_value(score)},
@@ -343,8 +343,8 @@ def test_dataset_features_only_use_earlier_ratings(sessions: sessionmaker[Sessio
     top2 = examples["top2"].input
     assert top2.similarity is not None and top2.similarity.top_tier is None
     assert examples["bottom1"].input.similarity == SimilarityFeatures(None, None)
-    # Channel score from the earlier ratings: (0.9 + -1.0 + 0.8 * 5) / (2 + 5).
-    top2_value = score_value(value_score(0.9))
+    # Channel score from the earlier ratings: (1.0 + -1.0 + 0.8 * 5) / (2 + 5).
+    top2_value = score_value(10)  # 0.9 is nearest the whole score 10
     assert top1.channel_score == pytest.approx((top2_value - 1.0 + 4) / 7)
     assert examples["bottom1"].input.channel_score == pytest.approx(0.8)
     assert top1.upload_age_days == pytest.approx(399)

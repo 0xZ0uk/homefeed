@@ -60,8 +60,8 @@ def seed(session: Session) -> None:
         text("INSERT INTO channel_prefs (channel_id, prior, pinned) VALUES (:id, 'love', 1)"),
         {"id": CHANNEL},
     )
-    set_rating(session, VIDEO, 8.1)
-    set_rating(session, "zzzzzzzzzzz", 1.6)  # rated before its metadata was stored
+    set_rating(session, VIDEO, 8)
+    set_rating(session, "zzzzzzzzzzz", 2)  # rated before its metadata was stored
     curation.add_keyword_mute(session, "crypto")
     woodworking = resolve_tag(session, "Woodworking")
     assert woodworking is not None
@@ -110,10 +110,10 @@ def test_exports_every_area(sessions: sessionmaker[Session]) -> None:
     assert isinstance(data["schema_version"], int)
 
     ratings = {rating["video_id"]: rating for rating in data["ratings"]}
-    assert ratings[VIDEO]["score"] == 8.1
+    assert ratings[VIDEO]["score"] == 8
     assert ratings[VIDEO]["title"] == "Black holes"
     assert ratings[VIDEO]["channel_title"] == "Space Explained"
-    assert ratings["zzzzzzzzzzz"]["score"] == 1.6
+    assert ratings["zzzzzzzzzzz"]["score"] == 2
     assert ratings["zzzzzzzzzzz"]["title"] is None
 
     curation_ = data["curation"]

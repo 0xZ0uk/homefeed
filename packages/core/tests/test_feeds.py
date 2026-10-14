@@ -148,10 +148,10 @@ def test_build_feed_ranks_composes_and_stores(sessions: sessionmaker[Session]) -
 def test_build_feed_stores_exploration_slots(sessions: sessionmaker[Session]) -> None:
     with sessions.begin() as session:
         add_videos(session, LOVED, range(4, 10))
-        scores = [7.8, 5.7, 4.7, 9.4, 1.6]  # 5 ratings: not explored
+        scores = [8, 6, 5, 9, 2]  # 5 ratings: not explored
         for n, score in enumerate(scores):
             set_rating(session, vid(LOVED, n), score)
-        set_rating(session, vid(PLAIN, 0), 3.2)
+        set_rating(session, vid(PLAIN, 0), 3)
         assert feeds.load_channel_ratings(session) == {
             LOVED: ChannelRatings(good=3, not_good=2),
             PLAIN: ChannelRatings(good=0, not_good=1),
@@ -232,7 +232,7 @@ def test_extend_feed_of_a_missing_feed_is_none(sessions: sessionmaker[Session]) 
 
 def test_watched_and_dismissed_are_left_out(sessions: sessionmaker[Session]) -> None:
     with sessions.begin() as session:
-        set_rating(session, vid(LOVED, 3), 6.3)
+        set_rating(session, vid(LOVED, 3), 6)
     first = build(sessions)
     with sessions.begin() as session:
         session.execute(
@@ -344,7 +344,7 @@ def test_items_watched_since_the_feed_was_built_are_marked(
     assert not any(item.watched for item in feed.items)
     with sessions.begin() as session:
         record_watch_event(session, played.video_id, "play", 0.0, 600.0)
-        set_rating(session, rated.video_id, 7.0)
+        set_rating(session, rated.video_id, 7)
         # Opened but never played: not watched.
         record_watch_event(session, opened.video_id, "close", 0.0, 600.0)
 
@@ -386,7 +386,7 @@ def test_active_model_is_blended_in_by_rating_count(
     with sessions.begin() as session:
         add_videos(session, PLAIN, range(10, 15))
         for n in range(10, 15):
-            set_rating(session, vid(PLAIN, n), 6.3)
+            set_rating(session, vid(PLAIN, n), 6)
         version_id = install_model(session, tmp_path)
 
     feed = build(sessions, settings=SETTINGS.model_copy(update={"data_dir": tmp_path}))
@@ -411,7 +411,7 @@ def test_unloadable_active_model_ranks_rules_only(
     sessions: sessionmaker[Session], tmp_path: Path
 ) -> None:
     with sessions.begin() as session:
-        set_rating(session, vid(PLAIN, 0), 6.3)
+        set_rating(session, vid(PLAIN, 0), 6)
         install_model(session, tmp_path, path="ranking_models/missing.json")
 
     feed = build(sessions, settings=SETTINGS.model_copy(update={"data_dir": tmp_path}))
@@ -424,7 +424,7 @@ def test_ratings_shape_channel_score(sessions: sessionmaker[Session]) -> None:
     with sessions.begin() as session:
         add_videos(session, PLAIN, range(10, 15))
         for n in range(10, 15):
-            set_rating(session, vid(PLAIN, n), 10.0)
+            set_rating(session, vid(PLAIN, n), 10)
 
     feed = build(sessions)
 
@@ -645,8 +645,8 @@ def test_similarity_to_rated_tiers_shapes_ranking(sessions: sessionmaker[Session
     with sessions.begin() as session:
         session.execute(text("DELETE FROM candidates"))
         add_videos(session, PLAIN, range(40, 42), seen=NOW - timedelta(days=60))  # old
-        set_rating(session, loved, 9.4)
-        set_rating(session, hated, 1.9)
+        set_rating(session, loved, 9)
+        set_rating(session, hated, 2)
         store_embedding(session, loved, unit(0))
         store_embedding(session, hated, unit(1))
         add_videos(session, LOVED, range(42, 44))
@@ -687,7 +687,7 @@ def test_explanations_name_the_nearest_top_tier_video(sessions: sessionmaker[Ses
     with sessions.begin() as session:
         session.execute(text("DELETE FROM candidates"))
         add_videos(session, PLAIN, range(40, 41), seen=NOW - timedelta(days=60))  # old
-        set_rating(session, loved, 8.1)
+        set_rating(session, loved, 8)
         store_embedding(session, loved, unit(0))
         add_videos(session, PLAIN, range(41, 42))
         store_embedding(session, vid(PLAIN, 41), unit(0))
@@ -695,7 +695,7 @@ def test_explanations_name_the_nearest_top_tier_video(sessions: sessionmaker[Ses
     feed = build(sessions)
 
     assert [item.explanation for item in feed.items] == [
-        "New from your subscriptions · similar to Video 40 (8.1)"
+        "New from your subscriptions · similar to Video 40 (8)"
     ]
     with sessions.begin() as session:
         stored = session.execute(text("SELECT explanation FROM feed_items")).scalar_one()

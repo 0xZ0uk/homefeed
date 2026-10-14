@@ -45,7 +45,7 @@ class HistoryEntry:
     position: float  # seconds; where the latest event left playback
     finished: bool  # played to the end at least once
     resume_position: float | None  # seconds; None to start from the beginning
-    score: float | None  # the video's rating, if any
+    score: int | None  # the video's rating, if any
 
 
 def resume_position(last_event_type: str, position: float, duration: float | None) -> float | None:
