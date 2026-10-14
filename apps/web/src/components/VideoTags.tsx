@@ -13,7 +13,11 @@ import { useMemo, useRef, useState } from "react";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
-import { formatWeight, tagWeights, weightEffect } from "#/lib/topics";
+import {
+  formatWeight,
+  tagWeights,
+  weightEffect,
+} from "#/lib/tag-subscriptions";
 import { cn } from "#/lib/utils";
 import {
   addTagToVideo,
@@ -21,7 +25,7 @@ import {
   tagSuggestionsQuery,
   type TagEditResult,
 } from "#/server/video-tags";
-import { topicsQuery } from "#/server/topics";
+import { tagSubscriptionsQuery } from "#/server/tag-subscriptions";
 import { videoQuery } from "#/server/videos";
 
 interface TagOption {
@@ -49,9 +53,12 @@ export function VideoTags({
   const queryClient = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<string | null>(null);
-  // Plain chips until the topics load (or if they fail to).
-  const { data: topics } = useQuery(topicsQuery);
-  const weights = useMemo(() => tagWeights(topics ?? []), [topics]);
+  // Plain chips until the subscriptions load (or if they fail to).
+  const { data: subscriptions } = useQuery(tagSubscriptionsQuery);
+  const weights = useMemo(
+    () => tagWeights(subscriptions ?? []),
+    [subscriptions],
+  );
 
   const save = (result: TagEditResult) => {
     if (!result.ok) return setMessage(result.message);

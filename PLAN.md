@@ -163,10 +163,10 @@ The worker builds the feed on a schedule and writes it to SQLite. The API reads 
 | `poller` | `poll_due_channels() -> list[VideoId]` | RSS fetching and parsing, per-channel schedule and backoff |
 | `candidates` | `generate() -> list[Candidate]`; each source implements `CandidateSource.fetch()` | Deduplication, first-seen tracking, source attribution, isolating failing sources |
 | `enricher` | `enrich(video_id) -> VideoFeatures` | Metadata, transcript excerpt (first ~5 min of captions), embedding, LLM tags, cache and version tracking |
-| `ranker` | `rank(candidates, features, model, curation, n_ratings) -> list[ScoredCandidate]` | Hard filters, similarity features, model inference, channel shrinkage, topic boosts, blend, score breakdown |
+| `ranker` | `rank(candidates, features, model, curation, n_ratings) -> list[ScoredCandidate]` | Hard filters, similarity features, model inference, channel shrinkage, tag boosts, blend, score breakdown |
 | `composer` | `compose(scored, curation, settings, rng) -> Feed` | Pins, per-channel caps, exploration slots, selection probabilities, explanations |
 | `trainer` | `train() -> ModelVersion`, `activate(version_id)` | Dataset building, label weighting, time decay, evaluation, promotion rule, model files |
-| `curation` | CRUD for channel prefs, topics, keyword mutes, saved searches, external sources | Persistence, topic embeddings, boost decay |
+| `curation` | CRUD for channel prefs, tag subscriptions, keyword mutes, saved searches, external sources | Persistence |
 | `playback` | `manifest(video_id) -> str`, `proxy_range(video_id, itag, range)`, `sponsor_segments(video_id)` | Stream resolution via Gateway, DASH MPD generation, URL expiry and refresh |
 | `importer` | `import_takeout(file) -> ImportReport` | Takeout JSON/HTML parsing, seeding channels and candidates (never ratings) |
 | `db` | Session factory, migrations | SQLite setup, WAL, sqlite-vec loading, schema migrations (use Alembic or a simple versioned migration runner) |
@@ -188,18 +188,18 @@ channel_score = (sum(rating_values) + prior * k) / (n_ratings + k),   k = 5
 priors: love = +0.8, like = +0.4, neutral = 0.0, skeptical = -0.4
 ```
 
-**Topic boosts.** Each topic has a plain-language description (embedded) and a slider weight in [−1, 1]. `topic_boost = weight * max(0, cos_sim(video, topic) - 0.3) / 0.7`. Optional decay per topic: weight halves every 30 days unless reaffirmed. A topic can be backed by a tag (subscribing to it): with match mode `tag` it adds `weight * confidence` to videos carrying the tag, with `both` the larger in magnitude of the tag and embedding terms.
+**Tag boosts.** Each subscribed or muted tag has a slider weight in [−1, 1] (subscribing starts at +0.5, muting at −0.5) and adds `weight * confidence` to videos carrying the tag. A muted tag at −1 can hide its videos from the feed. (Tags replaced the earlier topics, plain-language descriptions matched by embedding; migration 0025 carried tag-backed topics over.)
 
 **Combination (log-odds-like space).**
 
 ```
 alpha = n / (n + 50)             # n = number of explicit ratings
-final = alpha * model_score + channel_boost + similarity + sum(topic_boosts)
+final = alpha * model_score + channel_boost + similarity + sum(tag_boosts)
 similarity = 0.5 * (affinity(max_sim_top) - affinity(max_sim_bottom)),
              affinity(s) = max(0, s - 0.3) / 0.7
 ```
 
-Before a model exists, `alpha = 0` and `model_score = 0`. Every scored item carries a breakdown `{model, alpha, channel, similarity, topics: {...}}` whose parts sum to `final`, plus the similarity features it came from (max, mean and nearest video for each tier set).
+Before a model exists, `alpha = 0` and `model_score = 0`. Every scored item carries a breakdown `{model, alpha, channel, similarity, tags: {...}}` whose parts sum to `final`, plus the similarity features it came from (max, mean and nearest video for each tier set).
 
 **Feed composition.** Default size 15. Order: pins first (new uploads from pinned channels), then exploration slots (default 3), then top-scored items, with at most 2 items per channel. Exploration uses Thompson sampling over per-channel `Beta(good + 1, not_good + 1)` posteriors (good = B-- or higher), restricted to channels with fewer than 5 ratings or never-rated sources. Estimate each item's selection probability by Monte Carlo (e.g. 500 draws) and store it.
 
@@ -209,7 +209,7 @@ Before a model exists, `alpha = 0` and `model_score = 0`. Every scored item carr
 
 ## 8. Data model
 
-Tables (SQLite): `channels`, `videos`, `video_features` (embedding in a sqlite-vec virtual table, plus tags and the model/prompt versions that produced them), `video_llm_tags` (topic, depth, clickbait, rage-bait per video and prompt version, with the model that produced them), `tags` (slug, label), `tag_aliases` (alias slug, tag, source auto|user), `video_tags` (video, tag, source llm|manual, confidence, prompt_version, removed_at tombstone), `candidates` (video, source, source_detail, first_seen), `tag_discovery_runs` (tag, last run), `feeds` (date, created_at, model_version), `feed_items` (feed, video, position, score breakdown JSON, explanation, is_exploration, selection_probability, dismissed_at, dismiss_reason), `ratings` (video, score, value, rated_at, updated_at), `watch_events` (video, position, event type, at), `channel_prefs` (prior, pinned, muted), `topics` (name, description, embedding, weight, decay, reaffirmed_at, tag_id, match_mode), `keyword_mutes`, `saved_searches` (query, filters, schedule), `external_sources` (kind, url, schedule), `queue_items`, `playlists`, `playlist_items`, `model_versions` (path, metrics JSON, created_at, active), `extractor_events` (operation, success, error, at), `settings`.
+Tables (SQLite): `channels`, `videos`, `video_features` (embedding in a sqlite-vec virtual table, plus tags and the model/prompt versions that produced them), `video_llm_tags` (topic, depth, clickbait, rage-bait per video and prompt version, with the model that produced them), `tags` (slug, label), `tag_aliases` (alias slug, tag, source auto|user), `video_tags` (video, tag, source llm|manual, confidence, prompt_version, removed_at tombstone), `candidates` (video, source, source_detail, first_seen), `tag_discovery_runs` (tag, last run), `feeds` (date, created_at, model_version), `feed_items` (feed, video, position, score breakdown JSON, explanation, is_exploration, selection_probability, dismissed_at, dismiss_reason), `ratings` (video, score, value, rated_at, updated_at), `watch_events` (video, position, event type, at), `channel_prefs` (prior, pinned, muted), `tag_subscriptions` (tag, weight, hide), `keyword_mutes`, `saved_searches` (query, filters, schedule), `external_sources` (kind, url, schedule), `queue_items`, `playlists`, `playlist_items`, `model_versions` (path, metrics JSON, created_at, active), `extractor_events` (operation, success, error, at), `settings`.
 
 Store the score as a number (`7.4`) and the numeric value alongside it.
 
@@ -221,7 +221,7 @@ Store the score as a number (`7.4`) and the numeric value alongside it.
 | Videos | `GET /videos/{id}`, `GET /videos/{id}/manifest.mpd`, `GET /videos/{id}/media/{itag}` (Range proxy), `GET /videos/{id}/segments` (SponsorBlock), `POST /resolve` `{url}` |
 | Ratings and watching | `GET /ratings/{video_id}`, `PUT /ratings/{video_id}` `{score}`, `DELETE /ratings/{video_id}`, `POST /watch-events` `{video_id, event_type, position, duration}` |
 | Library | `GET/POST/PATCH/DELETE /queue`, `GET /history?q=`, `/playlists` CRUD |
-| Curation | `/channels` (subscribe by URL, list, update prior/pin/mute, unsubscribe), `/topics`, `/keyword-mutes`, `/saved-searches`, `/external-sources` |
+| Curation | `/channels` (subscribe by URL, list, update prior/pin/mute, unsubscribe), `/tag-subscriptions` and `/tags/{slug}/subscribe|mute|subscription`, `/keyword-mutes`, `/saved-searches`, `/external-sources` |
 | Discovery | `GET /search?q=&filters`, `GET /channels/{id}/uploads`, `GET /channels/{id}/featured`, `GET /discover/suggested-channels` |
 | Insights and models | `GET /insights/weekly` (good rate, score distribution, rating rate, model vs curation share), `GET /models`, `POST /models/{id}/activate` |
 | Ops | `GET /health`, `GET /status/extractors`, `POST /import/takeout`, `GET /export` |
@@ -230,7 +230,7 @@ Auth lives in the web app (single password, session cookie). The API binds to th
 
 ## 10. Frontend routes
 
-`/` home feed · `/watch/$videoId` · `/queue` · `/history` · `/curation` (tabs: channels, topics, mutes, searches, sources) · `/discover` · `/insights` · `/settings` · `/status` · `/login`.
+`/` home feed · `/watch/$videoId` · `/queue` · `/history` · `/curation` (tabs: channels, tags, mutes, searches, sources) · `/discover` · `/insights` · `/settings` · `/status` · `/login`.
 
 Home feed items show thumbnail, channel avatar, title, channel, duration, view count, upload age, explanation (expandable to the score breakdown), and status icons (pinned, exploring, dismissed). The watch page shows chapters and description, skips SponsorBlock segments, saves resume position, and ends in the rating prompt. It never shows suggested videos and never autoplays.
 
@@ -309,5 +309,4 @@ Test each module through its public interface; assert behavior, not internals.
 
 ### Open questions
 
-- Should topic boosts decay by default?
 - Feed size and refresh time after real use (defaults: 15 items at 06:00).

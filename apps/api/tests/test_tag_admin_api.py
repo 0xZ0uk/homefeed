@@ -66,6 +66,24 @@ def test_list_with_counts_aliases_and_search(client: TestClient) -> None:
     assert client.get("/tag-admin", params={"limit": 0}).status_code == 422
 
 
+def test_list_shows_and_filters_by_subscription(client: TestClient) -> None:
+    make_tag("Rust", videos=1)
+    make_tag("Woodworking")
+    make_tag("Drama")
+    client.post("/tags/woodworking/subscribe")
+    client.post("/tags/drama/mute")
+
+    def listed(**params: str) -> list[tuple[str, float | None]]:
+        response = client.get("/tag-admin", params=params)
+        return [(t["slug"], t["subscription_weight"]) for t in response.json()]
+
+    assert listed() == [("rust", None), ("drama", -0.5), ("woodworking", 0.5)]
+    assert listed(subscription="subscribed") == [("woodworking", 0.5)]
+    assert listed(subscription="muted") == [("drama", -0.5)]
+    assert listed(subscription="muted", q="wood") == []
+    assert client.get("/tag-admin", params={"subscription": "nope"}).status_code == 422
+
+
 def test_rename(client: TestClient) -> None:
     tag_id = make_tag("Wood work")
     other = make_tag("Rust")

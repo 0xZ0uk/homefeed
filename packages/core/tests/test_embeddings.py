@@ -204,7 +204,7 @@ def test_calibration_is_per_model_with_overrides() -> None:
     assert calibration(Settings()) == CALIBRATIONS["BAAI/bge-small-en-v1.5"]
     assert calibration(Settings(embedding_model=pplx)) == CALIBRATIONS[pplx]
     assert calibration(Settings(embedding_model=pplx, tag_merge_threshold=0.9)) == Calibration(
-        CALIBRATIONS[pplx].similarity_floor, CALIBRATIONS[pplx].topic_similarity_floor, 0.9
+        CALIBRATIONS[pplx].similarity_floor, 0.9
     )
     # An unmeasured model gets bge-small's values (and a warning).
     assert (

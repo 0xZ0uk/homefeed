@@ -3,7 +3,7 @@
 `rank` drops candidates that fail a hard filter, scores the rest and returns them best
 first. Each score comes with a breakdown whose parts sum to it:
 
-    final = alpha * model + channel + similarity + sum(topics)
+    final = alpha * model + channel + similarity + sum(tags)
 
 `alpha = n / (n + 50)` with `n` the number of explicit ratings, and `model` is the
 active trained model's prediction (see `Model`; all candidates are scored in one
@@ -16,25 +16,19 @@ tier (rated 7.0 and up) and bottom tier (4.0 and down): the max and mean cosine 
 each set (`SimilarityFeatures`). They are passed to the model and, until the model can
 weigh them itself, also make the rules-based `similarity` term: how much closer the
 candidate's nearest top-tier video is than its nearest bottom-tier one, each counted
-like a topic boost (only the part above the similarity floor, since unrelated texts still
-have some similarity). Candidates without an embedding get no similarity features and a
+only by the part above the similarity floor (unrelated texts still have some
+similarity). Candidates without an embedding get no similarity features and a
 `similarity` term of 0.
 
-Topic boosts: each topic adds `weight * max(0, cos_sim(video, topic) - floor) /
-(1 - floor)` (see `topic_boost`), with the topic's effective (decayed) weight.
-`breakdown.topics` maps a topic's name to its boost, holding only the topics with a
-nonzero boost; videos without an embedding (not enriched yet) get no embedding-matched
-boosts.
+The similarity floor depends on the embedding model (see embeddings.calibration), so
+`rank` takes it; the constant below is bge-small's.
 
-Both floors depend on the embedding model (see embeddings.calibration), so `rank` takes
-them; the constants below are bge-small's.
-
-Tag-backed topics (see homefeed_core.curation) match by tag as well: with match mode
-'tag' a topic adds `weight * confidence` when the video carries its tag (a link that is
-not removed; manual links have confidence 1). With 'both' it adds whichever of the tag and
-embedding terms is larger in magnitude; both have the weight's sign, so that is the larger
-one for a positive weight and the more negative one for a negative weight. Tag terms need
-no embedding. `rank` takes the tags as `video_tags`, tag id to confidence for each video.
+Tag boosts: each subscribed or muted tag (see homefeed_core.curation) adds
+`weight * confidence` to a video carrying it (a link that is not removed; manual links have
+confidence 1), see `tag_boosts`. `breakdown.tags` maps the tag's label to its boost,
+holding only the tags with a nonzero boost. `rank` takes the tags as `video_tags`, tag id
+to confidence for each video. Breakdowns stored before tags replaced topics keep their
+`topics` terms, read back as `tags`.
 
 Unknown metadata passes the hard filters. Subscription candidates come from RSS, which
 has no duration or live status, so most candidates have neither until they are enriched;
@@ -42,8 +36,8 @@ filtering them out would empty the feed. Shorts are still caught through `is_sho
 (RSS marks them by their /shorts/ link) and, once known, a duration under 60 seconds.
 
 Keyword mutes are matched against the title and description (see `KeywordMutes`).
-Tag-backed topics with `hide` set drop every video that carries their tag (a link that is
-not removed; any confidence), so `video_tags` must cover those topics' tags.
+Tag subscriptions with `hide` set drop every video that carries their tag (a link that is
+not removed; any confidence).
 
 LLM tags (topic, depth, clickbait, rage-bait; see homefeed_core.llm_tags) are passed
 to the model with the other features. They add no rules-based term: the model learns
@@ -57,8 +51,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
-from homefeed_core.curation import DEFAULT_PRIOR, PRIOR_VALUES, Prior, TopicVector
-from homefeed_core.embeddings import Embedding, cosine_similarity, normalize
+from homefeed_core.curation import DEFAULT_PRIOR, PRIOR_VALUES, Prior, TagSubscription
+from homefeed_core.embeddings import Embedding, normalize
 from homefeed_core.llm_tags import LLMTags
 
 # Weight of the prior in the channel score, in "ratings' worth" (PLAN.md section 7).
@@ -67,13 +61,10 @@ CHANNEL_PRIOR_WEIGHT = 5
 SHORT_MAX_SECONDS = 60
 # Number of explicit ratings at which a model's score gets half the weight.
 ALPHA_HALF_RATINGS = 50
-# Topic similarity below this gives no boost; the boost grows linearly from here to 1.
-# The default; the one for the embedding model is passed in (embeddings.calibration).
-TOPIC_SIMILARITY_FLOOR = 0.3
 # live_status values that are not (yet) a regular video.
 LIVE_STATUSES = frozenset({"is_live", "is_upcoming"})
-# Cosine similarity below which a rated video counts as unrelated (as for topic boosts).
-# Likewise a default.
+# Cosine similarity below which a rated video counts as unrelated. The default; the one
+# for the embedding model is passed in (embeddings.calibration).
 SIMILARITY_FLOOR = 0.3
 # Weight of the similarity term: a candidate as close to a top-tier video as possible,
 # and unrelated to the bottom tier, gets this much (the channel score's range is [-1, 1]).
@@ -227,7 +218,7 @@ class SimilarityFeatures:
 @dataclass(frozen=True)
 class ScoreBreakdown:
     """The terms of a score, which sum to `final`:
-    `alpha * model + channel + similarity + sum(topics)`.
+    `alpha * model + channel + similarity + sum(tags)`.
 
     `similarity_features` is not a term: it is what the `similarity` term (and the
     model) were computed from, kept for display. None without an embedding.
@@ -237,12 +228,12 @@ class ScoreBreakdown:
     alpha: float = 0.0
     channel: float = 0.0
     similarity: float = 0.0
-    topics: Mapping[str, float] = field(default_factory=dict)
+    tags: Mapping[str, float] = field(default_factory=dict)  # by tag label
     similarity_features: SimilarityFeatures | None = None
 
     @property
     def final(self) -> float:
-        return self.alpha * self.model + self.channel + self.similarity + sum(self.topics.values())
+        return self.alpha * self.model + self.channel + self.similarity + sum(self.tags.values())
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -250,7 +241,7 @@ class ScoreBreakdown:
             "alpha": self.alpha,
             "channel": self.channel,
             "similarity": self.similarity,
-            "topics": dict(self.topics),
+            "tags": dict(self.tags),
             "final": self.final,
             "similarity_features": (
                 self.similarity_features.to_dict() if self.similarity_features else None
@@ -266,7 +257,8 @@ class ScoreBreakdown:
             alpha=data["alpha"],
             channel=data["channel"],
             similarity=data.get("similarity", 0.0),
-            topics=data.get("topics", {}),
+            # Before tags replaced topics, the same terms were stored as "topics".
+            tags=data.get("tags", data.get("topics", {})),
             similarity_features=SimilarityFeatures.from_dict(data.get("similarity_features")),
         )
 
@@ -360,40 +352,23 @@ def _tier_similarity(unit: Embedding, tier: Mapping[str, Embedding]) -> TierSimi
     )
 
 
-def topic_boost(
-    weight: float, similarity: float, *, floor: float = TOPIC_SIMILARITY_FLOOR
-) -> float:
-    """`weight * max(0, similarity - floor) / (1 - floor)`: 0 up to the floor, `weight` at 1."""
-    return weight * max(0.0, similarity - floor) / (1 - floor)
-
-
-def topic_boosts(
-    embedding: Embedding | None,
-    topics: Iterable[TopicVector],
-    tag_confidences: Mapping[int, float] | None = None,
-    *,
-    floor: float = TOPIC_SIMILARITY_FLOOR,
+def tag_boosts(
+    tags: Iterable[TagSubscription], tag_confidences: Mapping[int, float] | None
 ) -> dict[str, float]:
-    """Each topic's boost for a video with `embedding` and tags (tag id to confidence), by
-    topic name; zeros left out. Embedding-matched terms need an embedding, tag-matched ones
-    a tag; with 'both', the term larger in magnitude wins."""
+    """Each subscribed or muted tag's boost for a video with these tags (tag id to
+    confidence): `weight * confidence`, by tag label; zeros left out. Tags sharing a label
+    add up, so the terms still sum to the score."""
     boosts: dict[str, float] = {}
-    for topic in topics:
-        terms: list[float] = []
-        if embedding is not None and topic.match_mode != "tag":
-            similarity = cosine_similarity(embedding, topic.embedding)
-            terms.append(topic_boost(topic.weight, similarity, floor=floor))
-        if (
-            topic.match_mode != "embedding"
-            and tag_confidences
-            and topic.tag_id is not None
-            and topic.tag_id in tag_confidences
-        ):
-            terms.append(topic.weight * tag_confidences[topic.tag_id])
-        boost = max(terms, key=abs, default=0.0)
+    if not tag_confidences:
+        return boosts
+    for tag in tags:
+        confidence = tag_confidences.get(tag.tag_id)
+        if confidence is None:
+            continue
+        boost = tag.weight * confidence
         if boost != 0:
-            boosts[topic.name] = boost
-    return boosts
+            boosts[tag.label] = boosts.get(tag.label, 0.0) + boost
+    return {label: boost for label, boost in boosts.items() if boost != 0}
 
 
 def filter_reason(
@@ -440,22 +415,21 @@ def rank(
     embeddings: Mapping[str, Embedding] | None = None,
     rated_tiers: RatedTiers = NO_RATED_TIERS,
     model: Model | None = None,
-    topics: Sequence[TopicVector] = (),
+    tags: Sequence[TagSubscription] = (),
     llm_tags: Mapping[str, LLMTags] | None = None,
     video_tags: Mapping[str, Mapping[int, float]] | None = None,
     similarity_floor: float = SIMILARITY_FLOOR,
-    topic_similarity_floor: float = TOPIC_SIMILARITY_FLOOR,
 ) -> list[ScoredCandidate]:
     """Filter and score `candidates`, best first (ties keep the input order).
 
-    `embeddings` holds candidate embeddings by video id, for similarity features and
-    topic boosts; candidates without one get neither. `llm_tags` holds candidate LLM
-    tags by video id, passed to the model. `video_tags` holds each video's tags (not
-    removed ones) as tag id to confidence, for tag-matched topics. The floors are those of
-    the embedding model (see embeddings.calibration)."""
+    `embeddings` holds candidate embeddings by video id, for similarity features;
+    candidates without one get none. `llm_tags` holds candidate LLM tags by video id,
+    passed to the model. `tags` are the subscribed and muted tags, and `video_tags` each
+    video's tags (not removed ones) as tag id to confidence, for their boosts and hiding.
+    The floor is the embedding model's (see embeddings.calibration)."""
     embeddings = embeddings or {}
     video_tags = video_tags or {}
-    hidden_tags = {t.tag_id for t in topics if t.hide and t.tag_id is not None}
+    hidden_tags = {t.tag_id for t in tags if t.hide}
     llm_tags = llm_tags or {}
     blend = alpha(history.n_ratings, has_model=model is not None)
     top_tier, bottom_tier = _normalized(rated_tiers.top), _normalized(rated_tiers.bottom)
@@ -501,16 +475,7 @@ def rank(
             channel=item.channel_score,
             similarity=similarity_score(item.similarity, floor=similarity_floor),
             similarity_features=item.similarity,
-            topics=(
-                topic_boosts(
-                    item.embedding,
-                    topics,
-                    video_tags.get(candidate.video_id),
-                    floor=topic_similarity_floor,
-                )
-                if topics
-                else {}
-            ),
+            tags=tag_boosts(tags, video_tags.get(candidate.video_id)) if tags else {},
         )
         scored.append(
             ScoredCandidate(

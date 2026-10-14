@@ -8,7 +8,7 @@ export function DataExport() {
         Export your data
       </h3>
       <p className="text-muted-foreground">
-        Download your ratings, channels and curation, feed history, watch
+        Download your ratings, channels and subscriptions, feed history, watch
         history, queue, playlists and settings as one JSON file. Cached data
         such as embeddings and tags isn't included, and neither are API keys.
       </p>

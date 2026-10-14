@@ -3,9 +3,18 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
-import { useEffect } from "react";
+import {
+  CircleCheck,
+  CircleDashed,
+  CircleX,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
+import { useEffect, type ReactNode } from "react";
 
 import { AppShell } from "#/components/AppShell";
+import { Badge } from "#/components/ui/badge";
+import { buttonVariants } from "#/components/ui/button";
 import { formatPercent } from "#/lib/insights";
 import { formatTimestamp } from "#/lib/models";
 import {
@@ -19,6 +28,7 @@ import {
   parseStatusHours,
   type ExtractorHealth,
 } from "#/lib/status";
+import { cn } from "#/lib/utils";
 import {
   extractorStatusQuery,
   type FailedEvent,
@@ -47,29 +57,35 @@ function Status() {
   const { data } = useSuspenseQuery(extractorStatusQuery(hours));
 
   return (
-    <AppShell className="flex max-w-5xl flex-col gap-8">
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-4">
+    <AppShell className="flex max-w-5xl flex-col gap-10">
+      <header className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
           <h2 className="text-xl font-semibold">Extractor status</h2>
-          <nav aria-label="Time window" className="flex gap-3 text-sm">
+          <nav aria-label="Time window" className="flex gap-2">
             {STATUS_WINDOWS.map((window) => (
               <Link
                 key={window.hours}
                 to="/status"
                 search={{ hours: window.hours }}
                 aria-current={window.hours === hours ? "page" : undefined}
-                className="underline aria-[current=page]:font-medium aria-[current=page]:no-underline"
+                className={cn(
+                  buttonVariants({ variant: "secondary", size: "lg" }),
+                  "rounded-lg px-3 aria-[current=page]:bg-primary aria-[current=page]:text-primary-foreground",
+                )}
               >
                 {window.label}
               </Link>
             ))}
           </nav>
         </div>
-        <p role="status" className="flex flex-wrap items-center gap-2">
+        <p
+          role="status"
+          className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-4"
+        >
           <HealthBadge health={data.health} />
-          <span>{healthSummary(data.health)}</span>
+          <span className="text-pretty">{healthSummary(data.health)}</span>
         </p>
-      </div>
+      </header>
 
       <SmokeTest run={data.last_smoke_test} />
       <Operations operations={data.operations} />
@@ -78,13 +94,20 @@ function Status() {
   );
 }
 
+const HEALTH_ICONS: Record<ExtractorHealth, LucideIcon> = {
+  ok: CircleCheck,
+  degraded: TriangleAlert,
+  failing: CircleX,
+  unknown: CircleDashed,
+};
+
 function HealthBadge({ health }: { health: ExtractorHealth }) {
+  const Icon = HEALTH_ICONS[health];
   return (
-    <span
-      className={`rounded px-2 py-0.5 text-xs font-medium ${healthBadgeClass(health)}`}
-    >
+    <Badge className={cn("rounded-md", healthBadgeClass(health))}>
+      <Icon aria-hidden="true" />
       {healthLabel(health)}
-    </span>
+    </Badge>
   );
 }
 
@@ -99,15 +122,32 @@ function Ago({ iso }: { iso: string | null | undefined }) {
   );
 }
 
+/** A titled part of the page. */
+function Section({
+  id,
+  title,
+  children,
+}: {
+  id: string;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section aria-labelledby={id} className="flex flex-col gap-3">
+      <h3 id={id} className="text-lg font-semibold">
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
 function SmokeTest({ run }: { run: SmokeTestRun | null }) {
   return (
-    <section aria-labelledby="smoke-heading" className="flex flex-col gap-2">
-      <h3 id="smoke-heading" className="text-lg font-semibold">
-        Live smoke test
-      </h3>
+    <Section id="smoke-heading" title="Live smoke test">
       {run ? (
-        <div className="flex flex-col gap-1 rounded-xl border border-border p-4">
-          <p className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col gap-2 rounded-xl border p-4">
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <HealthBadge health={run.success ? "ok" : "failing"} />
             <span>
               {run.success ? "Passed" : "Failed"} <Ago iso={run.at} />, in{" "}
@@ -119,108 +159,158 @@ function SmokeTest({ run }: { run: SmokeTestRun | null }) {
           )}
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">
+        <p className="max-w-prose text-sm text-pretty text-muted-foreground">
           Never run. Set <code>GATEWAY_SMOKE_TEST_TIME</code> (e.g.{" "}
           <code>05:30</code>) for the worker to check every Gateway operation
           against YouTube once a day.
         </p>
       )}
-    </section>
+    </Section>
   );
 }
 
 function Operations({ operations }: { operations: OperationStatus[] }) {
   return (
-    <section
-      aria-labelledby="operations-heading"
-      className="flex flex-col gap-2"
-    >
-      <h3 id="operations-heading" className="text-lg font-semibold">
-        Operations
-      </h3>
+    <Section id="operations-heading" title="Operations">
       {operations.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No requests in this window.
         </p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-muted-foreground">
-              <tr>
-                <th scope="col" className="py-2 pr-4 font-medium">
-                  Operation
-                </th>
-                <th scope="col" className="py-2 pr-4 font-medium">
-                  Health
-                </th>
-                <th scope="col" className="py-2 pr-4 text-right font-medium">
-                  Requests
-                </th>
-                <th scope="col" className="py-2 pr-4 text-right font-medium">
-                  Succeeded
-                </th>
-                <th scope="col" className="py-2 pr-4 text-right font-medium">
-                  Avg time
-                </th>
-                <th scope="col" className="py-2 pr-4 font-medium">
-                  Last success
-                </th>
-                <th scope="col" className="py-2 font-medium">
-                  Last failure
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {operations.map((op) => (
-                <tr key={op.operation}>
-                  <th scope="row" className="py-2 pr-4 font-normal">
-                    {operationLabel(op.operation)}
-                  </th>
-                  <td className="py-2 pr-4">
-                    <HealthBadge health={op.health} />
-                  </td>
-                  <td className="py-2 pr-4 text-right tabular-nums">
-                    {op.total}
-                  </td>
-                  <td className="py-2 pr-4 text-right tabular-nums">
-                    {formatPercent(op.success_rate)}
-                  </td>
-                  <td className="py-2 pr-4 text-right tabular-nums">
-                    {formatMilliseconds(op.avg_duration_ms)}
-                  </td>
-                  <td className="py-2 pr-4">
-                    <Ago iso={op.last_success_at} />
-                  </td>
-                  <td className="py-2" title={op.last_error ?? undefined}>
-                    <Ago iso={op.last_failure_at} />
-                    {op.last_error_kind && (
-                      <span className="text-muted-foreground">
-                        {" "}
-                        ({op.last_error_kind})
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <OperationsTable operations={operations} />
+          <OperationsList operations={operations} />
+        </>
       )}
-      <p className="text-xs text-muted-foreground">
+      <p className="max-w-prose text-sm text-pretty text-muted-foreground">
         Failures about the video or channel itself (removed, private, a URL that
         isn&apos;t YouTube&apos;s) don&apos;t count against an operation&apos;s
         health.
       </p>
-    </section>
+    </Section>
+  );
+}
+
+function LastFailure({ op }: { op: OperationStatus }) {
+  return (
+    <>
+      <Ago iso={op.last_failure_at} />
+      {op.last_error_kind && (
+        <span
+          className="text-muted-foreground"
+          title={op.last_error ?? undefined}
+        >
+          {" "}
+          ({op.last_error_kind})
+        </span>
+      )}
+    </>
+  );
+}
+
+/** The operations as a table, from the `sm` breakpoint up. */
+function OperationsTable({ operations }: { operations: OperationStatus[] }) {
+  const head = "py-2 pr-4 font-medium last:pr-0";
+  const number = "py-2.5 pr-4 text-right tabular-nums";
+  return (
+    <div className="hidden overflow-x-auto sm:block">
+      <table className="w-full text-left text-sm">
+        <thead className="border-b text-muted-foreground">
+          <tr>
+            <th scope="col" className={head}>
+              Operation
+            </th>
+            <th scope="col" className={head}>
+              Health
+            </th>
+            <th scope="col" className={cn(head, "text-right")}>
+              Requests
+            </th>
+            <th scope="col" className={cn(head, "text-right")}>
+              Succeeded
+            </th>
+            <th scope="col" className={cn(head, "text-right")}>
+              Avg time
+            </th>
+            <th scope="col" className={head}>
+              Last success
+            </th>
+            <th scope="col" className={head}>
+              Last failure
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {operations.map((op) => (
+            <tr key={op.operation}>
+              <th scope="row" className="py-2.5 pr-4 font-medium">
+                {operationLabel(op.operation)}
+              </th>
+              <td className="py-2.5 pr-4">
+                <HealthBadge health={op.health} />
+              </td>
+              <td className={number}>{op.total}</td>
+              <td className={number}>{formatPercent(op.success_rate)}</td>
+              <td className={cn(number, "whitespace-nowrap")}>
+                {formatMilliseconds(op.avg_duration_ms)}
+              </td>
+              <td className="py-2.5 pr-4 whitespace-nowrap">
+                <Ago iso={op.last_success_at} />
+              </td>
+              <td className="py-2.5 whitespace-nowrap">
+                <LastFailure op={op} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** The operations as a list, below the `sm` breakpoint, where the table
+ * would need scrolling sideways. */
+function OperationsList({ operations }: { operations: OperationStatus[] }) {
+  return (
+    <ul className="flex flex-col divide-y sm:hidden" aria-label="Operations">
+      {operations.map((op) => (
+        <li key={op.operation} className="flex flex-col gap-2 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-medium">{operationLabel(op.operation)}</span>
+            <HealthBadge health={op.health} />
+          </div>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+            <Metric label="Succeeded">
+              {formatPercent(op.success_rate)} of {op.total}
+            </Metric>
+            <Metric label="Avg time">
+              {formatMilliseconds(op.avg_duration_ms)}
+            </Metric>
+            <Metric label="Last success">
+              <Ago iso={op.last_success_at} />
+            </Metric>
+            <Metric label="Last failure">
+              <LastFailure op={op} />
+            </Metric>
+          </dl>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Metric({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="tabular-nums">{children}</dd>
+    </div>
   );
 }
 
 function RecentFailures({ failures }: { failures: FailedEvent[] }) {
   return (
-    <section aria-labelledby="failures-heading" className="flex flex-col gap-2">
-      <h3 id="failures-heading" className="text-lg font-semibold">
-        Recent failures
-      </h3>
+    <Section id="failures-heading" title="Recent failures">
       {failures.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No failures in this window.
@@ -228,21 +318,25 @@ function RecentFailures({ failures }: { failures: FailedEvent[] }) {
       ) : (
         <ul className="flex flex-col divide-y text-sm">
           {failures.map((failure) => (
-            <li key={failure.id} className="flex flex-col gap-0.5 py-2">
-              <div className="flex flex-wrap items-baseline gap-x-3">
+            <li key={failure.id} className="flex flex-col gap-1 py-3">
+              <div className="flex items-baseline justify-between gap-3">
                 <span className="font-medium">
                   {operationLabel(failure.operation)}
                 </span>
+                <span className="shrink-0 text-muted-foreground">
+                  <Ago iso={failure.at} />
+                </span>
+              </div>
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-muted-foreground">
                 {failure.target && (
-                  <code className="text-xs break-all">{failure.target}</code>
+                  <code className="rounded bg-secondary px-1.5 py-0.5 text-xs break-all text-foreground">
+                    {failure.target}
+                  </code>
                 )}
-                <span className="text-muted-foreground">
+                <span>
                   {failure.error_kind ?? "error"}
                   {!failure.breakage && " (not the extractor's fault)"}
                   {failure.attempts > 1 && `, ${failure.attempts} attempts`}
-                </span>
-                <span className="ml-auto text-muted-foreground">
-                  <Ago iso={failure.at} />
                 </span>
               </div>
               {failure.error && (
@@ -254,7 +348,7 @@ function RecentFailures({ failures }: { failures: FailedEvent[] }) {
           ))}
         </ul>
       )}
-    </section>
+    </Section>
   );
 }
 

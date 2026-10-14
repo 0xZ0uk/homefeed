@@ -16,7 +16,7 @@ import {
 } from "#/lib/external-sources";
 import { apiClient, apiErrorMessage } from "#/server/api";
 
-/** Server functions for the curation page's sources tab. */
+/** Server functions for the Subscriptions page's sources tab. */
 
 export interface NewSource {
   kind: SourceKind;

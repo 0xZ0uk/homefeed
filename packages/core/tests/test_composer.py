@@ -321,13 +321,13 @@ def test_explanations_name_the_largest_positive_term() -> None:
     assert explain(disliked, videos=RATED) == "New from your subscriptions"
 
 
-def test_explanations_for_topic_terms() -> None:
-    topics = {"woodworking": 0.6, "metalwork": 0.2, "drama": -0.9}
+def test_explanations_for_tag_terms() -> None:
+    tags = {"woodworking": 0.6, "metalwork": 0.2, "drama": -0.9}
     item = scored(
-        "a", channel(1), 0, prior="like", breakdown=ScoreBreakdown(channel=0.4, topics=topics)
+        "a", channel(1), 0, prior="like", breakdown=ScoreBreakdown(channel=0.4, tags=tags)
     )
 
-    assert explain(item) == "New from your subscriptions · matches your topic 'woodworking'"
+    assert explain(item) == "New from your subscriptions · tagged 'woodworking', which you follow"
 
 
 def test_explanations_for_the_model_term() -> None:

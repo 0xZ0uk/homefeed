@@ -16,7 +16,7 @@ from homefeed_core import feeds
 from homefeed_core.candidates import SUBSCRIPTION, record
 from homefeed_core.composer import ChannelRatings
 from homefeed_core.config import Settings
-from homefeed_core.curation import add_keyword_mute, add_topic, subscribe_tag
+from homefeed_core.curation import add_keyword_mute, subscribe_tag
 from homefeed_core.db import open_database
 from homefeed_core.embeddings import EMBEDDING_DIMENSIONS, StubEmbeddingProvider, store_embedding
 from homefeed_core.enricher import Enricher, enrich_candidates, get_features
@@ -138,7 +138,7 @@ def test_build_feed_ranks_composes_and_stores(sessions: sessionmaker[Session]) -
             "alpha",
             "channel",
             "similarity",
-            "topics",
+            "tags",
             "final",
             "similarity_features",
         }
@@ -397,7 +397,7 @@ def test_active_model_is_blended_in_by_rating_count(
         b = item.breakdown
         assert b.alpha == pytest.approx(5 / 55)
         assert b.model == pytest.approx(0.5 * b.channel + 0.1)
-        parts = b.alpha * b.model + b.channel + b.similarity + sum(b.topics.values())
+        parts = b.alpha * b.model + b.channel + b.similarity + sum(b.tags.values())
         assert math.isclose(item.score, parts) and item.score == b.final
     with sessions() as session:
         assert feeds.get_feed(session, TODAY) == feed
@@ -467,31 +467,18 @@ def test_muted_keywords_are_left_out(sessions: sessionmaker[Session]) -> None:
     assert [item.video_id for item in feed.items] == [vid(LOVED, 32)]
 
 
-def test_topic_boosts_reorder_and_appear_in_the_breakdown(
+def test_tag_boosts_reorder_and_appear_in_the_breakdown(
     sessions: sessionmaker[Session],
 ) -> None:
-    embedder = StubEmbeddingProvider(
-        vectors={
-            "woodworking": [1.0, 0.0, 0.0] + [0.0] * 381,
-            "drama": [0.0, 1.0, 0.0] + [0.0] * 381,
-        }
-    )
     with sessions.begin() as session:
         session.execute(text("DELETE FROM candidates"))
         add_videos(session, PLAIN, range(50, 54))
-        for n, vector in [(50, [0.0, 1.0, 0.0]), (51, [0.0, 0.0, 1.0]), (52, [1.0, 0.0, 0.0])]:
-            store_embedding(session, vid(PLAIN, n), vector + [0.0] * 381)
-        # 53 has no embedding (not enriched yet): no topic boosts.
-        add_topic(session, embedder, name="Woodworking", description="woodworking", weight=0.6)
-        add_topic(
-            session,
-            embedder,
-            name="Drama",
-            description="drama",
-            weight=-1.0,
-            decay=True,
-            now=NOW - timedelta(days=30),
-        )
+        set_llm_tags(session, vid(PLAIN, 50), [ProposedTag("Drama", 1.0)], prompt_version=1)
+        set_llm_tags(session, vid(PLAIN, 52), [ProposedTag("Woodworking", 1.0)], prompt_version=1)
+        woodworking, drama = resolve_tag(session, "Woodworking"), resolve_tag(session, "Drama")
+        assert woodworking is not None and drama is not None
+        subscribe_tag(session, woodworking, weight=0.6)
+        subscribe_tag(session, drama, weight=-1.0)
 
     feed = build(sessions, settings=Settings(feed_size=15))
 
@@ -499,20 +486,19 @@ def test_topic_boosts_reorder_and_appear_in_the_breakdown(
     by_id = {item.video_id: item for item in plain}
     # At most 2 per channel: the boosted one, then the newer unboosted.
     assert [item.video_id for item in plain] == [vid(PLAIN, 52), vid(PLAIN, 53)]
-    assert by_id[vid(PLAIN, 52)].breakdown.topics == {"Woodworking": pytest.approx(0.6)}
-    assert by_id[vid(PLAIN, 53)].breakdown.topics == {}
+    assert by_id[vid(PLAIN, 52)].breakdown.tags == {"Woodworking": pytest.approx(0.6)}
+    assert by_id[vid(PLAIN, 53)].breakdown.tags == {}
     assert by_id[vid(PLAIN, 52)].score == pytest.approx(0.6)
     with sessions() as session:
         stored = session.execute(
             text("SELECT breakdown FROM feed_items WHERE video_id = :id"), {"id": vid(PLAIN, 52)}
         ).scalar_one()
-    assert json.loads(stored)["topics"] == {"Woodworking": pytest.approx(0.6)}
+    assert json.loads(stored)["tags"] == {"Woodworking": pytest.approx(0.6)}
 
 
 def test_tag_subscriptions_boost_tagged_videos_in_the_feed(
     sessions: sessionmaker[Session],
 ) -> None:
-    embedder = StubEmbeddingProvider()
     with sessions.begin() as session:
         session.execute(text("DELETE FROM candidates"))
         add_videos(session, PLAIN, range(50, 54))
@@ -526,36 +512,14 @@ def test_tag_subscriptions_boost_tagged_videos_in_the_feed(
         remove_video_tag(session, vid(PLAIN, 51), "rust")  # a removed link does not count
         rust = resolve_tag(session, "rust")
         assert rust is not None
-        subscribe_tag(session, embedder, rust, weight=0.5)
+        subscribe_tag(session, rust, weight=0.5)
 
     feed = build(sessions, settings=Settings(feed_size=15))
 
     plain = {item.video_id: item for item in feed.items if item.channel_id == PLAIN}
-    assert plain[vid(PLAIN, 50)].breakdown.topics == {"rust": pytest.approx(0.4)}
-    assert all(item.breakdown.topics == {} for key, item in plain.items() if key != vid(PLAIN, 50))
+    assert plain[vid(PLAIN, 50)].breakdown.tags == {"rust": pytest.approx(0.4)}
+    assert all(item.breakdown.tags == {} for key, item in plain.items() if key != vid(PLAIN, 50))
     assert plain[vid(PLAIN, 50)].score == pytest.approx(0.4)
-
-
-def test_decayed_suppression(sessions: sessionmaker[Session]) -> None:
-    embedder = StubEmbeddingProvider(vectors={"drama": [1.0] + [0.0] * 383})
-    with sessions.begin() as session:
-        session.execute(text("DELETE FROM candidates"))
-        add_videos(session, PLAIN, range(60, 61))
-        store_embedding(session, vid(PLAIN, 60), [1.0] + [0.0] * 383)
-        add_topic(
-            session,
-            embedder,
-            name="Drama",
-            description="drama",
-            weight=-1.0,
-            decay=True,
-            now=NOW - timedelta(days=30),
-        )
-
-    [item] = build(sessions).items
-
-    assert item.breakdown.topics == {"Drama": pytest.approx(-0.5)}
-    assert item.score == pytest.approx(-0.5)
 
 
 def test_candidate_window(sessions: sessionmaker[Session]) -> None:

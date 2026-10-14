@@ -119,8 +119,8 @@ export function SuggestedChannels() {
       {suggestions.length === 0 ? (
         <p className="text-muted-foreground">
           No suggestions yet. Set a channel's prior to Love or Like in{" "}
-          <Link to="/curation" className="underline">
-            Curation
+          <Link to="/subscriptions" className="underline">
+            Subscriptions
           </Link>
           , or rate videos A-- or higher, and channels they feature show up
           here.

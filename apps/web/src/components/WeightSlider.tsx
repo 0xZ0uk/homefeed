@@ -4,10 +4,9 @@ import {
   clampWeight,
   formatWeight,
   weightEffect,
-} from "#/lib/topics";
+} from "#/lib/tag-subscriptions";
 
-/** The topic weight slider, from Suppress (-1) to Boost (+1); shared by the
- * Topics tab and the tag page. */
+/** The tag weight slider, from Suppress (-1) to Boost (+1), on the tag page. */
 export function WeightSlider({
   id,
   label,

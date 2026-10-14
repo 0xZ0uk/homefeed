@@ -1,4 +1,4 @@
-/** Wording for the curation page's tags tab. */
+/** Wording for the Subscriptions page's tags tab. */
 
 export function videoCount(count: number): string {
   return `${count} ${count === 1 ? "video" : "videos"}`;

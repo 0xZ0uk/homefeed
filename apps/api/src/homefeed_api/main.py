@@ -99,7 +99,7 @@ app = FastAPI(title="Homefeed API", generate_unique_id_function=operation_id, li
 
 @app.exception_handler(EmbeddingError)
 def embedding_unavailable(_request: Request, error: EmbeddingError) -> JSONResponse:
-    """Saving a topic or tag embeds its text; with the embeddings API unreachable or
+    """Saving a tag embeds its text; with the embeddings API unreachable or
     refusing, say so rather than fail with a 500. Nothing is saved."""
     logger.warning("Embedding failed: %s", error)
     return JSONResponse(
@@ -155,9 +155,9 @@ def get_playback() -> playback.Playback:
 
 
 def get_embedder() -> EmbeddingProvider:
-    """The process-wide embedding provider, for topic descriptions and tag labels.
+    """The process-wide embedding provider, for tag labels.
 
-    A local model loads on first use, so the API only loads it once a topic is saved.
+    A local model loads on first use, so the API only loads it once a tag is saved.
     Tests override this dependency with a `StubEmbeddingProvider`.
     """
     return get_embedding_provider()
@@ -679,178 +679,6 @@ class SimilarityFeaturesOut(BaseModel):
     bottom_tier: TierSimilarityOut | None
 
 
-TopicName = Annotated[
-    str,
-    Field(
-        min_length=1,
-        max_length=curation.TOPIC_NAME_MAX_LENGTH,
-        description="A short label, unique ignoring case; it names the topic's boost "
-        "in score breakdowns",
-    ),
-]
-TopicDescription = Annotated[
-    str,
-    Field(
-        min_length=1,
-        max_length=curation.TOPIC_DESCRIPTION_MAX_LENGTH,
-        description="What the topic is about, in plain language; videos similar to it "
-        "are boosted (or suppressed)",
-    ),
-]
-TopicWeight = Annotated[
-    float,
-    Field(
-        ge=-1,
-        le=1,
-        description="-1 (suppress) to 1 (boost); a fully matching video gets this much "
-        "added to its score",
-    ),
-]
-
-
-TopicMatchMode = Annotated[
-    curation.MatchMode,
-    Field(
-        description="What counts as a match: `embedding` (description similarity), `tag` "
-        "(the video carries the topic's tag) or `both` (the stronger of the two). The last "
-        "two need a tag."
-    ),
-]
-
-
-class TopicInput(BaseModel):
-    name: TopicName
-    description: TopicDescription | None = Field(
-        default=None,
-        min_length=1,
-        max_length=curation.TOPIC_DESCRIPTION_MAX_LENGTH,
-        description="Required unless the topic has a tag, whose label it defaults to",
-    )
-    weight: TopicWeight
-    decay: bool = Field(
-        default=False,
-        description=f"Halve the weight every {curation.TOPIC_HALF_LIFE_DAYS} days "
-        "unless reaffirmed",
-    )
-    tag: str | None = Field(
-        default=None,
-        max_length=100,
-        description="Slug (or alias) of the tag the topic is about; a tag has at most one "
-        "topic. Makes the default `match_mode` `tag`.",
-    )
-    match_mode: TopicMatchMode | None = None
-
-
-class TopicUpdateInput(BaseModel):
-    """Fields to change; omitted fields keep their current value."""
-
-    name: TopicName | None = None
-    description: TopicDescription | None = None
-    weight: TopicWeight | None = None
-    decay: bool | None = None
-    match_mode: TopicMatchMode | None = None
-    hide: bool | None = Field(
-        default=None,
-        description="Drop the tag's videos from the feed. Only a tag topic with weight -1 "
-        "can turn it on (422 otherwise); setting any other weight turns it off.",
-    )
-
-
-TOPIC_NOT_FOUND: dict[int | str, dict[str, Any]] = {
-    404: {"model": ErrorDetail, "description": "No such topic"}
-}
-TOPIC_NAME_TAKEN: dict[int | str, dict[str, Any]] = {
-    409: {"model": ErrorDetail, "description": "Another topic has this name"}
-}
-TopicId = Annotated[int, Path(ge=1, description="Topic id")]
-
-
-@app.get("/topics", tags=["topics"])
-def list_topics(session: SessionDep) -> list[curation.Topic]:
-    """All topics, alphabetically, with their current (decayed) weights."""
-    return curation.list_topics(session)
-
-
-@app.post(
-    "/topics", tags=["topics"], status_code=status.HTTP_201_CREATED, responses=TOPIC_NAME_TAKEN
-)
-def add_topic(body: TopicInput, session: SessionDep, embedder: EmbedderDep) -> curation.Topic:
-    """Create a topic; its description is embedded right away.
-
-    A blank name or description, or an unknown tag, is a 422 with a string `detail`; a
-    name or tag that already has a topic is a 409.
-    """
-    tag = None
-    if body.tag is not None:
-        tag = tags.resolve_slug(session, tags.slugify(body.tag))
-        if tag is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "No such tag")
-    try:
-        return curation.add_topic(
-            session,
-            embedder,
-            name=body.name,
-            description=body.description,
-            weight=body.weight,
-            decay=body.decay,
-            tag_id=None if tag is None else tag.id,
-            match_mode=body.match_mode,
-        )
-    except curation.DuplicateTopicError as error:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
-    except ValueError as error:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
-
-
-@app.patch("/topics/{topic_id}", tags=["topics"], responses={**TOPIC_NOT_FOUND, **TOPIC_NAME_TAKEN})
-def update_topic(
-    topic_id: TopicId, body: TopicUpdateInput, session: SessionDep, embedder: EmbedderDep
-) -> curation.Topic:
-    """Change a topic. A new description is embedded again; setting the weight or turning
-    decay on reaffirms the topic."""
-    try:
-        topic = curation.update_topic(
-            session,
-            embedder,
-            topic_id,
-            name=body.name,
-            description=body.description,
-            weight=body.weight,
-            decay=body.decay,
-            match_mode=body.match_mode,
-            hide=body.hide,
-        )
-    except curation.DuplicateTopicError as error:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
-    except ValueError as error:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
-    if topic is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Topic not found")
-    return topic
-
-
-@app.post("/topics/{topic_id}/reaffirm", tags=["topics"], responses=TOPIC_NOT_FOUND)
-def reaffirm_topic(topic_id: TopicId, session: SessionDep) -> curation.Topic:
-    """Restart a decaying topic's decay, so its full weight applies again."""
-    topic = curation.reaffirm_topic(session, topic_id)
-    if topic is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Topic not found")
-    return topic
-
-
-@app.delete(
-    "/topics/{topic_id}",
-    tags=["topics"],
-    status_code=status.HTTP_204_NO_CONTENT,
-    responses=TOPIC_NOT_FOUND,
-)
-def delete_topic(topic_id: TopicId, session: SessionDep) -> Response:
-    """Remove a topic."""
-    if not curation.delete_topic(session, topic_id):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Topic not found")
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
 TAG_NOT_FOUND: dict[int | str, dict[str, Any]] = {
     404: {"model": ErrorDetail, "description": "No such tag"}
 }
@@ -877,10 +705,14 @@ def list_tags_admin(
         Query(max_length=100, description="Keep tags whose label, slug or an alias contains this"),
     ] = None,
     limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+    subscription: Annotated[
+        tags.AdminTagFilter | None,
+        Query(description="Keep only subscribed (weight >= 0) or muted (weight < 0) tags"),
+    ] = None,
 ) -> list[tags.AdminTag]:
-    """Tags for the Curation tab, with their video counts (removed links excluded) and
-    aliases, most videos first."""
-    return tags.list_admin_tags(session, q, limit=limit)
+    """Tags for the Subscriptions tab, with their video counts (removed links excluded),
+    aliases and subscription weights (null when not subscribed), most videos first."""
+    return tags.list_admin_tags(session, q, limit=limit, subscription=subscription)
 
 
 @app.patch(
@@ -1277,7 +1109,7 @@ def remove_playlist_item(
 
 class ScoreBreakdownOut(BaseModel):
     """How an item's score was made:
-    `alpha * model + channel + similarity + sum(topics) = final`."""
+    `alpha * model + channel + similarity + sum(tags) = final`."""
 
     model: float
     alpha: float
@@ -1285,8 +1117,9 @@ class ScoreBreakdownOut(BaseModel):
     similarity: float = Field(
         description="Closeness to top-tier rated videos minus closeness to bottom-tier ones"
     )
-    topics: dict[str, float] = Field(
-        description="Boost (or suppression) per topic name; only topics that matched"
+    tags: dict[str, float] = Field(
+        description="Boost (or suppression) per subscribed or muted tag, by label; only "
+        "tags the video carries"
     )
     final: float
     similarity_features: SimilarityFeaturesOut | None = Field(
@@ -1460,7 +1293,9 @@ class ScoreShareOut(BaseModel):
     kind of score term. They sum to 1."""
 
     model: float = Field(description="`alpha * model`, the trained model's blended prediction")
-    curation: float = Field(description="`channel` and `topics`: your channel priors and topics")
+    curation: float = Field(
+        description="`channel` and `tags`: your channel priors and tag subscriptions"
+    )
     similarity: float = Field(
         description="Closeness to top- and bottom-tier rated videos (rules-based, learned "
         "from ratings rather than set by you)"
@@ -2351,15 +2186,26 @@ def update_user_settings(
 
 # Keep the tag routes last. `/tags/{slug}` matches any one-segment path, so literal routes
 # like `GET /tags/suggest` must be declared above it (routes match in declaration order).
-class TagTopic(BaseModel):
-    """The subscription to a tag: the topic backed by it."""
+TagWeight = Annotated[
+    float,
+    Field(
+        ge=-1,
+        le=1,
+        description="-1 (suppress) to 1 (boost); a video carrying the tag gets this much, "
+        "times the tag's confidence, added to its score",
+    ),
+]
 
-    id: int
-    weight: float = Field(description="The slider, -1 to 1")
-    effective_weight: float = Field(description="The weight now, after decay")
-    decay: bool
-    match_mode: curation.MatchMode
-    hide: bool = Field(description="Videos with the tag are dropped from the feed")
+
+class TagSubscriptionUpdate(BaseModel):
+    """Fields to change; omitted fields keep their current value."""
+
+    weight: TagWeight | None = None
+    hide: bool | None = Field(
+        default=None,
+        description="Drop the tag's videos from the feed. Only a tag with weight -1 can "
+        "turn it on (422 otherwise); setting any other weight turns it off.",
+    )
 
 
 class TagDetail(BaseModel):
@@ -2370,12 +2216,21 @@ class TagDetail(BaseModel):
     videos: list[tags.TagVideo] = Field(
         description="One page of the videos carrying the tag, newest published first"
     )
-    topic: TagTopic | None = Field(
-        description="The topic subscribing to this tag, or null when not subscribed"
+    subscription: curation.TagSubscription | None = Field(
+        description="Your subscription to the tag (a negative weight: muted), or null"
     )
 
 
 TagSlug = Annotated[str, Path(max_length=100, description="A tag's slug, or one of its aliases")]
+NOT_SUBSCRIBED: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorDetail, "description": "No such tag, or not subscribed"}
+}
+
+
+@app.get("/tag-subscriptions", tags=["tags"])
+def list_tag_subscriptions(session: SessionDep) -> list[curation.TagSubscription]:
+    """Every subscribed tag (positive weight) and muted tag (negative weight), by label."""
+    return curation.list_tag_subscriptions(session)
 
 
 @app.get("/tags", tags=["tags"])
@@ -2418,21 +2273,7 @@ def get_tag(
     return TagDetail(
         tag=tags.TagSummary(tag.id, tag.slug, tag.label, tags.count_tag_videos(session, tag.id)),
         videos=tags.list_tag_videos(session, tag.id, limit=limit, offset=offset),
-        topic=_tag_topic(session, tag.id),
-    )
-
-
-def _tag_topic(session: Session, tag_id: int) -> TagTopic | None:
-    topic = curation.topic_for_tag(session, tag_id)
-    if topic is None:
-        return None
-    return TagTopic(
-        id=topic.id,
-        weight=topic.weight,
-        effective_weight=topic.effective_weight,
-        decay=topic.decay,
-        match_mode=topic.match_mode,
-        hide=topic.hide,
+        subscription=curation.tag_subscription(session, tag.id),
     )
 
 
@@ -2441,25 +2282,25 @@ def _tag_topic(session: Session, tag_id: int) -> TagTopic | None:
     tags=["tags"],
     responses={404: {"model": ErrorDetail, "description": "No such tag"}},
 )
-def subscribe_tag(slug: TagSlug, session: SessionDep, embedder: EmbedderDep) -> curation.Topic:
-    """Subscribe to a tag: its videos rank higher. Makes a tag-backed topic (weight +0.5,
-    matching by tag) named after the tag; change it with `PATCH /topics/{id}`. Returns the
-    existing topic if already subscribed."""
+def subscribe_tag(slug: TagSlug, session: SessionDep) -> curation.TagSubscription:
+    """Subscribe to a tag: its videos rank higher (weight +0.5; change it with
+    `PATCH /tags/{slug}/subscription`). Returns the existing subscription, or mute, as it
+    is."""
     tag = tags.resolve_slug(session, slug)
     if tag is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such tag")
-    topic, _ = curation.subscribe_tag(session, embedder, tag)
-    return topic
+    subscription, _ = curation.subscribe_tag(session, tag)
+    return subscription
 
 
 @app.delete(
     "/tags/{slug}/subscribe",
     tags=["tags"],
     status_code=status.HTTP_204_NO_CONTENT,
-    responses={404: {"model": ErrorDetail, "description": "No such tag, or not subscribed"}},
+    responses=NOT_SUBSCRIBED,
 )
 def unsubscribe_tag(slug: TagSlug, session: SessionDep) -> Response:
-    """Unsubscribe from a tag, deleting its topic."""
+    """Unsubscribe from a tag (or unmute it)."""
     tag = tags.resolve_slug(session, slug)
     if tag is None or not curation.unsubscribe_tag(session, tag.id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not subscribed to this tag")
@@ -2471,14 +2312,14 @@ def unsubscribe_tag(slug: TagSlug, session: SessionDep) -> Response:
     tags=["tags"],
     responses={404: {"model": ErrorDetail, "description": "No such tag"}},
 )
-def mute_tag(slug: TagSlug, session: SessionDep, embedder: EmbedderDep) -> curation.Topic:
-    """Mute a tag: its videos rank lower. Makes a tag-backed topic with weight -0.5, or
-    flips an existing subscription to -0.5; a tag that is already muted keeps its weight.
-    Change the weight, or hide the videos at -1, with `PATCH /topics/{id}`."""
+def mute_tag(slug: TagSlug, session: SessionDep) -> curation.TagSubscription:
+    """Mute a tag: its videos rank lower. Makes a subscription with weight -0.5, or flips
+    an existing one to -0.5; a tag that is already muted keeps its weight. Change the
+    weight, or hide the videos at -1, with `PATCH /tags/{slug}/subscription`."""
     tag = tags.resolve_slug(session, slug)
     if tag is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such tag")
-    return curation.mute_tag(session, embedder, tag)
+    return curation.mute_tag(session, tag)
 
 
 @app.delete(
@@ -2488,9 +2329,35 @@ def mute_tag(slug: TagSlug, session: SessionDep, embedder: EmbedderDep) -> curat
     responses={404: {"model": ErrorDetail, "description": "No such tag, or not muted"}},
 )
 def unmute_tag(slug: TagSlug, session: SessionDep) -> Response:
-    """Unmute a tag, deleting its topic. A tag with a positive weight is a subscription,
+    """Unmute a tag, deleting its subscription. A tag with a positive weight is a subscription,
     not a mute: that is a 404 (use `DELETE /tags/{slug}/subscribe`)."""
     tag = tags.resolve_slug(session, slug)
     if tag is None or not curation.unmute_tag(session, tag.id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not muting this tag")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.patch(
+    "/tags/{slug}/subscription",
+    tags=["tags"],
+    responses={
+        **NOT_SUBSCRIBED,
+        422: {"model": ErrorDetail, "description": "Hiding at a weight other than -1"},
+    },
+)
+def update_tag_subscription(
+    slug: TagSlug, body: TagSubscriptionUpdate, session: SessionDep
+) -> curation.TagSubscription:
+    """Change a subscribed or muted tag's weight, or hide its videos (only at -1)."""
+    tag = tags.resolve_slug(session, slug)
+    if tag is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not subscribed to this tag")
+    try:
+        subscription = curation.update_tag_subscription(
+            session, tag.id, weight=body.weight, hide=body.hide
+        )
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    if subscription is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not subscribed to this tag")
+    return subscription

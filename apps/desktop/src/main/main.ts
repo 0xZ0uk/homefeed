@@ -5,6 +5,7 @@
  * refreshing. See README.md for the runtime layout and paths.ts for how children launch.
  */
 import { mkdirSync } from "node:fs";
+import { hostname } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,6 +21,7 @@ import {
   Tray,
 } from "electron";
 
+import { isExtractAndRun, lockHolderPid, whenExited } from "./appimage.js";
 import {
   HIDDEN_FLAG,
   linuxAutostartEnabled,
@@ -485,7 +487,14 @@ function killServicesSync(): void {
 }
 
 if (!app.requestSingleInstanceLock()) {
-  app.quit();
+  // The running instance shows its window. From an extract-and-run AppImage, exiting now
+  // would let this launch's runtime delete the directory that instance runs from (see
+  // appimage.ts): wait, windowless, until it has exited.
+  const primary = isExtractAndRun(env)
+    ? lockHolderPid(app.getPath("userData"), hostname())
+    : undefined;
+  if (primary === undefined) app.quit();
+  else whenExited(primary, () => app.exit(0));
 } else {
   // Whatever happens to the shell, its children must not outlive it.
   process.on("exit", killServicesSync);

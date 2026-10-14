@@ -5,15 +5,16 @@ import { useState } from "react";
 import { HideTagCheckbox } from "#/components/HideTagCheckbox";
 import { Button } from "#/components/ui/button";
 import { WeightSlider } from "#/components/WeightSlider";
-import { isMuted } from "#/lib/topics";
+import { isMuted } from "#/lib/tag-subscriptions";
+import { tagAdminKey } from "#/server/tag-admin";
 import {
-  editTopic,
+  editTagSubscription,
   muteTagBySlug,
   subscribeToTag,
-  topicsQuery,
+  tagSubscriptionsQuery,
   unmuteTagBySlug,
   unsubscribeFromTag,
-} from "#/server/topics";
+} from "#/server/tag-subscriptions";
 
 /**
  * The tag page's relation to the tag, in three states. None: Subscribe (weight
@@ -23,14 +24,17 @@ import {
  * lower in the home feed by the weight, more for confident tags.
  */
 export function SubscribeTag({ detail }: { detail: TagDetail }) {
-  const { tag, topic } = detail;
+  const { tag, subscription } = detail;
   const queryClient = useQueryClient();
-  // The sidebar lists subscribed and muted tags from the topics, and this
-  // page's tag from its own query.
+  // The sidebar lists subscribed and muted tags from the subscriptions, the
+  // Tags tab from its own queries, and this page's tag from its own query.
   const refresh = () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: ["tag", tag.slug] }),
-      queryClient.invalidateQueries({ queryKey: topicsQuery.queryKey }),
+      queryClient.invalidateQueries({
+        queryKey: tagSubscriptionsQuery.queryKey,
+      }),
+      queryClient.invalidateQueries({ queryKey: tagAdminKey }),
     ]);
   const subscribe = useMutation({
     mutationFn: () => subscribeToTag({ data: { slug: tag.slug } }),
@@ -50,16 +54,16 @@ export function SubscribeTag({ detail }: { detail: TagDetail }) {
   });
   const update = useMutation({
     mutationFn: (changes: { weight?: number; hide?: boolean }) =>
-      editTopic({ data: { id: topic?.id ?? 0, ...changes } }),
+      editTagSubscription({ data: { slug: tag.slug, ...changes } }),
     onSettled: refresh,
   });
   // The slider's position while dragging; saved when let go.
-  const [weight, setWeight] = useState(topic?.weight ?? 0);
-  const [savedWeight, setSavedWeight] = useState(topic?.weight ?? 0);
-  if ((topic?.weight ?? 0) !== savedWeight) {
+  const [weight, setWeight] = useState(subscription?.weight ?? 0);
+  const [savedWeight, setSavedWeight] = useState(subscription?.weight ?? 0);
+  if ((subscription?.weight ?? 0) !== savedWeight) {
     // The stored weight changed (saved here or elsewhere): follow it.
-    setSavedWeight(topic?.weight ?? 0);
-    setWeight(topic?.weight ?? 0);
+    setSavedWeight(subscription?.weight ?? 0);
+    setWeight(subscription?.weight ?? 0);
   }
   const busy =
     subscribe.isPending ||
@@ -79,12 +83,12 @@ export function SubscribeTag({ detail }: { detail: TagDetail }) {
   const message =
     [subscribe.data, mute.data, update.data].find((r) => r?.ok === false)
       ?.message ?? "Couldn't save that change. Try again.";
-  const muted = topic != null && isMuted(topic);
+  const muted = subscription != null && isMuted(subscription);
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-        {topic ? (
+        {subscription ? (
           <>
             <p className="text-sm font-medium">
               {muted ? "Muted" : "Subscribed"}
@@ -124,7 +128,7 @@ export function SubscribeTag({ detail }: { detail: TagDetail }) {
               disabled={unsubscribe.isPending || unmute.isPending}
               onChange={setWeight}
               onCommit={(value) => {
-                if (value !== topic.weight && !update.isPending) {
+                if (value !== subscription.weight && !update.isPending) {
                   update.mutate({ weight: value });
                 }
               }}
@@ -154,11 +158,11 @@ export function SubscribeTag({ detail }: { detail: TagDetail }) {
           </>
         )}
       </div>
-      {topic && muted && (
+      {subscription && muted && (
         <HideTagCheckbox
           id="tag-hide"
-          weight={topic.weight}
-          checked={topic.hide}
+          weight={subscription.weight}
+          checked={subscription.hide}
           disabled={busy}
           onChange={(hide) => update.mutate({ hide })}
         />

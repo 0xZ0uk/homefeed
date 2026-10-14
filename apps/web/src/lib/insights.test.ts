@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   formatPercent,
   formatWeek,
+  isGoodBucket,
+  labelStride,
   overallGoodRate,
   overallRatingRate,
   plural,
@@ -107,7 +109,22 @@ describe("totals", () => {
   });
 });
 
+describe("score buckets", () => {
+  it("counts a bucket as good when all of it reaches the threshold", () => {
+    expect(isGoodBucket(6, 5.5)).toBe(true);
+    expect(isGoodBucket(5, 5.5)).toBe(false);
+    expect(isGoodBucket(10, 5.5)).toBe(true);
+  });
+});
+
 describe("trend chart", () => {
+  it("thins x-axis labels so they stay apart", () => {
+    expect(labelStride(12, 1100, 64)).toBe(1);
+    expect(labelStride(12, 580, 64)).toBe(2);
+    expect(labelStride(12, 280, 64)).toBe(3);
+    expect(labelStride(1, 280, 64)).toBe(1);
+  });
+
   it("spreads weeks across the plot and maps rates bottom to top", () => {
     const points = trendPoints(
       [

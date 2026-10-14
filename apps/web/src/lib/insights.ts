@@ -37,6 +37,15 @@ export function totalScoreCounts(
   return [...totals].map(([score, count]) => ({ score, count }));
 }
 
+/**
+ * Whether every rating in a whole-score bucket counts as good. A bucket holds
+ * the scores that round to it (6 holds 5.5 to 6.4), so it is good when its
+ * lowest score reaches `goodThreshold`.
+ */
+export function isGoodBucket(score: number, goodThreshold: number): boolean {
+  return score - 0.5 >= goodThreshold;
+}
+
 /** Good rate over all `weeks` (good ratings / ratings), or null. */
 export function overallGoodRate(
   weeks: readonly WeekInsightsOut[],
@@ -109,6 +118,20 @@ export function trendPath(points: readonly TrendPoint[]): string {
     drawing = true;
   }
   return commands.join(" ");
+}
+
+/**
+ * Label every `n`th week on the x axis, the smallest `n` that keeps labels at
+ * least `minGap` apart over `plotWidth`.
+ */
+export function labelStride(
+  count: number,
+  plotWidth: number,
+  minGap: number,
+): number {
+  if (count < 2) return 1;
+  const step = plotWidth / (count - 1);
+  return Math.max(1, Math.ceil(minGap / step));
 }
 
 function round(value: number): number {

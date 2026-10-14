@@ -17,7 +17,7 @@ test("edit a channel prior and see it in the feed", async ({
   page,
   request,
 }) => {
-  await open(page, "/curation");
+  await open(page, "/subscriptions");
 
   const row = page
     .getByRole("list", { name: "Subscriptions" })

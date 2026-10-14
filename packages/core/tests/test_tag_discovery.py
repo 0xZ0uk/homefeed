@@ -10,9 +10,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from homefeed_core.candidates import TAG, Candidate, generate
 from homefeed_core.candidates import list_candidates as pool
-from homefeed_core.curation import add_topic, subscribe_tag
+from homefeed_core.curation import subscribe_tag
 from homefeed_core.db import open_database
-from homefeed_core.embeddings import StubEmbeddingProvider
 from homefeed_core.gateway import RateLimitedError
 from homefeed_core.gateway.fake import FakeGateway, make_channel, make_video
 from homefeed_core.ratings import set_rating
@@ -60,10 +59,8 @@ def make_tag(session: Session, label: str) -> Tag:
 
 def subscribe(sessions: sessionmaker[Session], label: str, weight: float = 0.5) -> int:
     with sessions.begin() as session:
-        topic, _ = subscribe_tag(
-            session, StubEmbeddingProvider(), make_tag(session, label), weight=weight, now=T0
-        )
-    return topic.id
+        subscription, _ = subscribe_tag(session, make_tag(session, label), weight=weight, now=T0)
+    return subscription.tag_id
 
 
 def videos(prefix: str, count: int, channel: object = WOOD) -> list:  # type: ignore[type-arg]
@@ -101,15 +98,11 @@ def test_searches_each_subscribed_tag_and_records_candidates_by_slug(
     assert found == {(TAG, "woodworking"), (TAG, "blacksmithing")}
 
 
-def test_only_tags_with_positive_effective_weight_are_searched(
+def test_only_tags_with_positive_weight_are_searched(
     sessions: sessionmaker[Session],
 ) -> None:
     subscribe(sessions, "Muted tag", weight=-0.5)
     subscribe(sessions, "Zero tag", weight=0)
-    with sessions.begin() as session:
-        add_topic(
-            session, StubEmbeddingProvider(), name="Plain topic", description="plain", weight=1
-        )  # no tag
     subscribe(sessions, "Wanted")
     gateway = FakeGateway()
 

@@ -1,4 +1,4 @@
-import { HIDE_WEIGHT } from "#/lib/topics";
+import { HIDE_WEIGHT } from "#/lib/tag-subscriptions";
 
 /**
  * Hides a muted tag's videos from the feed instead of only ranking them down.
@@ -13,7 +13,7 @@ export function HideTagCheckbox({
   onChange,
 }: {
   id: string;
-  /** The topic's stored weight. */
+  /** The subscription's weight. */
   weight: number;
   checked: boolean;
   disabled?: boolean;

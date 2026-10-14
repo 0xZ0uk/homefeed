@@ -237,7 +237,7 @@ def _rank_and_compose(
     pool = load_rank_candidates(session, since=now - timedelta(days=settings.feed_candidate_days))
     # Uploads of channels unsubscribed since they were polled no longer belong.
     pool = [c for c in pool if c.source != SUBSCRIPTION or c.channel_id in curation]
-    topics = curation_prefs.topic_vectors(session, now=now)
+    tag_subscriptions = curation_prefs.list_tag_subscriptions(session)
     active = load_active_model(
         session, data_dir=settings.data_dir, embedding_model=settings.embedding_model
     )
@@ -248,14 +248,13 @@ def _rank_and_compose(
         history=load_history(session),
         bounds=DurationBounds(user.feed_min_duration_seconds, user.feed_max_duration_seconds),
         keyword_mutes=KeywordMutes(curation_prefs.muted_keywords(session)),
-        topics=topics,
+        tags=tag_subscriptions,
         embeddings=get_embeddings(session, [c.video_id for c in pool]),
         rated_tiers=load_rated_tiers(session),
         llm_tags=get_scores(session, [c.video_id for c in pool]),
-        video_tags=_tag_confidences(session, topics, [c.video_id for c in pool]),
+        video_tags=_tag_confidences(session, tag_subscriptions, [c.video_id for c in pool]),
         model=None if active is None else ranker_model(active.model, now=now),
         similarity_floor=floors.similarity_floor,
-        topic_similarity_floor=floors.topic_similarity_floor,
     )
     if exclude:
         scored = [item for item in scored if item.candidate.video_id not in exclude]
@@ -271,11 +270,13 @@ def _rank_and_compose(
 
 
 def _tag_confidences(
-    session: Session, topics: Sequence[curation_prefs.TopicVector], video_ids: Sequence[str]
+    session: Session,
+    tag_subscriptions: Sequence[curation_prefs.TagSubscription],
+    video_ids: Sequence[str],
 ) -> dict[str, dict[int, float]]:
-    """For tag-matched topics: each video's tags as tag id to confidence. Empty (and no
-    query) when no topic matches by tag or hides one."""
-    if not any(topic.match_mode != "embedding" or topic.hide for topic in topics):
+    """For the subscribed and muted tags: each video's tags as tag id to confidence. Empty
+    (and no query) without any."""
+    if not tag_subscriptions:
         return {}
     return {
         video_id: {tag.tag_id: tag.confidence for tag in video_tags}

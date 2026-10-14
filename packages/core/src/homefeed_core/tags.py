@@ -19,7 +19,7 @@ Aliases are checked before embeddings, so an alias made by hand (source 'user') 
 wins over a similarity match.
 
 Every tag stores the embedding of its label and the model that made it (the same model
-as videos and topics). A tag without one (made before embeddings existed, or while the
+as videos). A tag without one (made before embeddings existed, or while the
 embedder failed) just doesn't take part in step 4; `refresh_tag_embeddings` gives it one,
 and re-embeds all after an `EMBEDDING_MODEL` change (the worker calls it).
 
@@ -42,7 +42,7 @@ from typing import Literal, cast
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
-from homefeed_core.curation import relink_tag_topic
+from homefeed_core.curation import relink_tag_subscription
 from homefeed_core.embeddings import Embedding, EmbeddingProvider, serialize_embedding
 from homefeed_core.gateway.events import format_timestamp
 
@@ -652,13 +652,20 @@ class TagAlias:
 
 @dataclass(frozen=True)
 class AdminTag:
-    """A tag with what the Curation tab shows: its videos and other spellings."""
+    """A tag with what the Curation tab shows: its videos, other spellings and whether
+    you follow it."""
 
     id: int
     slug: str
     label: str
     video_count: int  # videos linked, removed links excluded
     aliases: list[TagAlias]
+    # The weight of your subscription (negative: muted), or None without one.
+    subscription_weight: float | None = None
+
+
+# Which tags `list_admin_tags` keeps: those with a subscription of weight >= 0, or < 0.
+AdminTagFilter = Literal["subscribed", "muted"]
 
 
 def _tag_by_id(session: Session, tag_id: int) -> Tag | None:
@@ -773,8 +780,8 @@ def merge_tags(
     Spellings: the source's slug and all its aliases become 'user' aliases of the target,
     so they resolve to it from now on, before any embedding match.
 
-    Subscriptions: the source's tag-backed topic moves to the target, unless the target
-    has one already, which stands (`curation.relink_tag_topic`).
+    Subscriptions: the source's subscription (or mute) moves to the target, unless the
+    target has one already, which stands (`curation.relink_tag_subscription`).
 
     Video links move to the target. A video linked to both keeps one link, by these
     rules in order:
@@ -797,7 +804,7 @@ def merge_tags(
     )
     _put_user_alias(session, source.slug, target.id, timestamp)
     # The source's subscription follows it (deleting the tag would cascade it away).
-    relink_tag_topic(session, source.id, target.id)
+    relink_tag_subscription(session, source.id, target.id)
     rows = session.execute(
         text(
             """
@@ -904,29 +911,42 @@ def _like_pattern(query: str) -> str:
 
 
 def list_admin_tags(
-    session: Session, query: str | None = None, *, limit: int = 200
+    session: Session,
+    query: str | None = None,
+    *,
+    limit: int = 200,
+    subscription: AdminTagFilter | None = None,
 ) -> list[AdminTag]:
-    """Tags with video counts and aliases, most videos first (then by label). `query`
-    keeps the tags whose label, slug or an alias contains it, ignoring case and treating
-    spaces as hyphens for slugs and aliases."""
-    where = ""
+    """Tags with video counts, aliases and subscription weights, most videos first (then
+    by label). `query` keeps the tags whose label, slug or an alias contains it, ignoring
+    case and treating spaces as hyphens for slugs and aliases. `subscription` keeps only
+    the subscribed (weight >= 0) or the muted (weight < 0) tags."""
+    conditions: list[str] = []
     params: dict[str, object] = {"limit": limit}
     needle = (query or "").strip()
     if needle:
-        where = r"""
-            WHERE t.label LIKE :q ESCAPE '\' OR t.slug LIKE :slug ESCAPE '\'
-               OR EXISTS (SELECT 1 FROM tag_aliases AS a
-                          WHERE a.tag_id = t.id AND a.alias LIKE :slug ESCAPE '\')
+        conditions.append(
+            r"""
+            (t.label LIKE :q ESCAPE '\' OR t.slug LIKE :slug ESCAPE '\'
+             OR EXISTS (SELECT 1 FROM tag_aliases AS a
+                        WHERE a.tag_id = t.id AND a.alias LIKE :slug ESCAPE '\'))
             """
+        )
         params["q"] = _like_pattern(needle)
         params["slug"] = _like_pattern(slugify(needle) or needle.casefold())
+    if subscription == "subscribed":
+        conditions.append("s.weight >= 0")
+    elif subscription == "muted":
+        conditions.append("s.weight < 0")
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     rows = session.execute(
         text(
             f"""
             SELECT t.id, t.slug, t.label,
                    (SELECT count(*) FROM video_tags AS vt
-                    WHERE vt.tag_id = t.id AND vt.removed_at IS NULL) AS video_count
-            FROM tags AS t {where}
+                    WHERE vt.tag_id = t.id AND vt.removed_at IS NULL) AS video_count,
+                   s.weight AS subscription_weight
+            FROM tags AS t LEFT JOIN tag_subscriptions AS s ON s.tag_id = t.id {where}
             ORDER BY video_count DESC, t.label COLLATE NOCASE, t.id LIMIT :limit
             """  # noqa: S608 - `where` is fixed text; values are bound
         ),
@@ -941,4 +961,9 @@ def list_admin_tags(
             {"ids": list(by_tag)},
         ):
             by_tag[tag_id].append(TagAlias(alias, cast(Literal["auto", "user"], source)))
-    return [AdminTag(row.id, row.slug, row.label, row.video_count, by_tag[row.id]) for row in rows]
+    return [
+        AdminTag(
+            row.id, row.slug, row.label, row.video_count, by_tag[row.id], row.subscription_weight
+        )
+        for row in rows
+    ]

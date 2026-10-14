@@ -175,7 +175,7 @@ def test_weekly_insights_reads_ratings_and_the_feed_of_record(
         "alpha": 0.5,
         "channel": 0.25,
         "similarity": -0.25,
-        "topics": {},
+        "tags": {},
     }
     with sessions.begin() as session:
         # Superseded by the refresh later that day; not the feed of record.

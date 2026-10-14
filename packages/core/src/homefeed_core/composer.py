@@ -290,8 +290,8 @@ def _reason_phrase(
         (breakdown.channel, lambda: _channel_phrase(item)),
         (breakdown.similarity, lambda: _similarity_phrase(item, videos, skip_video_id)),
         *(
-            (value, lambda name=name: f"matches your topic '{name}'")
-            for name, value in sorted(breakdown.topics.items())
+            (value, lambda label=label: f"tagged '{label}', which you follow")
+            for label, value in sorted(breakdown.tags.items())
         ),
         (
             breakdown.alpha * breakdown.model,

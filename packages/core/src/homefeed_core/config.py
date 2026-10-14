@@ -63,11 +63,9 @@ class Settings(BaseSettings):
     embedding_timeout_seconds: float = 60.0
     # Similarity calibration; unset uses the values measured for the embedding model (see
     # embeddings.CALIBRATIONS). similarity_floor: below it a candidate counts as unrelated
-    # to a rated video; topic_similarity_floor: likewise for a topic's description;
-    # tag_merge_threshold: from it a proposed tag merges into the most similar existing
-    # one (higher merges less; see homefeed_core.tags).
+    # to a rated video; tag_merge_threshold: from it a proposed tag merges into the most
+    # similar existing one (higher merges less; see homefeed_core.tags).
     similarity_floor: float | None = Field(default=None, ge=-1, lt=1)
-    topic_similarity_floor: float | None = Field(default=None, ge=-1, lt=1)
     tag_merge_threshold: float | None = Field(default=None, ge=-1, le=1)
     # LLM tagging (topic, depth, clickbait, rage-bait, specific tags); see
     # homefeed_core.llm_tags. The default is the hosted OpenRouter API, which needs
