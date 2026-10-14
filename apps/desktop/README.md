@@ -141,7 +141,7 @@ Outputs (all under the gitignored `build/`): `build/python`, `build/web` and `bu
 
 Sizes on Linux: `build/python` ~500 MB, `build/web` ~24 MB, the AppImage ~285 MB.
 
-To try a built AppImage without touching your profile: `HOMEFEED_USER_DATA_DIR=/tmp/homefeed-appimage-test ./build/release/Homefeed-<version>-x86_64.AppImage` (with `APPIMAGE_EXTRACT_AND_RUN=1` where FUSE isn't available).
+To try a built AppImage without touching your profile: `HOMEFEED_USER_DATA_DIR=/tmp/homefeed-appimage-test ./build/release/Homefeed-<version>-x86_64.AppImage` (with `APPIMAGE_EXTRACT_AND_RUN=1` where FUSE isn't available). In extract-and-run mode every launch of the same AppImage unpacks into the same `$TMPDIR/appimage_extracted_<digest>` and deletes it on exit, so a second launch (which only shows the running instance's window) waits, windowless, until the running instance exits instead of deleting its files (see `src/main/appimage.ts`).
 
 ## Releasing
 

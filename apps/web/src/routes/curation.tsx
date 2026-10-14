@@ -1,90 +1,15 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-import { AppShell } from "#/components/AppShell";
-import { ChannelsTab } from "#/components/ChannelsTab";
-import { MutesTab } from "#/components/MutesTab";
-import { SavedSearchesTab } from "#/components/SavedSearchesTab";
-import { SourcesTab } from "#/components/SourcesTab";
-import { TagsTab } from "#/components/TagsTab";
-import { TopicsTab } from "#/components/TopicsTab";
-import { channelsQuery } from "#/server/channels";
-import { externalSourcesQuery } from "#/server/external-sources";
-import { keywordMutesQuery } from "#/server/keyword-mutes";
-import { savedSearchesQuery } from "#/server/saved-searches";
-import { tagAdminQuery } from "#/server/tag-admin";
-import { topicsQuery } from "#/server/topics";
-
-const TABS = [
-  { id: "channels", label: "Channels" },
-  { id: "topics", label: "Topics" },
-  { id: "tags", label: "Tags" },
-  { id: "mutes", label: "Mutes" },
-  { id: "searches", label: "Searches" },
-  { id: "sources", label: "Sources" },
-] as const;
-type Tab = (typeof TABS)[number]["id"];
-
-interface CurationSearch {
-  tab?: Tab;
-}
-
+// The page was renamed to Subscriptions; keep old links and bookmarks working.
 export const Route = createFileRoute("/curation")({
-  validateSearch: (search: Record<string, unknown>): CurationSearch => ({
-    tab: TABS.some((t) => t.id === search.tab)
-      ? (search.tab as Tab)
-      : undefined,
+  validateSearch: (search: Record<string, unknown>): { tab?: string } => ({
+    tab: typeof search.tab === "string" ? search.tab : undefined,
   }),
-  head: () => ({ meta: [{ title: "Curation · Homefeed" }] }),
-  loaderDeps: ({ search }) => ({ tab: search.tab ?? "channels" }),
-  loader: async ({ context, deps }) => {
-    // Only the open tab's data; the other loads when its tab is opened.
-    if (deps.tab === "mutes") {
-      await context.queryClient.ensureQueryData(keywordMutesQuery);
-    } else if (deps.tab === "topics") {
-      await context.queryClient.ensureQueryData(topicsQuery);
-    } else if (deps.tab === "tags") {
-      await context.queryClient.ensureQueryData(tagAdminQuery(""));
-    } else if (deps.tab === "searches") {
-      await context.queryClient.ensureQueryData(savedSearchesQuery);
-    } else if (deps.tab === "sources") {
-      await context.queryClient.ensureQueryData(externalSourcesQuery);
-    } else {
-      await Promise.all([context.queryClient.ensureQueryData(channelsQuery)]);
-    }
+  beforeLoad: ({ search }) => {
+    throw redirect({
+      to: "/subscriptions",
+      search: (search.tab ? { tab: search.tab } : {}) as { tab?: never },
+      replace: true,
+    });
   },
-  component: Curation,
 });
-
-function Curation() {
-  const { tab = "channels" } = Route.useSearch();
-
-  return (
-    <AppShell className="max-w-4xl">
-      <h2 className="text-2xl font-bold">Curation</h2>
-      <nav
-        aria-label="Curation sections"
-        className="mt-4 flex gap-2 overflow-x-auto border-b"
-      >
-        {TABS.map((t) => (
-          <Link
-            key={t.id}
-            to="/curation"
-            search={{ tab: t.id }}
-            aria-current={t.id === tab ? "page" : undefined}
-            className="-mb-px shrink-0 border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground aria-[current=page]:border-foreground aria-[current=page]:text-foreground"
-          >
-            {t.label}
-          </Link>
-        ))}
-      </nav>
-      <section className="mt-6">
-        {tab === "channels" && <ChannelsTab />}
-        {tab === "topics" && <TopicsTab />}
-        {tab === "tags" && <TagsTab />}
-        {tab === "mutes" && <MutesTab />}
-        {tab === "searches" && <SavedSearchesTab />}
-        {tab === "sources" && <SourcesTab />}
-      </section>
-    </AppShell>
-  );
-}

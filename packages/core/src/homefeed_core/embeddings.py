@@ -229,8 +229,7 @@ def get_embedding_provider() -> EmbeddingProvider:
     """The process-wide production provider (`make_embedding_provider`).
 
     Shared so a process loads a local model at most once, and only when it first embeds
-    something: the worker for videos, tags and topics, the API when a topic or tag is
-    saved.
+    something: the worker for videos and tags, the API when a tag is saved.
     """
     return make_embedding_provider()
 
@@ -241,21 +240,17 @@ class Calibration:
 
     # Below it a candidate counts as unrelated to a rated video (ranker.similarity_score).
     similarity_floor: float
-    # Below it a video counts as unrelated to a topic's description (ranker.topic_boost).
-    topic_similarity_floor: float
     # From it a proposed tag merges into the most similar existing one (homefeed_core.tags).
     tag_merge_threshold: float
 
 
-# Measured on the library's videos, sample topic descriptions and tag pairs (plurals and
-# spelling variants should merge; "nba" / "basketball", "world war i" / "world war ii"
-# should not). bge-small keeps the values it always had: its floors sit below even
-# unrelated pairs (~0.6), so every topic boosts every video a little.
+# Measured on the library's videos and tag pairs (plurals and spelling variants should
+# merge; "nba" / "basketball", "world war i" / "world war ii" should not). bge-small keeps
+# the values it always had: its floor sits below even unrelated pairs (~0.6).
 CALIBRATIONS: dict[str, Calibration] = {
-    "BAAI/bge-small-en-v1.5": Calibration(0.3, 0.3, 0.92),
-    # Unrelated videos ~0.25 (p90 0.42); a topic's matching videos 0.35-0.5, unrelated
-    # ones under 0.2; plurals 0.94, distinct tags up to 0.71.
-    "perplexity/pplx-embed-v1-0.6b": Calibration(0.3, 0.2, 0.85),
+    "BAAI/bge-small-en-v1.5": Calibration(0.3, 0.92),
+    # Unrelated videos ~0.25 (p90 0.42); plurals 0.94, distinct tags up to 0.71.
+    "perplexity/pplx-embed-v1-0.6b": Calibration(0.3, 0.85),
 }
 # For models not measured: bge-small's values.
 DEFAULT_CALIBRATION = CALIBRATIONS[DEFAULT_EMBEDDING_MODEL]
@@ -263,23 +258,19 @@ DEFAULT_CALIBRATION = CALIBRATIONS[DEFAULT_EMBEDDING_MODEL]
 
 def calibration(settings: Settings | None = None) -> Calibration:
     """The calibration of the configured embedding model, with any value set in the
-    settings (`SIMILARITY_FLOOR`, `TOPIC_SIMILARITY_FLOOR`, `TAG_MERGE_THRESHOLD`) instead
-    of the measured one."""
+    settings (`SIMILARITY_FLOOR`, `TAG_MERGE_THRESHOLD`) instead of the measured one."""
     settings = settings or get_settings()
     measured = CALIBRATIONS.get(settings.embedding_model)
     if measured is None:
         logger.warning(
-            "No calibration for embedding model %s; using %s's (set SIMILARITY_FLOOR, "
-            "TOPIC_SIMILARITY_FLOOR and TAG_MERGE_THRESHOLD to tune)",
+            "No calibration for embedding model %s; using %s's (set SIMILARITY_FLOOR "
+            "and TAG_MERGE_THRESHOLD to tune)",
             settings.embedding_model,
             DEFAULT_EMBEDDING_MODEL,
         )
         measured = DEFAULT_CALIBRATION
     return Calibration(
         similarity_floor=_override(settings.similarity_floor, measured.similarity_floor),
-        topic_similarity_floor=_override(
-            settings.topic_similarity_floor, measured.topic_similarity_floor
-        ),
         tag_merge_threshold=_override(settings.tag_merge_threshold, measured.tag_merge_threshold),
     )
 

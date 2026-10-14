@@ -4,8 +4,8 @@ The export is one JSON object: a header (`format`, `version`, `schema_version`,
 `exported_at`) followed by the data, grouped by area:
 
 - `ratings`: every 1 to 10 rating, with the video's title and channel when known.
-- `curation`: subscribed channels with their prefs, topics, keyword mutes, saved
-  searches and external sources.
+- `curation`: subscribed channels with their prefs, tag subscriptions (and mutes),
+  keyword mutes, saved searches and external sources.
 - `feeds`: every feed built, with its items (score breakdown, explanation, dismissals).
 - `library`: the watch history (every watch event), the watch queue and local playlists
   (each with its videos in order).
@@ -18,7 +18,7 @@ The export is one JSON object: a header (`format`, `version`, `schema_version`,
   environment (`config`), without secrets or file paths.
 
 What goes in is the `SECTIONS` registry: each `ExportSection` names where its data goes
-(a key path such as `("curation", "topics")`) and how to read it from the database. To
+(a key path such as `("curation", "channels")`) and how to read it from the database. To
 export something new, write a reader and add one `ExportSection` line. Everything is read
 in the caller's transaction, so the export is a consistent snapshot.
 
@@ -54,7 +54,7 @@ type Reader = Callable[[Session], Any]
 
 @dataclass(frozen=True)
 class ExportSection:
-    path: tuple[str, ...]  # where the data goes, e.g. ("curation", "topics")
+    path: tuple[str, ...]  # where the data goes, e.g. ("curation", "channels")
     read: Reader  # returns JSON-serializable data
 
 
@@ -156,7 +156,7 @@ SECTIONS: list[ExportSection] = [
         ),
     ),
     ExportSection(("curation", "channels"), _dataclasses(curation.list_channels)),
-    ExportSection(("curation", "topics"), _dataclasses(curation.list_topics)),
+    ExportSection(("curation", "tag_subscriptions"), _dataclasses(curation.list_tag_subscriptions)),
     ExportSection(("curation", "keyword_mutes"), _dataclasses(curation.list_keyword_mutes)),
     ExportSection(("curation", "saved_searches"), _dataclasses(saved_searches.list_saved_searches)),
     ExportSection(("curation", "external_sources"), _dataclasses(external_sources.list_sources)),

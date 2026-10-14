@@ -2,8 +2,8 @@
 tags you subscribed to.
 
 `TagDiscoverySource` is the `candidates.CandidateSource` (named `tag`) that does it. A
-subscribed tag is a tag-backed topic (see homefeed_core.curation) whose effective weight
-is positive; muted tags (weight at or below zero) are never searched. Each one is
+subscribed tag is a tag subscription (see homefeed_core.curation) whose weight is
+positive; muted tags (weight at or below zero) are never searched. Each one is
 searched for its label once a day (`SEARCH_INTERVAL`, give or take the schedule grace),
 and its results become candidates with the tag's slug as `source_detail` (for "Because
 you follow #woodworking").
@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from homefeed_core import channel_hides
 from homefeed_core.candidates import TAG, FoundVideo
-from homefeed_core.curation import list_topics
+from homefeed_core.curation import list_tag_subscriptions
 from homefeed_core.gateway import MAX_SEARCH_LIMIT, Gateway
 from homefeed_core.gateway.events import format_timestamp
 from homefeed_core.scheduled_search import (
@@ -58,14 +58,12 @@ class SubscribedTag:
 
 
 def subscribed_tags(session: Session, *, now: datetime | None = None) -> list[SubscribedTag]:
-    """The tags with a tag-backed topic of positive effective weight, by label."""
+    """The tags subscribed with a positive weight, by label. (`now` is unused: weights
+    no longer decay.)"""
     return [
-        SubscribedTag(topic.tag_id, topic.tag_slug, topic.tag_label)
-        for topic in list_topics(session, now=now)
-        if topic.tag_id is not None
-        and topic.tag_slug is not None
-        and topic.tag_label is not None
-        and topic.effective_weight > 0
+        SubscribedTag(subscription.tag_id, subscription.slug, subscription.label)
+        for subscription in list_tag_subscriptions(session)
+        if subscription.weight > 0
     ]
 
 

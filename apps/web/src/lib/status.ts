@@ -31,14 +31,16 @@ export function healthLabel(health: ExtractorHealth): string {
   return HEALTH_LABELS[health];
 }
 
+// A tint behind foreground text, with the status colour on the badge's icon
+// only: coloured small text on its own tint misses 4.5:1 in the light theme.
 const HEALTH_CLASSES: Record<ExtractorHealth, string> = {
-  ok: "bg-success/15 text-success",
-  degraded: "bg-warning/15 text-warning",
-  failing: "bg-destructive/15 text-destructive",
+  ok: "bg-success/10 text-foreground [&>svg]:text-success",
+  degraded: "bg-warning/15 text-foreground [&>svg]:text-warning",
+  failing: "bg-destructive/10 text-foreground [&>svg]:text-destructive",
   unknown: "bg-secondary text-muted-foreground",
 };
 
-/** Tailwind classes for a health badge. */
+/** Tailwind classes for a health badge (its tint, text and icon colour). */
 export function healthBadgeClass(health: ExtractorHealth): string {
   return HEALTH_CLASSES[health];
 }

@@ -2,7 +2,7 @@ import type { ScoreBreakdownOut } from "@homefeed/api-client";
 
 /**
  * A feed item's score breakdown as rows for display. The terms sum to the
- * score: `alpha * model + channel + similarity + sum(topics) = final`.
+ * score: `alpha * model + channel + similarity + sum(tags) = final`.
  */
 export interface BreakdownTerm {
   key: string;
@@ -12,13 +12,13 @@ export interface BreakdownTerm {
   detail?: string;
 }
 
-/** Every term, in a fixed order: channel, similarity, topics, model. */
+/** Every term, in a fixed order: channel, similarity, tags, model. */
 export function breakdownTerms(breakdown: ScoreBreakdownOut): BreakdownTerm[] {
-  const topics = Object.entries(breakdown.topics)
+  const tags = Object.entries(breakdown.tags)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, value]) => ({
-      key: `topic:${name}`,
-      label: `Topic “${name}”`,
+    .map(([label, value]) => ({
+      key: `tag:${label}`,
+      label: `Tag “${label}”`,
       value,
     }));
   return [
@@ -29,7 +29,7 @@ export function breakdownTerms(breakdown: ScoreBreakdownOut): BreakdownTerm[] {
       value: breakdown.similarity,
       detail: similarityDetail(breakdown),
     },
-    ...topics,
+    ...tags,
     {
       key: "model",
       label: "Model",

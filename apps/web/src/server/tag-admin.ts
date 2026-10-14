@@ -7,9 +7,10 @@ import {
 import { queryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 
+import { TAG_FILTERS, type TagFilter } from "#/lib/tag-subscriptions";
 import { apiClient, apiErrorMessage } from "#/server/api";
 
-/** Server functions for the curation page's tags tab. */
+/** Server functions for the Subscriptions page's tags tab. */
 
 export type TagResult = { ok: true } | { ok: false; message: string };
 
@@ -19,22 +20,27 @@ function checkId(id: unknown): number {
 }
 
 const getTagAdmin = createServerFn({ method: "GET" })
-  .inputValidator((data: { q: string }) => ({
+  .inputValidator((data: { q: string; filter?: TagFilter }) => ({
     q: typeof data.q === "string" ? data.q.trim().slice(0, 100) : "",
+    filter: TAG_FILTERS.find((f) => f.id === data.filter)?.id ?? "all",
   }))
   .handler(async ({ data }) => {
     const { data: tags } = await listTagsAdmin({
       client: apiClient(),
-      query: { q: data.q || undefined },
+      query: {
+        q: data.q || undefined,
+        subscription: data.filter === "all" ? undefined : data.filter,
+      },
       throwOnError: true,
     });
     return tags;
   });
 
-export const tagAdminQuery = (q: string) =>
+/** The tags matching `q`, all of them or only the subscribed or muted ones. */
+export const tagAdminQuery = (q: string, filter: TagFilter = "all") =>
   queryOptions({
-    queryKey: ["tag-admin", q],
-    queryFn: () => getTagAdmin({ data: { q } }),
+    queryKey: ["tag-admin", q, filter],
+    queryFn: () => getTagAdmin({ data: { q, filter } }),
   });
 
 /** Prefix of every tag-admin query, to invalidate them all. */

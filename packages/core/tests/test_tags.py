@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from homefeed_core.curation import get_topic, subscribe_tag, topic_for_tag
+from homefeed_core.curation import subscribe_tag, tag_subscription
 from homefeed_core.db import open_database
 from homefeed_core.embeddings import StubEmbeddingProvider
 from homefeed_core.tags import (
@@ -682,23 +682,23 @@ def test_merge_moves_spellings_and_links(sessions: sessionmaker[Session]) -> Non
 def test_merge_moves_the_subscription_unless_the_target_has_one(
     sessions: sessionmaker[Session],
 ) -> None:
-    embedder = StubEmbeddingProvider()
     with sessions.begin() as session:
         rust, cargo, ferris = (resolve_tag(session, label) for label in ("rust", "cargo", "ferris"))
         assert rust is not None and cargo is not None and ferris is not None
-        kept, _ = subscribe_tag(session, embedder, rust, weight=0.3)
-        dropped, _ = subscribe_tag(session, embedder, cargo, weight=-0.5)
+        subscribe_tag(session, rust, weight=0.3)
+        subscribe_tag(session, cargo, weight=-0.5)
 
-        # Both have a topic: the target's stands, the source's goes.
+        # Both have one: the target's stands, the source's goes.
         merge_tags(session, cargo.id, rust.id)
-        topic = topic_for_tag(session, rust.id)
-        assert topic is not None and topic.id == kept.id and topic.weight == 0.3
-        assert get_topic(session, dropped.id) is None
+        kept = tag_subscription(session, rust.id)
+        assert kept is not None and kept.weight == 0.3
+        assert tag_subscription(session, cargo.id) is None
 
         # Only the source has one: it follows to the target.
         merge_tags(session, rust.id, ferris.id)
-        topic = topic_for_tag(session, ferris.id)
-        assert topic is not None and topic.id == kept.id
+        moved = tag_subscription(session, ferris.id)
+        assert moved is not None and moved.weight == 0.3
+        assert tag_subscription(session, rust.id) is None
 
 
 def test_merge_keeps_one_link_per_video(sessions: sessionmaker[Session]) -> None:
@@ -836,3 +836,16 @@ def test_list_admin_tags_counts_and_searches(sessions: sessionmaker[Session]) ->
         assert [t.slug for t in list_admin_tags(session, "wood work")] == ["wood-working"]
         assert list_admin_tags(session, "100%") == []
         assert len(list_admin_tags(session, limit=1)) == 1
+        assert all(t.subscription_weight is None for t in everything)
+
+        subscribe_tag(session, wood, weight=0.0)
+        subscribe_tag(session, rust, weight=-0.5)
+        assert [(t.slug, t.subscription_weight) for t in list_admin_tags(session)] == [
+            ("wood-working", 0.0),
+            ("rust", -0.5),
+        ]
+        assert [t.slug for t in list_admin_tags(session, subscription="subscribed")] == [
+            "wood-working"
+        ]
+        assert [t.slug for t in list_admin_tags(session, subscription="muted")] == ["rust"]
+        assert list_admin_tags(session, "wood", subscription="muted") == []

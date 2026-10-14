@@ -11,7 +11,7 @@ import { createServerFn } from "@tanstack/react-start";
 
 import { apiClient, apiErrorMessage } from "#/server/api";
 
-/** Server functions for the curation page's channels tab. */
+/** Server functions for the Subscriptions page's channels tab. */
 
 export type Prior = SubscribedChannel["prior"];
 export const PRIORS: readonly Prior[] = [

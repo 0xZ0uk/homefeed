@@ -39,9 +39,9 @@ import {
   SheetDescription,
   SheetTitle,
 } from "#/components/ui/sheet";
-import { mutedTags, subscribedTags } from "#/lib/topics";
+import { mutedTags, subscribedTags } from "#/lib/tag-subscriptions";
 import { cn } from "#/lib/utils";
-import { topicsQuery } from "#/server/topics";
+import { tagSubscriptionsQuery } from "#/server/tag-subscriptions";
 
 type NavItem = {
   to: LinkProps["to"];
@@ -60,7 +60,7 @@ const NAV: NavItem[][] = [
   ],
   [
     { to: "/discover", label: "Discover", icon: Compass },
-    { to: "/curation", label: "Curation", icon: SlidersHorizontal },
+    { to: "/subscriptions", label: "Subscriptions", icon: SlidersHorizontal },
     { to: "/insights", label: "Insights", icon: ChartLine },
     { to: "/models", label: "Models", icon: Cpu },
   ],
@@ -275,9 +275,9 @@ function MastheadSearchForm({ query }: { query: string }) {
 /** The full-width guide: each section's links with icon and label, then the
  * tags you subscribe to and, below them, the ones you muted. */
 function Guide({ onNavigate }: { onNavigate?: () => void }) {
-  const { data: topics } = useQuery(topicsQuery);
-  const tags = subscribedTags(topics ?? []);
-  const muted = mutedTags(topics ?? []);
+  const { data: subscriptions } = useQuery(tagSubscriptionsQuery);
+  const tags = subscribedTags(subscriptions ?? []);
+  const muted = mutedTags(subscriptions ?? []);
 
   return (
     <nav aria-label="Main" className="flex flex-col px-3 pb-6">

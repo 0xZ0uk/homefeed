@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session, sessionmaker
 from homefeed_core import enricher as enricher_module
 from homefeed_core.candidates import SUBSCRIPTION, record
 from homefeed_core.config import Settings
-from homefeed_core.curation import add_topic, topic_vectors
 from homefeed_core.db import open_database
 from homefeed_core.embeddings import (
     Embedding,
@@ -349,24 +348,6 @@ def test_enrich_candidates_also_enriches_top_and_bottom_tier_rated_videos(
     assert report.enriched == [loved.id, hated.id]
     with sessions() as session:
         assert get_features(session, middling.id) is None
-
-
-def test_enrich_candidates_re_embeds_topics_from_another_model(
-    enricher: Enricher, sessions: sessionmaker[Session], embedder: StubEmbeddingProvider
-) -> None:
-    old = StubEmbeddingProvider("old-model", vectors={"woodworking": [1.0] + [0.0] * 383})
-    with sessions.begin() as session:
-        add_topic(session, old, name="Wood", description="woodworking", weight=1)
-
-    enrich_candidates(enricher=enricher, sessions=sessions, settings=Settings(), now=NOW)
-    enrich_candidates(enricher=enricher, sessions=sessions, settings=Settings(), now=NOW)
-
-    assert embedder.calls == [["woodworking"]]
-    with sessions() as session:
-        [vector] = topic_vectors(session)
-        model = session.execute(text("SELECT embedding_model FROM topics")).scalar_one()
-    assert model == embedder.model
-    assert vector.embedding == pytest.approx(embedder.embed(["woodworking"])[0], abs=1e-6)
 
 
 SECOND = make_video(

@@ -22,6 +22,7 @@ import { Route as ModelsRouteImport } from './routes/models'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as StatusRouteImport } from './routes/status'
+import { Route as SubscriptionsRouteImport } from './routes/subscriptions'
 import { Route as WatchEventsRouteImport } from './routes/watch-events'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as ChannelsChannelIdRouteImport } from './routes/channels.$channelId'
@@ -98,6 +99,11 @@ const StatusRoute = StatusRouteImport.update({
   path: '/status',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SubscriptionsRoute = SubscriptionsRouteImport.update({
+  id: '/subscriptions',
+  path: '/subscriptions',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WatchEventsRoute = WatchEventsRouteImport.update({
   id: '/watch-events',
   path: '/watch-events',
@@ -164,6 +170,7 @@ export interface FileRoutesByFullPath {
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/status': typeof StatusRoute
+  '/subscriptions': typeof SubscriptionsRoute
   '/watch-events': typeof WatchEventsRoute
   '/welcome': typeof WelcomeRoute
   '/channels/$channelId': typeof ChannelsChannelIdRoute
@@ -189,6 +196,7 @@ export interface FileRoutesByTo {
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/status': typeof StatusRoute
+  '/subscriptions': typeof SubscriptionsRoute
   '/watch-events': typeof WatchEventsRoute
   '/welcome': typeof WelcomeRoute
   '/channels/$channelId': typeof ChannelsChannelIdRoute
@@ -215,6 +223,7 @@ export interface FileRoutesById {
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/status': typeof StatusRoute
+  '/subscriptions': typeof SubscriptionsRoute
   '/watch-events': typeof WatchEventsRoute
   '/welcome': typeof WelcomeRoute
   '/channels/$channelId': typeof ChannelsChannelIdRoute
@@ -242,6 +251,7 @@ export interface FileRouteTypes {
     | '/search'
     | '/settings'
     | '/status'
+    | '/subscriptions'
     | '/watch-events'
     | '/welcome'
     | '/channels/$channelId'
@@ -267,6 +277,7 @@ export interface FileRouteTypes {
     | '/search'
     | '/settings'
     | '/status'
+    | '/subscriptions'
     | '/watch-events'
     | '/welcome'
     | '/channels/$channelId'
@@ -292,6 +303,7 @@ export interface FileRouteTypes {
     | '/search'
     | '/settings'
     | '/status'
+    | '/subscriptions'
     | '/watch-events'
     | '/welcome'
     | '/channels/$channelId'
@@ -318,6 +330,7 @@ export interface RootRouteChildren {
   SearchRoute: typeof SearchRoute
   SettingsRoute: typeof SettingsRoute
   StatusRoute: typeof StatusRoute
+  SubscriptionsRoute: typeof SubscriptionsRoute
   WatchEventsRoute: typeof WatchEventsRoute
   WelcomeRoute: typeof WelcomeRoute
   ChannelsChannelIdRoute: typeof ChannelsChannelIdRoute
@@ -423,6 +436,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StatusRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/subscriptions': {
+      id: '/subscriptions'
+      path: '/subscriptions'
+      fullPath: '/subscriptions'
+      preLoaderRoute: typeof SubscriptionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/watch-events': {
       id: '/watch-events'
       path: '/watch-events'
@@ -510,6 +530,7 @@ const rootRouteChildren: RootRouteChildren = {
   SearchRoute: SearchRoute,
   SettingsRoute: SettingsRoute,
   StatusRoute: StatusRoute,
+  SubscriptionsRoute: SubscriptionsRoute,
   WatchEventsRoute: WatchEventsRoute,
   WelcomeRoute: WelcomeRoute,
   ChannelsChannelIdRoute: ChannelsChannelIdRoute,

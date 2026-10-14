@@ -37,7 +37,7 @@ function Models() {
       {versions.length === 0 ? (
         <p className="rounded-xl border border-dashed p-6 text-muted-foreground">
           No models yet. The first is trained once you've rated enough videos;
-          until then the feed is ranked by your curation alone.
+          until then the feed is ranked by your subscriptions alone.
         </p>
       ) : (
         <ul className="flex flex-col divide-y" aria-label="Model versions">

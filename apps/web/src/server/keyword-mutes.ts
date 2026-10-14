@@ -9,7 +9,7 @@ import { createServerFn } from "@tanstack/react-start";
 
 import { apiClient, apiErrorMessage } from "#/server/api";
 
-/** Server functions for the curation page's mutes tab. */
+/** Server functions for the Subscriptions page's mutes tab. */
 
 export type MuteResult =
   | { ok: true; mute: KeywordMute; created: boolean }

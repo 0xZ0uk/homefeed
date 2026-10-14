@@ -12,10 +12,11 @@ Weeks run Monday to Sunday in local time, like feed dates. For each week:
   shown. None when no feed was built.
 - Score share: where the scores of those shown items came from, as shares of the summed
   absolute size of each kind of term (each term counted as `|term|`, so a suppressing
-  topic weighs as much as a boosting one, and terms of opposite sign don't cancel):
+  tag weighs as much as a boosting one, and terms of opposite sign don't cancel):
   - model: `alpha * model`, the trained model's blended prediction (0 before a model
     existed and in rules-only feeds, whatever `model_version` says);
-  - curation: `channel` and each of `topics`, the user's channel priors and topics;
+  - curation: `channel` and each of `tags`, the user's channel priors and tag
+    subscriptions (`topics` in breakdowns stored before tags replaced them);
   - similarity: closeness to top- and bottom-tier rated videos. It is rules-based but
     learned from ratings rather than set by the user, so it is reported apart from both.
   The three shares sum to 1, or are all None when every term was 0 (or nothing shown).
@@ -51,7 +52,7 @@ class ShownItem:
     feed_date: date
     # Absolute contributions to the item's score (see the module docstring).
     model: float  # |alpha * model|
-    curation: float  # |channel| + sum(|topic|)
+    curation: float  # |channel| + sum(|tag|)
     similarity: float  # |similarity|
     rated: bool
 
@@ -212,7 +213,10 @@ def load_shown_items(session: Session, *, since: date) -> list[ShownItem]:
                 feed_date=date.fromisoformat(day),
                 model=abs(breakdown.get("alpha", 0.0) * breakdown.get("model", 0.0)),
                 curation=abs(breakdown.get("channel", 0.0))
-                + sum(abs(value) for value in breakdown.get("topics", {}).values()),
+                + sum(
+                    abs(value)
+                    for value in breakdown.get("tags", breakdown.get("topics", {})).values()
+                ),
                 similarity=abs(breakdown.get("similarity", 0.0)),
                 rated=bool(rated),
             )

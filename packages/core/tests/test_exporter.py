@@ -17,11 +17,16 @@ from homefeed_core import (
 )
 from homefeed_core.config import get_settings
 from homefeed_core.db import open_database
-from homefeed_core.embeddings import StubEmbeddingProvider
 from homefeed_core.exporter import EXPORT_FORMAT, SECTIONS, ExportSection, export_data
 from homefeed_core.gateway import SearchFilters
 from homefeed_core.ratings import set_rating
-from homefeed_core.tags import ProposedTag, add_manual_tag, remove_video_tag, set_llm_tags
+from homefeed_core.tags import (
+    ProposedTag,
+    add_manual_tag,
+    remove_video_tag,
+    resolve_tag,
+    set_llm_tags,
+)
 from homefeed_core.watch_events import record_watch_event
 
 CHANNEL = "UCspaceexplained00000001"
@@ -58,9 +63,9 @@ def seed(session: Session) -> None:
     set_rating(session, VIDEO, 8.1)
     set_rating(session, "zzzzzzzzzzz", 1.6)  # rated before its metadata was stored
     curation.add_keyword_mute(session, "crypto")
-    curation.add_topic(
-        session, StubEmbeddingProvider(), name="Woodworking", description="Joinery", weight=0.5
-    )
+    woodworking = resolve_tag(session, "Woodworking")
+    assert woodworking is not None
+    curation.subscribe_tag(session, woodworking, weight=0.5)
     saved_searches.add_saved_search(session, "lathe", SearchFilters(sort="upload_date"))
     external_sources.add_source(session, "subreddit", "r/videos")
     record_watch_event(session, VIDEO, "play", 0.0, 600.0)
@@ -116,8 +121,8 @@ def test_exports_every_area(sessions: sessionmaker[Session]) -> None:
     assert channel["channel_id"] == CHANNEL
     assert channel["prior"] == "love"
     assert channel["pinned"] is True
-    assert [topic["name"] for topic in curation_["topics"]] == ["Woodworking"]
-    assert "embedding" not in curation_["topics"][0]
+    [subscription] = curation_["tag_subscriptions"]
+    assert (subscription["slug"], subscription["weight"]) == ("woodworking", 0.5)
     assert [mute["keyword"] for mute in curation_["keyword_mutes"]] == ["crypto"]
     [search] = curation_["saved_searches"]
     assert search["query"] == "lathe"

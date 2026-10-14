@@ -51,7 +51,7 @@ function Home() {
           <p className="text-lg font-medium">There's no feed for today yet.</p>
           <p className="text-muted-foreground">
             The feed is built once a day from your subscriptions. Build it now,
-            or subscribe to channels on the curation page first.
+            or subscribe to channels on the Subscriptions page first.
           </p>
           <RefreshFeedButton label="Build today's feed" />
         </div>

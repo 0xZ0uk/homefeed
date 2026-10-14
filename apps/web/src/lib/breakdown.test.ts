@@ -8,7 +8,7 @@ const rulesOnly: ScoreBreakdownOut = {
   alpha: 0,
   channel: 0.8,
   similarity: 0,
-  topics: {},
+  tags: {},
   final: 0.8,
   similarity_features: null,
 };
@@ -32,12 +32,12 @@ describe("breakdownTerms", () => {
     ]);
   });
 
-  it("adds a row per topic and the blended model term", () => {
+  it("adds a row per tag and the blended model term", () => {
     const terms = breakdownTerms({
       ...rulesOnly,
       model: 0.5,
       alpha: 0.2,
-      topics: { woodworking: 0.4, drama: -0.3 },
+      tags: { woodworking: 0.4, drama: -0.3 },
       similarity: 0.25,
       similarity_features: {
         top_tier: { max: 0.912, mean: 0.4, nearest_video_id: "abcdefghijk" },
@@ -48,14 +48,14 @@ describe("breakdownTerms", () => {
     expect(terms.map((term) => [term.key, term.value])).toEqual([
       ["channel", 0.8],
       ["similarity", 0.25],
-      ["topic:drama", -0.3],
-      ["topic:woodworking", 0.4],
+      ["tag:drama", -0.3],
+      ["tag:woodworking", 0.4],
       ["model", 0.1],
     ]);
     expect(terms[1]?.detail).toBe(
       "Cosine similarity: closest top-tier video 0.91",
     );
-    expect(terms[3]?.label).toBe("Topic “woodworking”");
+    expect(terms[3]?.label).toBe("Tag “woodworking”");
     expect(terms[4]?.detail).toBe("+0.50 at weight 0.20");
   });
 
@@ -65,7 +65,7 @@ describe("breakdownTerms", () => {
       model: -0.5,
       alpha: 0.4,
       similarity: 0.1,
-      topics: { a: 0.2 },
+      tags: { a: 0.2 },
       final: 0.8 - 0.2 + 0.1 + 0.2,
     };
     const sum = breakdownTerms(breakdown).reduce(

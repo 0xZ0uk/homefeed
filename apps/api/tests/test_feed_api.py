@@ -144,7 +144,7 @@ def test_refresh_polls_then_builds_todays_feed(client: TestClient, poll: PollRec
             "alpha": 0.0,
             "channel": first["breakdown"]["channel"],
             "similarity": 0.0,
-            "topics": {},
+            "tags": {},
             "final": first["score"],
             "similarity_features": None,
         },

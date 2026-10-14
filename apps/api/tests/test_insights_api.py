@@ -65,7 +65,7 @@ def test_weekly_insights_rejects_out_of_range_weeks(client: TestClient, weeks: i
 
 
 def test_weekly_insights_this_week(client: TestClient) -> None:
-    breakdown = {"model": 0.5, "alpha": 0.5, "channel": 0.25, "similarity": 0.0, "topics": {}}
+    breakdown = {"model": 0.5, "alpha": 0.5, "channel": 0.25, "similarity": 0.0, "tags": {}}
     with get_session_factory().begin() as session:
         session.execute(text("INSERT INTO channels (id, title) VALUES (:id, 'C')"), {"id": CHANNEL})
         feed_id = session.execute(

@@ -21,7 +21,7 @@ nub run lint   # lint across packages
 The worker enriches and tags new videos every 30 minutes. To run it now, with a progress bar:
 
 ```sh
-nub run reembed        # re-embed videos, topics and tags made by another EMBEDDING_MODEL
+nub run reembed        # re-embed videos and tags made by another EMBEDDING_MODEL
 nub run enrich         # what the worker does: re-embed, enrich the next feed's candidates, tag them
 nub run tag            # tag only (same videos as the worker); add --all for every stored video, --limit N to cap LLM calls
 ```

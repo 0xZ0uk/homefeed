@@ -82,7 +82,7 @@ export function FeedList({
     return (
       <p className="text-muted-foreground">
         This feed is empty: there were no new videos to pick from. Subscribe to
-        more channels on the curation page, then refresh.
+        more channels on the Subscriptions page, then refresh.
       </p>
     );
   }

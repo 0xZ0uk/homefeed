@@ -17,7 +17,7 @@ import {
 } from "#/lib/search";
 import { apiClient, apiErrorMessage } from "#/server/api";
 
-/** Server functions for saved searches (search page and curation tab). */
+/** Server functions for saved searches (search page and Subscriptions tab). */
 
 export type { SavedSearch };
 

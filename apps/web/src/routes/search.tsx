@@ -326,7 +326,7 @@ function SaveSearchStatus({ save }: { save: SaveSearch }) {
             ? "Saved. Its newest videos will be considered for your feed. "
             : "This search is already saved. "}
           <Link
-            to="/curation"
+            to="/subscriptions"
             search={{ tab: "searches" }}
             className="underline"
           >

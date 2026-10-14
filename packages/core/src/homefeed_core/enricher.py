@@ -19,8 +19,8 @@ top or bottom tier, which the ranker's similarity features compare candidates wi
 a video can be rated without ever being a candidate (e.g. opened from a pasted URL).
 
 After an `EMBEDDING_MODEL` change, `enrich_candidates` first re-embeds every stored video
-from its stored text (`refresh_video_embeddings`, no YouTube requests), then topic
-descriptions and tag labels, so all similarities compare vectors of one model. Stale
+from its stored text (`refresh_video_embeddings`, no YouTube requests), then tag
+labels, so all similarities compare vectors of one model. Stale
 vectors are dropped before re-embedding, so if the embedding API fails partway the
 videos left go without an embedding (and are tried again next run) rather than mixing
 two models' vectors. An embedding failure never fails the run: videos that couldn't be
@@ -45,7 +45,6 @@ from typing import Literal, cast
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
-from homefeed_core import curation
 from homefeed_core.candidates import list_candidates
 from homefeed_core.config import Settings, get_settings
 from homefeed_core.db import get_session_factory
@@ -236,14 +235,6 @@ class Enricher:
         logger.info("Re-embedded %d videos with %s", len(done), model)
         return done
 
-    def refresh_topic_embeddings(self) -> list[int]:
-        """Re-embed topics embedded by another model. Returns their ids."""
-        with self._sessions.begin() as session:
-            refreshed = curation.refresh_topic_embeddings(session, self._embedder)
-        if refreshed:
-            logger.info("Re-embedded %d topics with %s", len(refreshed), self._embedder.model)
-        return refreshed
-
     def refresh_tag_embeddings(self) -> list[int]:
         """Embed tags without an embedding from the current model (new ones, and all after
         an `EMBEDDING_MODEL` change). Returns their ids."""
@@ -426,7 +417,7 @@ def enrich_candidates(
 ) -> EnrichReport:
     """Enrich the candidates the next feed will rank (first seen within
     `FEED_CANDIDATE_DAYS`), newest first, then the top-tier and bottom-tier rated videos
-    the ranker compares them with. Up-to-date ones are skipped. Stored videos, topics and
+    the ranker compares them with. Up-to-date ones are skipped. Stored videos and
     tags embedded by another model are re-embedded first (a failure there is logged and
     retried next run). Then, if the enricher has a tagger, those videos and every other
     rated video are LLM-tagged (`EnrichReport.tags`). `progress` makes a `Progress` per
@@ -439,7 +430,6 @@ def enrich_candidates(
     reembedded: list[str] = []
     try:
         reembedded = enricher.refresh_video_embeddings(progress=phase("Re-embedding"))
-        enricher.refresh_topic_embeddings()
         enricher.refresh_tag_embeddings()
     except EmbeddingError as error:
         logger.warning("Re-embedding stopped; trying again next run: %s", error)
@@ -462,7 +452,7 @@ def _parse_timestamp(value: str) -> datetime:
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the worker's enrichment once, now: `uv run python -m homefeed_core.enricher`
     (re-embeds after an `EMBEDDING_MODEL` change, enriches the next feed's candidates and
-    tags them). With `--reembed`, only re-embeds stored videos, topics and tags made with
+    tags them). With `--reembed`, only re-embeds stored videos and tags made with
     another embedding model."""
     parser = argparse.ArgumentParser(
         prog="python -m homefeed_core.enricher", description=main.__doc__
@@ -501,20 +491,16 @@ def _reembed(enricher: Enricher, line: ProgressLine) -> int:
     model = enricher.embedding_model
     try:
         videos = enricher.refresh_video_embeddings(progress=line.phase("Re-embedding"))
-        topics = enricher.refresh_topic_embeddings()
         tags = enricher.refresh_tag_embeddings()
     except EmbeddingError as error:
         line.clear()
         print(f"Re-embedding stopped (run it again to carry on): {error}")
         return 1
     line.clear()
-    if not (videos or topics or tags):
+    if not (videos or tags):
         print(f"Nothing to re-embed: everything already uses {model}")
     else:
-        print(
-            f"Re-embedded with {model}: {len(videos)} videos, {len(topics)} topics, "
-            f"{len(tags)} tags"
-        )
+        print(f"Re-embedded with {model}: {len(videos)} videos, {len(tags)} tags")
     return 0
 
 

@@ -1,9 +1,8 @@
 import { apiGet, expect, open, test } from "./fixtures";
 
-interface Topic {
+interface Subscription {
+  slug: string;
   weight: number;
-  match_mode: string;
-  tag_slug: string | null;
 }
 
 test("subscribing on a tag page lists the tag in the sidebar", async ({
@@ -23,16 +22,18 @@ test("subscribing on a tag page lists the tag in the sidebar", async ({
   await expect(
     sidebar.getByRole("link", { name: "woodworking" }),
   ).toBeVisible();
-  expect((await apiGet<Topic[]>(request, "/topics")).body).toMatchObject([
-    { weight: 0.5, match_mode: "tag", tag_slug: "woodworking" },
-  ]);
+  expect(
+    (await apiGet<Subscription[]>(request, "/tag-subscriptions")).body,
+  ).toMatchObject([{ weight: 0.5, slug: "woodworking" }]);
 
   // Letting go of the slider saves the new weight.
   await slider.press("ArrowRight");
   await expect(slider).toHaveAttribute("aria-valuetext", "Boost +0.55");
   await expect
     .poll(
-      async () => (await apiGet<Topic[]>(request, "/topics")).body[0]?.weight,
+      async () =>
+        (await apiGet<Subscription[]>(request, "/tag-subscriptions")).body[0]
+          ?.weight,
     )
     .toBeCloseTo(0.55);
 
@@ -47,17 +48,23 @@ test("subscribing on a tag page lists the tag in the sidebar", async ({
   await page.reload();
   await expect(page.getByRole("button", { name: "Unsubscribe" })).toBeVisible();
 
-  // The Topics tab badges it with its tag.
-  await open(page, "/curation?tab=topics");
+  // The Tags tab marks it as subscribed, with its weight.
+  await open(page, "/subscriptions?tab=tags");
+  const row = page
+    .getByRole("list", { name: "Tags", exact: true })
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("link", { name: "woodworking" }) });
+  await expect(row.getByText("Subscribed", { exact: true })).toBeVisible();
+  await expect(row.getByText(/Boost \+0\.55/)).toBeVisible();
   await expect(
-    page.getByRole("list", { name: "Topics" }).getByRole("link", {
-      name: "Tag woodworking",
-    }),
+    row.getByRole("button", { name: "Unsubscribe from woodworking" }),
   ).toBeVisible();
 
   await open(page, "/tags/woodworking");
   await page.getByRole("button", { name: "Unsubscribe" }).click();
   await expect(page.getByRole("button", { name: "Subscribe" })).toBeVisible();
   await expect(sidebar).toHaveCount(0);
-  expect((await apiGet<Topic[]>(request, "/topics")).body).toEqual([]);
+  expect(
+    (await apiGet<Subscription[]>(request, "/tag-subscriptions")).body,
+  ).toEqual([]);
 });
