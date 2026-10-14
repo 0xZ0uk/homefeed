@@ -12,6 +12,8 @@ import {
 import { formatScore } from "#/lib/scores";
 import type { WeekInsights } from "#/server/insights";
 
+import { areaPath, describeWeekRates, seriesPoints } from "./GoodRateTrendHelpers";
+
 // The width is the rendered one once measured, so text stays at 12px however
 // wide the page is; 640 is what the server renders with.
 const DEFAULT_WIDTH = 640;
@@ -24,17 +26,23 @@ const LABEL_GAP = 64;
  * Weekly good rate as a line chart (inline SVG). Weeks without ratings
  * break the line. Hovering a week, or focusing the chart and using the arrow
  * keys, shows its numbers; the same numbers are in the table on the insights
- * page, and in the chart's description for screen readers.
+ * page, and in the chart's description for screen readers. With
+ * `showRatingRate`, the week's rating rate is overlayed as a dashed line and
+ * both series are described.
  */
 export function GoodRateTrend({
   weeks,
   goodThreshold,
+  showRatingRate = false,
 }: {
   weeks: readonly WeekInsights[];
   goodThreshold: number;
+  showRatingRate?: boolean;
 }) {
   const titleId = useId();
   const descId = useId();
+  // Colon-free: the id goes into fill="url(#…)", where `:` is not an id char.
+  const areaGradientId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const figureRef = useRef<HTMLElement>(null);
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [active, setActive] = useState<number | null>(null);
@@ -60,6 +68,10 @@ export function GoodRateTrend({
   const rated = points.filter((point) => point.y != null);
   const latest = rated.at(-1);
   const current = active == null ? null : points[active];
+  // Same x layout, the week's rating rate; null weeks break the series.
+  const ratingPoints = showRatingRate
+    ? seriesPoints(points, box, (week) => week.rating_rate)
+    : [];
 
   function onKeyDown(event: KeyboardEvent<SVGSVGElement>) {
     const last = points.length - 1;
@@ -93,17 +105,38 @@ export function GoodRateTrend({
         onBlur={() => setActive(null)}
         onKeyDown={onKeyDown}
       >
-        <title id={titleId}>Weekly good rate</title>
+        <title id={titleId}>
+          Weekly good rate{showRatingRate ? " and rating rate" : ""}
+        </title>
         <desc id={descId}>
           {rated.length === 0
             ? "No ratings in these weeks yet."
             : rated
                 .map(
                   ({ week }) =>
-                    `Week of ${formatWeek(week.week_start)}: ${formatPercent(week.good_rate)}`,
+                    `Week of ${formatWeek(week.week_start)}: ${describeWeekRates(week, { ratingRate: showRatingRate })}`,
                 )
                 .join("; ")}
         </desc>
+        <defs>
+          <linearGradient
+            id={areaGradientId}
+            x1={0}
+            y1={box.top}
+            x2={0}
+            y2={plotBottom}
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop
+              offset={0}
+              style={{ stopColor: "var(--chart-1)", stopOpacity: 0.18 }}
+            />
+            <stop
+              offset={1}
+              style={{ stopColor: "var(--chart-1)", stopOpacity: 0 }}
+            />
+          </linearGradient>
+        </defs>
         {GRID.map((rate) => {
           const y = box.top + (1 - rate) * plotHeight;
           return (
@@ -145,16 +178,26 @@ export function GoodRateTrend({
             </text>
           ) : null,
         )}
-        {current && (
+        {/*
+          The crosshair marks the latest week even when nothing is hovered; a
+          hovered or focused week moves it there.
+        */}
+        {(current ?? latest) && (
           <line
-            x1={current.x}
-            x2={current.x}
+            x1={(current ?? latest)!.x}
+            x2={(current ?? latest)!.x}
             y1={box.top}
             y2={plotBottom}
             stroke="currentColor"
             strokeOpacity={0.4}
           />
         )}
+        {/* The area fills only over consecutive rated weeks, like the line. */}
+        <path
+          d={areaPath(points, plotBottom)}
+          fill={`url(#${areaGradientId})`}
+          className="stroke-none"
+        />
         <path
           d={trendPath(points)}
           fill="none"
@@ -163,6 +206,17 @@ export function GoodRateTrend({
           strokeLinejoin="round"
           strokeLinecap="round"
         />
+        {showRatingRate && (
+          <path
+            d={trendPath(ratingPoints)}
+            fill="none"
+            className="stroke-chart-2"
+            strokeWidth={1.5}
+            strokeDasharray="4 4"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        )}
         {rated.map(({ x, y, week }) => (
           <circle
             key={week.week_start}
@@ -173,6 +227,19 @@ export function GoodRateTrend({
             strokeWidth={2}
           />
         ))}
+        {showRatingRate &&
+          ratingPoints
+            .filter((point) => point.y != null)
+            .map(({ x, y, week }) => (
+              <circle
+                key={week.week_start}
+                cx={x}
+                cy={y ?? 0}
+                r={current?.week === week || week === latest?.week ? 4 : 3}
+                className="fill-chart-2 stroke-background"
+                strokeWidth={2}
+              />
+            ))}
         {latest && latest.y != null && (
           <text
             x={latest.x}
@@ -209,6 +276,9 @@ export function GoodRateTrend({
             {current.week.good_rate == null
               ? "no ratings"
               : `${formatPercent(current.week.good_rate)} good (${current.week.good_count} of ${plural(current.week.rated_count, "rating")})`}
+            {showRatingRate &&
+              current.week.rating_rate != null &&
+              ` · ${formatPercent(current.week.rating_rate)} rated`}
           </>
         ) : (
           <span className="text-muted-foreground">
@@ -217,6 +287,55 @@ export function GoodRateTrend({
           </span>
         )}
       </p>
+      {showRatingRate && (
+        // The chart's description explains the series to screen readers, so
+        // this visible row is hidden from them and only labels the swatches:
+        // the dashed shape already differs, color does the rest for sight.
+        <div
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground"
+          aria-hidden="true"
+        >
+          <span className="flex items-center gap-1.5">
+            <svg
+              width={16}
+              height={6}
+              viewBox="0 0 16 6"
+              aria-hidden="true"
+              className="shrink-0"
+            >
+              <line
+                x1={0}
+                y1={3}
+                x2={16}
+                y2={3}
+                className="stroke-chart-1"
+                strokeWidth={2}
+              />
+            </svg>
+            Good rate
+          </span>
+          <span className="flex items-center gap-1.5">
+            <svg
+              width={16}
+              height={6}
+              viewBox="0 0 16 6"
+              aria-hidden="true"
+              className="shrink-0"
+            >
+              <line
+                x1={0}
+                y1={3}
+                x2={16}
+                y2={3}
+                className="stroke-chart-2"
+                strokeWidth={1.5}
+                strokeDasharray="4 4"
+              />
+            </svg>
+            Rating rate
+          </span>
+        </div>
+      )}
       <figcaption className="text-sm text-muted-foreground">
         Share of each week&apos;s new ratings scored{" "}
         {formatScore(goodThreshold)} or higher. Weeks without ratings leave a
