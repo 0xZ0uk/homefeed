@@ -12,6 +12,7 @@ import {
 import { RatingPicker } from "#/components/RatingPicker";
 import { ScoreScale } from "#/components/ScoreScale";
 import { VideoPlayer, type VideoPlayerHandle } from "#/components/VideoPlayer";
+import type { Chapter } from "#/lib/chapters";
 import { scoreText } from "#/lib/scores";
 import type { WatchEvent } from "#/lib/player-events";
 import { createWatchEventReporter, sendWatchEvent } from "#/lib/watch-reporter";
@@ -22,6 +23,8 @@ interface WatchAndRateProps {
   poster?: string | null;
   /** Where to resume, in seconds, or null to start from the beginning. */
   startAt?: number | null;
+  /** Marked on the player's progress bar. */
+  chapters?: readonly Chapter[];
   /** Shown between the player and the rating, e.g. the video's title. */
   children?: ReactNode;
   /** Shown beside the info column on wide screens (xl). */
@@ -48,6 +51,7 @@ export function WatchAndRate({
   videoId,
   poster,
   startAt,
+  chapters,
   children,
   aside,
   contentClassName,
@@ -147,6 +151,7 @@ export function WatchAndRate({
       videoId={videoId}
       poster={poster}
       startAt={startAt}
+      chapters={chapters}
       onWatchEvent={onWatchEvent}
     >
       {(notices) => (

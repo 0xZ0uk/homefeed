@@ -48,6 +48,17 @@
   --rating-9: oklch(0.74 0.15 140);
   --rating-10: oklch(0.66 0.14 150);
   --brand-foreground: oklch(0.99 0 0);
+  /* SponsorBlock's own category colours, as the progress bar draws them. */
+  --sb-sponsor: #00d400;
+  --sb-selfpromo: #ffff00;
+  --sb-interaction: #cc00ff;
+  --sb-intro: #00ffff;
+  --sb-outro: #0202ed;
+  --sb-preview: #008fd6;
+  --sb-hook: #395699;
+  --sb-music-offtopic: #ff9900;
+  --sb-filler: #7300ff;
+  --sb-fallback: #9ca3af;
   /* Categorical chart slots, in this fixed order: blue, orange, aqua. */
   --chart-1: oklch(0.55 0.15 255);
   --chart-2: oklch(0.66 0.17 42);
