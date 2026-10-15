@@ -8,15 +8,20 @@ export function formatPercent(rate: number | null | undefined): string {
   return `${Math.round(rate * 100)}%`;
 }
 
-/** A week's Monday (`YYYY-MM-DD`) as e.g. "Oct 5". */
-export function formatWeek(weekStart: string): string {
-  const parsed = new Date(`${weekStart}T00:00:00Z`);
-  if (Number.isNaN(parsed.getTime())) return weekStart;
+/** A date (`YYYY-MM-DD`) as e.g. "Oct 5". */
+export function formatDay(day: string): string {
+  const parsed = new Date(`${day}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return day;
   return parsed.toLocaleDateString("en", {
     month: "short",
     day: "numeric",
     timeZone: "UTC",
   });
+}
+
+/** A week's Monday (`YYYY-MM-DD`) as e.g. "Oct 5". */
+export function formatWeek(weekStart: string): string {
+  return formatDay(weekStart);
 }
 
 /** `count` and the noun, pluralized: "1 rating", "3 ratings". */

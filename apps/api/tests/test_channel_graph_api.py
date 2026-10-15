@@ -194,7 +194,8 @@ def test_suggested_channels(client: TestClient, gateway: FakeGateway) -> None:
         "url": CARPENTRY.url,
         "thumbnail_url": "https://example.invalid/carpentry.jpg",
         "subscriber_count": 5000,
-        "featured_by": [{"channel_id": WOOD.id, "title": "Woodworking"}],
+        "featured_by": [{"channel_id": WOOD.id, "title": "Woodworking", "relation": "love"}],
+        "top_tags": [],
     }
     # Fetched once, then served from storage.
     client.get("/discover/suggested-channels", params={"limit": 1})

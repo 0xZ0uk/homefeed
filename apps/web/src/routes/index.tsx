@@ -1,15 +1,19 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useSuspenseQuery, type QueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { AppShell } from "#/components/AppShell";
 import { DiscoveryCarousel } from "#/components/DiscoveryCarousel";
 import { FeedError } from "#/components/FeedError";
 import { FeedList } from "#/components/FeedList";
+import { MixStrip } from "#/components/MixStrip";
+import { NoFeedYet } from "#/components/NoFeedYet";
 import { RefreshFeedButton } from "#/components/RefreshFeedButton";
 import { formatFeedDate } from "#/lib/format";
+import { previousFeedOf } from "#/lib/today";
 import { discoveryVideosQuery } from "#/server/discover";
-import { todayFeedQuery } from "#/server/feeds";
+import { feedListQuery, feedQuery, todayFeedQuery } from "#/server/feeds";
 import { onboardingQuery } from "#/server/onboarding";
+import { settingsQuery } from "#/server/settings";
 
 export const Route = createFileRoute("/")({
   loader: async ({ context: { queryClient } }) => {
@@ -17,17 +21,37 @@ export const Route = createFileRoute("/")({
     // pages stay reachable.
     const onboarding = await queryClient.fetchQuery(onboardingQuery);
     if (onboarding.needed) throw redirect({ to: "/welcome" });
-    // Discovery is extra: it doesn't hold up or break the page (see
+    // What comes besides the feed (Discovery, the mix, what's left of the last
+    // feed) is extra: it doesn't hold up or break the page (see
     // DiscoveryCarousel).
-    await Promise.all([
+    const [feed] = await Promise.all([
       queryClient.ensureQueryData(todayFeedQuery),
       queryClient.prefetchQuery(discoveryVideosQuery),
+      queryClient.prefetchQuery(settingsQuery),
     ]);
+    if (!feed || feed.items.length === 0) await prefetchLeftovers(queryClient);
   },
   component: Home,
   errorComponent: FeedError,
 });
 
+/** Load the last feed that picked anything, for the page without a feed. */
+async function prefetchLeftovers(queryClient: QueryClient) {
+  try {
+    const feeds = await queryClient.fetchQuery(feedListQuery);
+    const previous = previousFeedOf(feeds);
+    if (previous) await queryClient.prefetchQuery(feedQuery(previous.date));
+  } catch {
+    // Left out: the page is whole without it.
+  }
+}
+
+/**
+ * Today: the day's feed in two lanes (see `FeedList`), with the topics it's
+ * about and the dial to steer the next one under the header (see `MixStrip`),
+ * and the Discovery carousel at the top of "New to you". With no feed yet it's
+ * still a page worth opening (see `NoFeedYet`).
+ */
 function Home() {
   const { data: feed } = useSuspenseQuery(todayFeedQuery);
 
@@ -36,33 +60,34 @@ function Home() {
       className="flex max-w-[110rem] flex-col gap-2"
       actions={
         feed && (
-          <div className="mr-1 flex items-center gap-3">
-            <time
-              dateTime={feed.date}
-              className="hidden text-sm text-muted-foreground md:block"
-            >
-              {formatFeedDate(feed.date)}
-            </time>
+          <div className="mr-1">
             <RefreshFeedButton variant="secondary" compact />
           </div>
         )
       }
     >
-      <DiscoveryCarousel />
-      <h2 className="sr-only">
-        Today{feed && `, ${formatFeedDate(feed.date)}`}
-      </h2>
-      {feed ? (
-        <FeedList feed={feed} dismissible />
+      <h1 className="pt-2 text-xl font-semibold">
+        Today
+        {feed && (
+          <>
+            {/* Read as "Today, Thu, Oct 15, 2026". */}
+            <span className="sr-only">, </span>
+            <time
+              dateTime={feed.date}
+              className="ml-3 text-sm font-normal text-muted-foreground"
+            >
+              {formatFeedDate(feed.date)}
+            </time>
+          </>
+        )}
+      </h1>
+      {feed && feed.items.length > 0 ? (
+        <>
+          <MixStrip feed={feed} />
+          <FeedList feed={feed} dismissible shelf={<DiscoveryCarousel />} />
+        </>
       ) : (
-        <div className="mx-auto my-16 flex max-w-md flex-col items-center gap-3 text-center">
-          <p className="text-lg font-medium">There's no feed for today yet.</p>
-          <p className="text-muted-foreground">
-            The feed is built once a day from your subscriptions. Build it now,
-            or subscribe to channels on the Subscriptions page first.
-          </p>
-          <RefreshFeedButton label="Build today's feed" />
-        </div>
+        <NoFeedYet built={feed !== null} shelf={<DiscoveryCarousel />} />
       )}
     </AppShell>
   );

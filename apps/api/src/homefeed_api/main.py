@@ -22,17 +22,19 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from homefeed_core import (
     channel_graph,
+    channel_health,
     channel_hides,
     curation,
     exporter,
     external_sources,
     extractor_status,
+    feedback,
     feeds,
     history,
     importer,
@@ -46,8 +48,12 @@ from homefeed_core import (
     ratings,
     saved_searches,
     scores,
+    similar,
     sponsorblock,
     tags,
+    taste,
+    trainer,
+    trials,
     user_settings,
     videos,
     watch_events,
@@ -464,9 +470,19 @@ def search_history(
         history.DEFAULT_HISTORY_LIMIT
     ),
     offset: Annotated[int, Query(ge=0)] = 0,
+    unrated: Annotated[
+        bool, Query(description="Only videos I haven't rated, e.g. to rate them in a row")
+    ] = False,
 ) -> list[history.HistoryEntry]:
     """Videos I've played, most recently watched first, each with where I left off."""
-    return history.search_history(session, q, limit=limit, offset=offset)
+    return history.search_history(session, q, limit=limit, offset=offset, unrated=unrated)
+
+
+# Declared before `/history/{video_id}`, which would take "summary" for a (bad) video id.
+@app.get("/history/summary", tags=["watching"])
+def get_history_summary(session: SessionDep) -> history.HistorySummary:
+    """How many videos the history holds and how many of them I haven't rated."""
+    return history.history_summary(session)
 
 
 @app.get(
@@ -516,7 +532,23 @@ class ChannelPrefsInput(BaseModel):
 
     prior: curation.Prior | None = None
     pinned: bool | None = None
-    muted: bool | None = None
+    muted: bool | None = Field(
+        default=None,
+        description="Mute for good, or unmute (which also ends a mute for a time)",
+    )
+    mute_days: int | None = Field(
+        default=None,
+        ge=1,
+        le=curation.MAX_MUTE_DAYS,
+        description="Mute for this many days: the channel counts as muted until then and "
+        "comes back by itself (`muted_until`). Replaces a mute for good. Not with `muted`.",
+    )
+
+    @model_validator(mode="after")
+    def one_kind_of_mute(self) -> "ChannelPrefsInput":
+        if self.muted is not None and self.mute_days is not None:
+            raise ValueError("Give either muted or mute_days, not both")
+        return self
 
 
 CHANNEL_NOT_FOUND: dict[int | str, dict[str, Any]] = {
@@ -526,8 +558,44 @@ CHANNEL_NOT_FOUND: dict[int | str, dict[str, Any]] = {
 
 @app.get("/channels", tags=["channels"])
 def list_channels(session: SessionDep) -> list[curation.SubscribedChannel]:
-    """All subscribed channels with their preferences, pinned first, then by title."""
+    """All subscribed channels with their preferences, pinned first, then by title.
+
+    `trial_until` is set for a channel on trial, `muted_until` while it is muted for a
+    time that hasn't run out."""
     return curation.list_channels(session)
+
+
+class ChannelHealthOut(BaseModel):
+    channel_id: str
+    last_watched_at: str | None = Field(
+        description="When a video of the channel was last played or rated, ISO 8601 UTC; "
+        "null if never"
+    )
+    rating_count: int = Field(description="How many of the channel's videos are rated")
+    average_score: float | None = Field(
+        description="Their average score, 1 to 10; null without ratings"
+    )
+    picks: int = Field(
+        description="Distinct videos of the channel in feeds built in the last `days` days"
+    )
+    watched_picks: int = Field(description="Of those picks, how many were played or rated")
+
+
+# Registered before `GET /channels/{channel_id}`, which would otherwise take "health".
+@app.get("/channels/health", tags=["channels"])
+def list_channel_health(
+    session: SessionDep,
+    days: Annotated[
+        int, Query(ge=1, le=365, description="How many days of feeds count as picks")
+    ] = channel_health.PICKS_WINDOW_DAYS,
+) -> list[ChannelHealthOut]:
+    """How each subscribed channel is doing, by title: how many of its videos the feed
+    picked lately and how many of those were watched, when it was last watched, and how
+    its rated videos scored. For finding subscriptions that keep showing up unwatched."""
+    return [
+        ChannelHealthOut.model_validate(health, from_attributes=True)
+        for health in channel_health.channel_health(session, days=days)
+    ]
 
 
 @app.post(
@@ -565,9 +633,14 @@ def subscribe_channel(
 def update_channel(
     channel_id: ChannelId, body: ChannelPrefsInput, session: SessionDep
 ) -> curation.SubscribedChannel:
-    """Change a subscribed channel's prior, pin or mute."""
+    """Change a subscribed channel's prior, pin or mute (for good, or for some days)."""
     channel = curation.update_channel(
-        session, channel_id, prior=body.prior, pinned=body.pinned, muted=body.muted
+        session,
+        channel_id,
+        prior=body.prior,
+        pinned=body.pinned,
+        muted=body.muted,
+        mute_days=body.mute_days,
     )
     if channel is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Channel not subscribed")
@@ -584,6 +657,65 @@ def unsubscribe_channel(channel_id: ChannelId, session: SessionDep) -> Response:
     """Unsubscribe from a channel, dropping its preferences."""
     if not curation.unsubscribe(session, channel_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Channel not subscribed")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+TRIAL_NOT_FOUND: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorDetail, "description": "The channel is not on trial"}
+}
+
+
+@app.post(
+    "/channels/{channel_id}/trial",
+    tags=["channels"],
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        200: {"model": curation.SubscribedChannel, "description": "Already subscribed"},
+        404: {"model": ErrorDetail, "description": "The channel isn't known"},
+    },
+)
+def start_channel_trial(
+    channel_id: ChannelId, session: SessionDep, response: Response
+) -> curation.SubscribedChannel:
+    """Subscribe to a channel on a trial of 14 days ("Try for 2 weeks").
+
+    The channel must be known (featured by a channel, or fetched with
+    `GET /channels/{channel_id}`). The trial ends at `trial_until`; the daily worker job
+    then keeps the channel if a video of it was rated 7 or higher since the trial began,
+    and otherwise unsubscribes and records a `dismissed` hide. A new subscription clears
+    the channel's hide. A channel that is already subscribed, on trial or not, is
+    returned as it is with 200.
+    """
+    started = trials.start_trial(session, channel_id)
+    if started is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Channel not found")
+    channel, created = started
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return channel
+
+
+@app.post("/channels/{channel_id}/trial/keep", tags=["channels"], responses=TRIAL_NOT_FOUND)
+def keep_channel_trial(channel_id: ChannelId, session: SessionDep) -> curation.SubscribedChannel:
+    """Keep a channel on trial: it becomes a plain subscription (`trial_until` is cleared)."""
+    channel = trials.keep_trial(session, channel_id)
+    if channel is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Channel not on trial")
+    return channel
+
+
+@app.delete(
+    "/channels/{channel_id}/trial",
+    tags=["channels"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=TRIAL_NOT_FOUND,
+)
+def end_channel_trial(channel_id: ChannelId, session: SessionDep) -> Response:
+    """End a trial now: unsubscribe from the channel and record a `dismissed` hide, so
+    it isn't suggested again right away (what the daily job does to a trial that earned
+    no keep)."""
+    if not trials.end_trial(session, channel_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Channel not on trial")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -1129,6 +1261,23 @@ class ScoreBreakdownOut(BaseModel):
     )
 
 
+class ItemTagOut(BaseModel):
+    slug: str = Field(
+        description="The tag's unique key, e.g. `dovetail-joints`; its page is `/tags/{slug}`"
+    )
+    label: str = Field(description="How the tag is shown, e.g. `dovetail joints`")
+
+
+class ItemLLMOut(BaseModel):
+    """The LLM tagger's scores for a video, each from 0 to 1."""
+
+    depth: float = Field(ge=0, le=1, description="0 is superficial, 1 is in-depth")
+    clickbait: float = Field(
+        ge=0, le=1, description="0 means the title describes it plainly, 1 is pure bait"
+    )
+    rage_bait: float = Field(ge=0, le=1, description="0 is calm, 1 is made to provoke outrage")
+
+
 class FeedItemOut(BaseModel):
     id: int
     position: int = Field(description="0-based position in the feed")
@@ -1154,6 +1303,23 @@ class FeedItemOut(BaseModel):
     dismissed_at: str | None
     dismiss_reason: str | None
     watched: bool = Field(description="Whether the video has been played here or rated")
+    rating: int | None = Field(description="The video's rating, 1 to 10, if I rated it")
+    watched_fraction: float | None = Field(
+        description="How far through the video I got, 0 to 1 (as the History page's "
+        '"Stopped at"; 1 once played to the end); null when never played here or unknown'
+    )
+    feedback: int | None = Field(
+        description='1 if I marked the video "more like this", -1 for "less like this"; '
+        "null for neither"
+    )
+    channel_subscribed: bool = Field(
+        description="Whether the channel is one I subscribe to; false for videos from "
+        "channels that are new to me"
+    )
+    tags: list[ItemTagOut] = Field(
+        description="Up to 3 of the video's topic tags, most confident first"
+    )
+    llm: ItemLLMOut | None = Field(description="The LLM tagger's scores; null until tagged")
 
 
 class FeedOut(BaseModel):
@@ -1183,7 +1349,9 @@ def _feed_out(feed: feeds.Feed) -> FeedOut:
 
 
 def _feed_item_out(item: feeds.FeedItem) -> FeedItemOut:
-    return FeedItemOut.model_validate({**vars(item), "breakdown": item.breakdown.to_dict()})
+    return FeedItemOut.model_validate(
+        {**vars(item), "breakdown": item.breakdown.to_dict()}, from_attributes=True
+    )
 
 
 FEED_NOT_FOUND: dict[int | str, dict[str, Any]] = {
@@ -1245,7 +1413,7 @@ def dismiss_feed_item(
 
     The video is left out of every feed built afterwards and counts as a weak negative
     signal. Dismissing again keeps the first `dismissed_at`; a new reason replaces the
-    old one.
+    old one. `DELETE /feed-items/{item_id}/dismiss` takes it back.
     """
     try:
         item = feeds.dismiss_feed_item(session, item_id, body.reason if body else None)
@@ -1254,6 +1422,63 @@ def dismiss_feed_item(
     if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Feed item not found")
     return _feed_item_out(item)
+
+
+@app.delete("/feed-items/{item_id}/dismiss", tags=["feed"], responses=FEED_ITEM_NOT_FOUND)
+def undismiss_feed_item(item_id: FeedItemId, session: SessionDep) -> FeedItemOut:
+    """Take a dismissal back: the item has no `dismissed_at` or reason again, and its
+    video is no longer left out of feeds built afterwards because of it. Undismissing an
+    item that isn't dismissed changes nothing."""
+    item = feeds.undismiss_feed_item(session, item_id)
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Feed item not found")
+    return _feed_item_out(item)
+
+
+class FeedbackInput(BaseModel):
+    signal: Literal[1, -1] = Field(description='1 for "more like this", -1 for "less like this"')
+
+    @field_validator("signal", mode="before")
+    @classmethod
+    def _not_a_bool(cls, signal: object) -> object:
+        if isinstance(signal, bool):
+            raise ValueError("Signal must be 1 or -1, not a boolean")
+        return signal
+
+
+@app.put(
+    "/videos/{video_id}/feedback",
+    tags=["feed"],
+    responses={404: {"model": ErrorDetail, "description": "The video isn't stored"}},
+)
+def set_video_feedback(
+    video_id: VideoId, body: FeedbackInput, session: SessionDep
+) -> feedback.Feedback:
+    """Mark a video "more like this" (1) or "less like this" (-1), replacing any earlier
+    feedback on it.
+
+    Feedback is a quick steer, not a rating: it isn't counted as one for the model, the
+    insights or training. Until the video is rated it makes candidates similar to it rank
+    higher (more) or lower (less), as a top-tier or bottom-tier rating would; a rating
+    always wins over it. The video must be stored (feed and Discovery videos are).
+    """
+    given = feedback.set_feedback(session, video_id, body.signal)
+    if given is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Video not found")
+    return given
+
+
+@app.delete(
+    "/videos/{video_id}/feedback",
+    tags=["feed"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={404: {"model": ErrorDetail, "description": "The video has no feedback"}},
+)
+def clear_video_feedback(video_id: VideoId, session: SessionDep) -> Response:
+    """Take the feedback off a video."""
+    if not feedback.clear_feedback(session, video_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Feedback not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 STORED_FEED_NOT_FOUND: dict[int | str, dict[str, Any]] = {
@@ -1354,6 +1579,240 @@ def get_weekly_insights(
     )
 
 
+class DiscoveryWindowOut(BaseModel):
+    start: dt.date = Field(description="First local date of the window")
+    end: dt.date = Field(
+        description="Last local date of the window, included; the current window ends today"
+    )
+    new_channels: int = Field(
+        description="Channels tried: those whose first played video (of any of their "
+        "videos, ever) falls in the window"
+    )
+    kept_channels: int = Field(
+        description="Of those, how many are subscribed to now, a trial included"
+    )
+    liked_channels: int = Field(
+        description="Of those, how many have a video rated top tier (7 or higher)"
+    )
+    videos_watched: int = Field(description="Distinct videos played in the window")
+    new_channel_videos: int = Field(
+        description="Of those, how many come from the window's new channels"
+    )
+    new_channel_share: float | None = Field(
+        description="new_channel_videos / videos_watched; null when nothing was watched"
+    )
+    new_topics: int = Field(
+        description="Tags that first appeared among the videos watched or rated in the window"
+    )
+
+
+class DiscoveredChannelOut(BaseModel):
+    channel_id: str
+    title: str
+    handle: str | None
+    thumbnail_url: str | None = Field(
+        description="The channel's picture; null until the channel has been looked up "
+        "(subscribed to, or its page opened)"
+    )
+    videos_watched: int = Field(description="Distinct videos of the channel played in the window")
+    rating_count: int = Field(description="How many of the channel's videos are rated")
+    average_score: float | None = Field(
+        description="Their average score, 1 to 10; null without ratings"
+    )
+    top_score: int | None = Field(description="The best of those scores; null without ratings")
+    status: insights.ChannelStatus = Field(
+        description="Where the channel stands now: `subscribed`, `trial` (subscribed on a "
+        "trial), `hidden` (hidden, and not subscribed) or `not_followed`"
+    )
+    trial_until: str | None = Field(
+        description="When the trial ends, ISO 8601 UTC; set when `status` is `trial`"
+    )
+    hide_kind: channel_hides.HideKind | None = Field(
+        description="How the channel is hidden; set when `status` is `hidden`"
+    )
+    follow_up: bool = Field(
+        description="A channel I don't follow (`hidden` or `not_followed`) with a video "
+        "rated top tier: worth subscribing to or trying"
+    )
+
+
+class DiscoveredTopicOut(BaseModel):
+    slug: str = Field(description="The tag's unique key, e.g. `dovetail-joints`")
+    label: str = Field(description="How the tag is shown, e.g. `dovetail joints`")
+    videos: int = Field(description="How many videos watched or rated carry the tag")
+
+
+class DiscoveryRecapOut(BaseModel):
+    days: int = Field(description="The length of each window, in days")
+    top_tier_threshold: int = Field(
+        description="The lowest score counted as top tier: what `liked_channels` and "
+        "`follow_up` count"
+    )
+    current: DiscoveryWindowOut = Field(description="The last `days` days, ending today")
+    previous: DiscoveryWindowOut = Field(description="The `days` days before the current window")
+    channels: list[DiscoveredChannelOut] = Field(
+        description="The current window's new channels, the best rated first, then the "
+        "unrated ones by most videos watched"
+    )
+    topics: list[DiscoveredTopicOut] = Field(
+        description="The current window's new topics, the most watched first; at most "
+        f"{insights.MAX_RECAP_TOPICS} (`current.new_topics` counts them all)"
+    )
+
+
+@app.get("/insights/discoveries", tags=["insights"])
+def get_discovery_recap(
+    session: SessionDep,
+    days: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=insights.MAX_RECAP_DAYS,
+            description="The length of each of the two windows, in days",
+        ),
+    ] = insights.DEFAULT_RECAP_DAYS,
+) -> DiscoveryRecapOut:
+    """Whether discovery is working: the last `days` days against the `days` before.
+
+    A channel is new in a window when the first video of it that I played, ever, was
+    played in it. For each window: the channels tried, how many I kept (subscribed to,
+    a trial included) and how many have a video I rated 7 or higher, and the share of
+    the videos I watched that came from new channels. The current window also lists
+    its new channels, each with how it stands now and whether it is a `follow_up`, and
+    its new topics (tags that first appeared among the videos I watched or rated).
+    Days are local dates, in my time zone.
+    """
+    tz = user_settings.get_user_settings(session).tz
+    recap = insights.discovery_recap(session, today=feeds.local_today(tz=tz), days=days, tz=tz)
+    return DiscoveryRecapOut(
+        days=recap.days,
+        top_tier_threshold=scores.TOP_TIER_THRESHOLD,
+        current=DiscoveryWindowOut.model_validate(recap.current, from_attributes=True),
+        previous=DiscoveryWindowOut.model_validate(recap.previous, from_attributes=True),
+        channels=[
+            DiscoveredChannelOut.model_validate(channel, from_attributes=True)
+            for channel in recap.channels
+        ],
+        topics=[
+            DiscoveredTopicOut.model_validate(topic, from_attributes=True) for topic in recap.topics
+        ],
+    )
+
+
+class TasteTagOut(BaseModel):
+    tag_id: int
+    slug: str
+    label: str
+    weight: float = Field(
+        description="The tag's slider, -1 to 1: positive follows it (its videos get a boost), "
+        "negative mutes it"
+    )
+    hide: bool = Field(
+        description="A muted tag at -1 drops its videos from the feed instead of ranking them down"
+    )
+    picks: int = Field(
+        description="Distinct videos carrying the tag in feeds built in the last `days` days "
+        "(a video in several feeds counts once)"
+    )
+    watched_picks: int = Field(description="Of those picks, how many were played or rated")
+    rating_count: int = Field(description="Videos carrying the tag that you rated, all time")
+    average_score: float | None = Field(
+        description="Their average score, 1 to 10; null without ratings"
+    )
+
+
+class PriorCountsOut(BaseModel):
+    """How many subscribed channels hold each preference (`prior` in the channels API)."""
+
+    love: int
+    like: int
+    neutral: int
+    skeptical: int
+
+
+class RatedChannelOut(BaseModel):
+    channel_id: str
+    title: str
+    handle: str | None
+    thumbnail_url: str | None
+    rating_count: int = Field(description="Videos of the channel that you rated")
+    average_score: float = Field(description="Their average score, 1 to 10")
+
+
+class DismissalCountOut(BaseModel):
+    reason: str | None = Field(description="Why the videos were dismissed; null: no reason given")
+    count: int = Field(description="Distinct videos dismissed for that reason")
+
+
+class TasteSignalsOut(BaseModel):
+    ratings: int = Field(description="Videos you rated, all time")
+    watched: int = Field(
+        description="Videos you played or rated, all time (the rated ones are among them)"
+    )
+    more_like_this: int = Field(description='Videos marked "more like this"')
+    less_like_this: int = Field(description='Videos marked "less like this"')
+    dismissals: list[DismissalCountOut] = Field(
+        description="Videos dismissed from a feed in the last `days` days, by reason, the most "
+        "common first"
+    )
+
+
+class TasteOut(BaseModel):
+    days: int = Field(description="The window picks and dismissals are counted over, in days")
+    total_picks: int = Field(
+        description="Distinct videos in feeds built in the window: what a topic's share of "
+        "your picks is a share of (a video has several tags, so shares overlap)"
+    )
+    min_ratings_to_train: int = Field(
+        description="How many ratings the ranking model needs before it is first trained"
+    )
+    tags: list[TasteTagOut] = Field(description="Followed and muted tags, by label")
+    channel_priors: PriorCountsOut
+    unfollowed_channels: list[RatedChannelOut] = Field(
+        description="Channels you don't follow whose videos you rated well (an average of "
+        f"{taste.WELL_RATED_AVERAGE} or more from at least {taste.WELL_RATED_MIN_RATINGS} "
+        "ratings), the best first. Channels you hid from Discover are left out."
+    )
+    signals: TasteSignalsOut
+
+
+@app.get("/taste", tags=["taste"])
+def get_taste(
+    session: SessionDep,
+    days: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=taste.MAX_DAYS,
+            description="How many days of feeds and dismissals count",
+        ),
+    ] = taste.DEFAULT_DAYS,
+) -> TasteOut:
+    """What the app has learned about you, for the Taste page: how each followed or muted
+    tag fares in your picks, how your channels are set, and how you steer the feed.
+
+    Per tag: its weight, how many distinct videos carrying it were picked in the last
+    `days` days (and how many of those you watched), and your ratings of its videos. Also
+    the number of channels per preference, channels you rated well but don't follow, and
+    the counts of your ratings, "more like this" and "less like this", and dismissals by
+    reason. It reports the numbers; what to make of them (a topic taking most of the
+    picks, one that hardly shows up) is up to the page.
+    """
+    summary = taste.taste_summary(session, days=days)
+    return TasteOut(
+        days=summary.days,
+        total_picks=summary.total_picks,
+        min_ratings_to_train=trainer.MIN_EXPLICIT_RATINGS,
+        tags=[TasteTagOut.model_validate(tag, from_attributes=True) for tag in summary.tags],
+        channel_priors=PriorCountsOut.model_validate(summary.channel_priors, from_attributes=True),
+        unfollowed_channels=[
+            RatedChannelOut.model_validate(channel, from_attributes=True)
+            for channel in summary.unfollowed_channels
+        ],
+        signals=TasteSignalsOut.model_validate(summary.signals, from_attributes=True),
+    )
+
+
 class ChapterOut(BaseModel):
     title: str
     start_seconds: float
@@ -1376,6 +1835,10 @@ class VideoOut(BaseModel):
     channel_id: str
     channel_title: str
     channel_handle: str | None
+    channel_thumbnail_url: str | None = Field(
+        description="The channel's picture; null until the channel has been looked up "
+        "(subscribed to, or its page opened)"
+    )
     duration_seconds: int | None
     published_at: str | None = Field(description="Upload time, ISO 8601 UTC")
     thumbnail_url: str | None
@@ -1436,6 +1899,7 @@ def get_video(video_id: VideoId, player: PlaybackDep) -> VideoOut:
     with get_session_factory().begin() as session:
         videos.store_video(session, video)  # writes first, so it waits for the write lock
         video_tags = _tags_of(session, video_id)
+        stored = videos.get_stored_video(session, video_id)
     return VideoOut(
         id=video.id,
         title=video.title,
@@ -1443,6 +1907,7 @@ def get_video(video_id: VideoId, player: PlaybackDep) -> VideoOut:
         channel_id=video.channel_id,
         channel_title=video.channel_title,
         channel_handle=video.channel_handle,
+        channel_thumbnail_url=stored.channel_thumbnail_url if stored else None,
         duration_seconds=video.duration_seconds,
         published_at=(
             format_timestamp(video.published_at) if video.published_at is not None else None
@@ -1501,6 +1966,49 @@ def remove_video_tag(video_id: VideoId, slug: str, session: SessionDep) -> list[
     _require_stored_video(session, video_id)
     tags.remove_video_tag(session, video_id, slug)
     return _tags_of(session, video_id)
+
+
+class SimilarVideoOut(BaseModel):
+    video_id: str
+    title: str
+    duration_seconds: int | None
+    published_at: str | None = Field(description="Upload time, ISO 8601 UTC")
+    thumbnail_url: str | None
+    view_count: int | None
+    channel_id: str
+    channel_title: str
+    channel_thumbnail_url: str | None
+    watched: bool = Field(description="Always false: videos I've watched are left out")
+    reason: str = Field(
+        description='Why it is listed: "Related on YouTube" or "Similar to this video"'
+    )
+
+
+SIMILAR_ERRORS: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorDetail, "description": "The video isn't known"},
+}
+
+
+@app.get("/videos/{video_id}/similar", tags=["videos"], responses=SIMILAR_ERRORS)
+def get_similar_videos(
+    video_id: VideoId,
+    session: SessionDep,
+    limit: Annotated[
+        int, Query(ge=1, le=similar.MAX_SIMILAR_LIMIT)
+    ] = similar.DEFAULT_SIMILAR_LIMIT,
+) -> list[SimilarVideoOut]:
+    """Videos like this one, best first: the ones YouTube suggested next to it (when it was
+    rated top tier) and the stored videos whose embeddings are closest to its own.
+
+    Computed when asked, for the watch page's "Find more like this"; nothing offers them
+    on its own. Watched and dismissed videos, muted or hidden channels and whatever the
+    feed filters out are left out, so the list is empty until videos have been analysed.
+    """
+    _require_stored_video(session, video_id)
+    return [
+        SimilarVideoOut.model_validate(vars(video))
+        for video in similar.similar_videos(session, video_id, limit)
+    ]
 
 
 @app.get("/tags/suggest", tags=["tags"])
@@ -1870,6 +2378,18 @@ class DiscoveryItemOut(BaseModel):
     score: float
     breakdown: ScoreBreakdownOut
     explanation: str
+    channel_subscribed: bool = Field(
+        description="Whether the channel is one I subscribe to; always false here, as "
+        "Discovery leaves those out"
+    )
+    feedback: int | None = Field(
+        description='1 if I marked the video "more like this", -1 for "less like this"; '
+        "null for neither"
+    )
+    tags: list[ItemTagOut] = Field(
+        description="Up to 3 of the video's topic tags, most confident first"
+    )
+    llm: ItemLLMOut | None = Field(description="The LLM tagger's scores; null until tagged")
 
 
 @app.get("/discover/videos", tags=["discovery"])
@@ -1880,20 +2400,49 @@ def get_discovery_videos(
     """The best-ranked candidates from outside my subscriptions (related videos, featured
     channels, tag and saved searches, external sources), one per channel, best first.
 
-    Ranked like the feed, so watched, dismissed and filtered videos never show; videos of
-    subscribed channels and everything in today's feed are left out too. Computed on
+    Ranked like the feed, so watched, dismissed and filtered videos never show, and no
+    followed topic takes more than its share; videos of subscribed channels and everything
+    in today's feed are left out too. Computed on each request, not stored.
+    """
+    return [_discovery_item_out(item) for item in feeds.discover(session, size=limit)]
+
+
+def _discovery_item_out(item: feeds.DiscoveryItem) -> DiscoveryItemOut:
+    return DiscoveryItemOut.model_validate(
+        {**vars(item), "breakdown": item.breakdown.to_dict()}, from_attributes=True
+    )
+
+
+@app.get("/feeds/wildcards", tags=["feed"])
+def get_wildcards(
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=feeds.WILDCARD_POOL)] = feeds.WILDCARD_SIZE,
+) -> list[DiscoveryItemOut]:
+    """A few videos from outside the topics I follow, for the end of the day's feed
+    ("Show 3 wildcards"). Each says "Wildcard: outside the topics you follow".
+
+    They come from channels I don't subscribe to and haven't hidden, share no tag with the
+    tags I follow or mute, and pass the filters of the feed (not watched or dismissed, no
+    shorts or live streams, within the duration bounds, no muted keywords). They look back
+    30 days, further than the feed does, as the end of the feed is where everything from
+    its own window has been shown. Videos in today's feed are left out, and so are the
+    ones the Discovery carousel shows (`GET /discover/videos`), so the page doesn't repeat
+    itself. Videos with tags and an embedding are preferred, and the picks are drawn from
+    the 20 most like what I rated well (or newest): at random, but the same all day for as
+    long as the pool is. Fewer than `limit`, or none, when there aren't enough. Computed on
     each request, not stored.
     """
+    in_discovery = {item.video_id for item in feeds.discover(session)}
     return [
-        DiscoveryItemOut.model_validate({**vars(item), "breakdown": item.breakdown.to_dict()})
-        for item in feeds.discover(session, size=limit)
+        _discovery_item_out(item)
+        for item in feeds.wildcards(session, size=limit, exclude=in_discovery)
     ]
 
 
 class ChannelHideInput(BaseModel):
     kind: channel_hides.HideKind = Field(
-        description="dismissed removes the channel from Discover suggestions; blocked "
-        "also keeps all of its videos out of the feed"
+        description='dismissed ("Not now") removes the channel from Discover suggestions; '
+        'blocked ("Hide channel") also keeps all of its videos out of the feed'
     )
 
 
@@ -1907,9 +2456,10 @@ def list_channel_hides(session: SessionDep) -> list[channel_hides.ChannelHide]:
 def hide_channel(
     channel_id: ChannelId, body: ChannelHideInput, session: SessionDep
 ) -> channel_hides.ChannelHide:
-    """Hide a channel from Discover (`dismissed`) or also from the feed (`blocked`).
-    Hiding again changes the kind. The channel must be known (subscribed, featured by a
-    channel, or fetched with `GET /channels/{channel_id}`). Subscribing clears the hide."""
+    """Hide a channel from Discover (`dismissed`, "Not now") or also from the feed
+    (`blocked`, "Hide channel"). Hiding again changes the kind. The channel must be known
+    (subscribed, featured by a channel, or fetched with `GET /channels/{channel_id}`).
+    Subscribing clears the hide."""
     hide = channel_hides.hide(session, channel_id, body.kind)
     if hide is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Channel not found")
@@ -2090,6 +2640,10 @@ class UserSettingsOut(BaseModel):
     feed_exploration_slots: int = Field(
         description="Feed slots for channels with few or no ratings"
     )
+    feed_max_topic_share: float = Field(
+        description="The most of a feed one followed topic may take, as a share of its size "
+        "(0.1 to 1); 1 is no limit"
+    )
     feed_min_duration_seconds: int | None = Field(description="Shortest video; null: no bound")
     feed_max_duration_seconds: int | None = Field(description="Longest video; null: no bound")
     feed_refresh_time: str = Field(description="Local time the daily feed is built, HH:MM")
@@ -2135,6 +2689,7 @@ class SettingsChanges(BaseModel):
 
     feed_size: int | None = None
     feed_exploration_slots: int | None = None
+    feed_max_topic_share: float | None = None
     feed_min_duration_seconds: int | None = None
     feed_max_duration_seconds: int | None = None
     feed_refresh_time: dt.time | None = Field(default=None, description="HH:MM")
@@ -2164,6 +2719,7 @@ def _user_settings_out(values: user_settings.UserSettings) -> UserSettingsOut:
     return UserSettingsOut(
         feed_size=values.feed_size,
         feed_exploration_slots=values.feed_exploration_slots,
+        feed_max_topic_share=values.feed_max_topic_share,
         feed_min_duration_seconds=values.feed_min_duration_seconds,
         feed_max_duration_seconds=values.feed_max_duration_seconds,
         feed_refresh_time=values.feed_refresh_time.strftime("%H:%M"),

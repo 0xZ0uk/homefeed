@@ -78,9 +78,9 @@ describe("describeFilters", () => {
         upload_date: "week",
         duration: "long",
       }),
-    ).toBe("Newest first · This week · Over 20 minutes");
+    ).toBe("Newest first · This week · Over 20 min");
     expect(describeFilters({ sort: "relevance", duration: "medium" })).toBe(
-      "4–20 minutes",
+      "4–20 min",
     );
   });
 

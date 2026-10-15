@@ -7,7 +7,10 @@ import { FeedList } from "#/components/FeedList";
 import { formatFeedDate, isFeedDate } from "#/lib/format";
 import { feedQuery } from "#/server/feeds";
 
-/** A past (or today's) feed, as it was last built that day. */
+/**
+ * A past (or today's) feed, as it was last built that day, in the same two
+ * lanes as today's (see `FeedList`), without the Discovery carousel.
+ */
 export const Route = createFileRoute("/feed/$date")({
   head: ({ params }) => ({
     meta: [{ title: `Feed for ${formatFeedDate(params.date)} · Homefeed` }],
@@ -31,7 +34,7 @@ function PastFeed() {
 
   return (
     <AppShell className="flex max-w-[110rem] flex-col gap-2">
-      <h2 className="pt-2 text-xl font-bold">{formatFeedDate(date)}</h2>
+      <h1 className="pt-2 text-xl font-bold">{formatFeedDate(date)}</h1>
       {feed ? (
         <FeedList feed={feed} />
       ) : (

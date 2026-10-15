@@ -94,6 +94,17 @@ export function formatAgo(
   return `${Math.floor(hours / 24)} d ago`;
 }
 
+// eslint-disable-next-line no-control-regex -- the escape character is the point
+const ANSI_SGR = /\u001b\[[0-9;]*m/g;
+
+/**
+ * `text` without ANSI colour codes (`ESC[0;31m`, `ESC[0m`, …). yt-dlp colours
+ * the errors it reports, and the codes show up as stray "[0;31m" in the page.
+ */
+export function stripAnsi(text: string): string {
+  return text.replace(ANSI_SGR, "");
+}
+
 /** A duration in milliseconds, e.g. "850 ms" or "1.2 s", or "–" when unknown. */
 export function formatMilliseconds(ms: number | null | undefined): string {
   if (ms == null || !Number.isFinite(ms)) return "–";

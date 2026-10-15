@@ -9,6 +9,7 @@ import {
   healthSummary,
   operationLabel,
   parseStatusHours,
+  stripAnsi,
 } from "./status";
 
 const NOW = new Date("2026-10-13T12:00:00Z");
@@ -66,5 +67,27 @@ describe("formatMilliseconds", () => {
     expect(formatMilliseconds(850)).toBe("850 ms");
     expect(formatMilliseconds(1234)).toBe("1.2 s");
     expect(formatMilliseconds(null)).toBe("–");
+  });
+});
+
+describe("stripAnsi", () => {
+  const ESC = String.fromCharCode(27);
+
+  it("removes colour codes and keeps the message", () => {
+    const raw = `${ESC}[0;31mERROR:${ESC}[0m [youtube] abc: Video unavailable`;
+    expect(stripAnsi(raw)).toBe("ERROR: [youtube] abc: Video unavailable");
+  });
+
+  it("removes bold, bright and reset codes alike", () => {
+    expect(stripAnsi(`${ESC}[1mbold${ESC}[22m ${ESC}[92mgreen${ESC}[m`)).toBe(
+      "bold green",
+    );
+  });
+
+  it("leaves text without codes alone, brackets included", () => {
+    expect(stripAnsi("[youtube] abc: Sign in [0;31m")).toBe(
+      "[youtube] abc: Sign in [0;31m",
+    );
+    expect(stripAnsi("")).toBe("");
   });
 });

@@ -6,22 +6,26 @@ through the Gateway and stored in `featured_channels`, with the fetch time in
 `channel_graph_fetches`; they are refetched once older than `FEATURED_MAX_AGE`.
 
 Liked channels are the subscribed, unmuted channels with a love or like prior, then the
-channels of videos rated top tier (7 and up), and never a muted or blocked (see
-`channel_hides`) channel. Their featured channels that I'm not subscribed to or have
-hidden are the suggested channels, ordered by how many liked channels feature them.
-`ChannelGraphSource` turns the top suggestions' newest uploads into candidates,
-attributed to the liked channel that featured them.
+channels of videos rated top tier (7 and up), and never a muted (for good or for a time
+still ahead) or blocked (see `channel_hides`) channel. Their featured channels that I'm
+not subscribed to or have hidden are the suggested channels, ordered by how many liked
+channels feature them. Each suggestion carries who features it (and why that channel is
+liked) and the tags its stored videos are most about, if any. `ChannelGraphSource` turns
+the top suggestions' newest uploads into candidates, attributed to the liked channel that
+featured them.
 """
 
 import logging
 from collections.abc import Collection, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from homefeed_core.candidates import CHANNEL_GRAPH, FoundVideo
+from homefeed_core.curation import muted_sql
 from homefeed_core.gateway import FeaturedChannel, Gateway, GatewayError
 from homefeed_core.gateway.events import format_timestamp
 from homefeed_core.scores import TOP_TIER_THRESHOLD
@@ -37,12 +41,21 @@ DEFAULT_MAX_FORCED_FETCHES = 10
 # ... plus this many of the suggestions' own featured channels (the second hop).
 DEFAULT_MAX_HOP_FETCHES = 5
 DEFAULT_SUGGESTIONS_LIMIT = 20
+# A suggestion shows at most this many tags.
+TOP_TAGS = 3
+
+
+# Why a channel counts as liked: a loved or liked subscription, or a video of it rated top
+# tier.
+LikedRelation = Literal["love", "like", "rated"]
 
 
 @dataclass(frozen=True)
 class ChannelRef:
     channel_id: str
     title: str
+    # Why the channel is liked; None for a suggestion that only features another one.
+    relation: LikedRelation | None = None
 
 
 @dataclass(frozen=True)
@@ -69,24 +82,30 @@ class SuggestedChannel:
     thumbnail_url: str | None
     subscriber_count: int | None
     featured_by: list[ChannelRef]  # the liked channels featuring it, in liked order
+    # The tags that most of its stored videos carry (by total confidence); empty while
+    # none of its videos is stored and tagged.
+    top_tags: list[str] = field(default_factory=list)
 
 
 # Liked channels
 
 
-def liked_channel_ids(session: Session, *, limit: int | None = None) -> list[str]:
+def liked_channel_ids(
+    session: Session, *, limit: int | None = None, now: datetime | None = None
+) -> list[str]:
     """Channels I like: loved, then liked subscriptions (by title), then channels of
     top-tier rated videos (most recently rated first). Muted and blocked channels never
-    count."""
+    count; a channel muted until a time still ahead of `now` (default: the current time)
+    is muted."""
     rows = session.execute(
         text(
-            """
+            f"""
             WITH liked AS (
                 SELECT p.channel_id AS id,
                        CASE p.prior WHEN 'love' THEN 0 ELSE 1 END AS rank,
                        c.title COLLATE NOCASE AS sort_key
                 FROM channel_prefs AS p JOIN channels AS c ON c.id = p.channel_id
-                WHERE p.prior IN ('love', 'like') AND p.muted = 0
+                WHERE p.prior IN ('love', 'like') AND NOT {muted_sql("p")}
                 UNION ALL
                 SELECT v.channel_id, 2, NULL
                 FROM ratings AS r JOIN videos AS v ON v.id = r.video_id
@@ -101,7 +120,9 @@ def liked_channel_ids(session: Session, *, limit: int | None = None) -> list[str
             )
             SELECT liked.id
             FROM liked LEFT JOIN last_rated ON last_rated.id = liked.id
-            WHERE liked.id NOT IN (SELECT channel_id FROM channel_prefs WHERE muted = 1)
+            WHERE liked.id NOT IN (
+                    SELECT p.channel_id FROM channel_prefs AS p WHERE {muted_sql("p")}
+                  )
               AND liked.id NOT IN (SELECT channel_id FROM channel_hides WHERE kind = 'blocked')
             GROUP BY liked.id
             ORDER BY min(liked.rank), min(liked.sort_key), max(last_rated.rated_at) DESC,
@@ -112,6 +133,7 @@ def liked_channel_ids(session: Session, *, limit: int | None = None) -> list[str
         {
             "threshold": TOP_TIER_THRESHOLD,
             "limit": -1 if limit is None else limit,
+            "now": format_timestamp(now or datetime.now(UTC)),
         },
     )
     return list(rows.scalars())
@@ -349,21 +371,78 @@ def suggested_channels(
     liked = liked_channel_ids(session)
     if not liked:
         return []
-    ranked = _rank(session, {channel_id: index for index, channel_id in enumerate(liked)}, set())
+    ranked = _rank(
+        session,
+        {channel_id: index for index, channel_id in enumerate(liked)},
+        set(),
+        _relations(session, liked),
+    )
     if second_hop and ranked:
         first = {suggestion.channel_id: index for index, suggestion in enumerate(ranked)}
-        ranked += _rank(session, first, set(first) | set(liked))
+        ranked += _rank(session, first, set(first) | set(liked), {})
     if exclude:
         seen = set(exclude)
         ranked = [s for s in ranked if s.channel_id not in seen] + [
             s for s in ranked if s.channel_id in seen
         ]
-    return ranked if limit is None else ranked[:limit]
+    return _with_top_tags(session, ranked if limit is None else ranked[:limit])
 
 
-def _rank(session: Session, sources: dict[str, int], skip: set[str]) -> list[SuggestedChannel]:
+def _relations(session: Session, liked: Sequence[str]) -> dict[str, LikedRelation]:
+    """Why each of the `liked` channels is liked: its prior when it is a loved or liked
+    subscription, else that a video of it was rated top tier."""
+    rows = session.execute(
+        text(
+            "SELECT channel_id, prior FROM channel_prefs "
+            "WHERE channel_id IN :ids AND prior IN ('love', 'like')"
+        ).bindparams(bindparam("ids", expanding=True)),
+        {"ids": list(liked)},
+    )
+    priors = {channel_id: prior for channel_id, prior in rows}
+    relations: dict[str, LikedRelation] = {}
+    for channel_id in liked:
+        prior = priors.get(channel_id)
+        relations[channel_id] = prior if prior in ("love", "like") else "rated"
+    return relations
+
+
+def _with_top_tags(session: Session, suggestions: list[SuggestedChannel]) -> list[SuggestedChannel]:
+    """The suggestions with `top_tags` filled in from their stored videos' tags: the
+    ones with the most total confidence, `TOP_TAGS` at most. Removed tags don't count."""
+    if not suggestions:
+        return suggestions
+    rows = session.execute(
+        text(
+            """
+            SELECT v.channel_id, t.label
+            FROM video_tags AS vt
+            JOIN videos AS v ON v.id = vt.video_id
+            JOIN tags AS t ON t.id = vt.tag_id
+            WHERE v.channel_id IN :ids AND vt.removed_at IS NULL
+            GROUP BY v.channel_id, t.id
+            ORDER BY v.channel_id, sum(vt.confidence) DESC, count(*) DESC,
+                     t.label COLLATE NOCASE
+            """
+        ).bindparams(bindparam("ids", expanding=True)),
+        {"ids": [suggestion.channel_id for suggestion in suggestions]},
+    )
+    labels: dict[str, list[str]] = {}
+    for channel_id, label in rows:
+        top = labels.setdefault(channel_id, [])
+        if len(top) < TOP_TAGS:
+            top.append(label)
+    return [replace(s, top_tags=labels.get(s.channel_id, [])) for s in suggestions]
+
+
+def _rank(
+    session: Session,
+    sources: dict[str, int],
+    skip: set[str],
+    relations: dict[str, LikedRelation],
+) -> list[SuggestedChannel]:
     """The channels featured by `sources` (channel id -> rank) that I'm not subscribed to,
-    haven't hidden and aren't in `skip`, ranked by how many sources feature them."""
+    haven't hidden and aren't in `skip`, ranked by how many sources feature them. Each
+    featuring channel is referenced with its relation, if `relations` has one."""
     rows = session.execute(
         text(
             """
@@ -385,7 +464,12 @@ def _rank(session: Session, sources: dict[str, int], skip: set[str]) -> list[Sug
         if featured_id in skip:
             continue
         by_id.setdefault(featured_id, []).append(
-            (sources[source_id], position, subscribers, ChannelRef(source_id, source))
+            (
+                sources[source_id],
+                position,
+                subscribers,
+                ChannelRef(source_id, source, relations.get(source_id)),
+            )
         )
         details[featured_id] = (title, handle, url, thumb)
     suggestions: list[tuple[tuple[int, int, int, str, str], SuggestedChannel]] = []

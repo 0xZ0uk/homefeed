@@ -26,6 +26,24 @@ export const BIRDWATCHING = {
   ],
 } as const;
 
+/** Not subscribed: Woodworking features it, so Discover suggests it once
+ * Woodworking is liked (see `likeWoodworking`). */
+export const METALWORKING = {
+  id: `UC${"m".repeat(22)}`,
+  title: "Metalworking",
+  videos: [
+    { id: "metal000001", title: "Welding aluminium at home" },
+    { id: "metal000002", title: "Forging a knife blade" },
+    { id: "metal000003", title: "Sharpening a chisel on a stone" },
+  ],
+} as const;
+/** Subscribed only after `resetWith(request, { noisy: true })`: six picks in
+ * the feed, none of them watched. */
+export const GARDENING = {
+  id: `UC${"g".repeat(22)}`,
+  title: "Gardening",
+} as const;
+
 /** Every test starts from freshly seeded data. */
 export const test = base.extend<{ seeded: void }>({
   seeded: [
@@ -39,6 +57,28 @@ export const test = base.extend<{ seeded: void }>({
 });
 
 export { expect };
+
+/** Start over from the seed with something extra (see `fake_api.py`). */
+export async function resetWith(
+  request: APIRequestContext,
+  options: { noisy?: boolean },
+) {
+  const response = await request.post(`${API_URL}/__e2e__/reset`, {
+    params: { noisy: options.noisy ?? false },
+  });
+  expect(response.ok(), "resetting the fake API").toBe(true);
+}
+
+/** Love Woodworking, so Discover suggests the channels it features. */
+export async function likeWoodworking(request: APIRequestContext) {
+  const response = await request.patch(
+    `${API_URL}/channels/${WOODWORKING.id}`,
+    {
+      data: { prior: "love" },
+    },
+  );
+  expect(response.ok(), "loving Woodworking").toBe(true);
+}
 
 /**
  * Open `path` and wait until React has hydrated the page, so clicks and
@@ -64,9 +104,24 @@ export async function waitForHydration(page: Page) {
   });
 }
 
-/** Today's feed, as the ordered list on the home page. */
+/**
+ * Today's feed, as the ordered lists on the home page: one for each lane, "New
+ * to you" and "From your channels" (a lane with no videos has no list). Look
+ * for a card or count them across both; the lists are two, so a visibility
+ * check wants `.first()`.
+ */
 export function feedList(page: Page) {
-  return page.getByRole("list", { name: "Feed" });
+  return page.getByRole("list", { name: /^(New to you|From your channels)$/ });
+}
+
+/**
+ * A name made of a label and words only a screen reader gets, in a visually
+ * hidden tail ("New to you" and ", 4 videos"). Playwright reads the tail with a
+ * space before it, which a browser's accessibility tree may not have.
+ */
+export function withTail(label: string, tail: string): RegExp {
+  const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${escape(label)} ?, ${escape(tail)}$`);
 }
 
 /** The feed entry whose title is `title`. */

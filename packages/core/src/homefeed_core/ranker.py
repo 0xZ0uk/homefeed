@@ -12,13 +12,16 @@ channel score is a Bayesian average of the channel's rating values shrunk toward
 curation prior with weight `k = 5`.
 
 Similarity features compare a candidate's embedding with those of the videos rated top
-tier (rated 7 and up) and bottom tier (4 and down): the max and mean cosine similarity to
-each set (`SimilarityFeatures`). They are passed to the model and, until the model can
-weigh them itself, also make the rules-based `similarity` term: how much closer the
-candidate's nearest top-tier video is than its nearest bottom-tier one, each counted
-only by the part above the similarity floor (unrelated texts still have some
-similarity). Candidates without an embedding get no similarity features and a
-`similarity` term of 0.
+tier (rated 7 and up) and bottom tier (4 and down), and of unrated videos marked "more
+like this" or "less like this" (see homefeed_core.feedback), which count as top and
+bottom tier: the max and mean cosine similarity to each set (`SimilarityFeatures`). They
+are passed to the model and, until the model can weigh them itself, also make the
+rules-based `similarity` term: how much closer the candidate's nearest top-tier video is
+than its nearest bottom-tier one, each counted only by the part above the similarity
+floor (unrelated texts still have some similarity). Candidates without an embedding get
+no similarity features and a `similarity` term of 0. A candidate is not compared with
+itself in the top tier, so a video marked "more like this" doesn't push itself up the
+next feed; in the bottom tier it is, so one marked "less like this" keeps itself down.
 
 The similarity floor depends on the embedding model (see embeddings.calibration), so
 `rank` takes it; the constant below is bge-small's.
@@ -163,8 +166,9 @@ class History:
 
 @dataclass(frozen=True)
 class RatedTiers:
-    """Embeddings of the rated top-tier (7 and up) and bottom-tier (4 and down)
-    videos, by video id. Rated videos without an embedding are left out."""
+    """Embeddings of the top-tier (rated 7 and up, or unrated and marked "more like
+    this") and bottom-tier (rated 4 and down, or unrated and marked "less like this")
+    videos, by video id. Videos without an embedding are left out."""
 
     top: Mapping[str, Embedding] = field(default_factory=dict)
     bottom: Mapping[str, Embedding] = field(default_factory=dict)
@@ -332,18 +336,37 @@ def _normalized(tier: Mapping[str, Sequence[float]]) -> dict[str, Embedding]:
 
 
 def _similarity_features(
-    embedding: Sequence[float], top: Mapping[str, Embedding], bottom: Mapping[str, Embedding]
+    embedding: Sequence[float],
+    top: Mapping[str, Embedding],
+    bottom: Mapping[str, Embedding],
+    *,
+    own_id: str | None = None,
 ) -> SimilarityFeatures:
-    """`similarity_features` with the tier sets already normalized."""
+    """`similarity_features` with the tier sets already normalized.
+
+    A candidate is not compared with itself in the top tier (`own_id`): a video marked
+    "more like this" is in that set, but it should shape what is ranked, not push itself
+    up the next feed (a rated video never competes with itself, as rated videos aren't
+    candidates). In the bottom tier it is, so one marked "less like this" keeps itself
+    down."""
     unit = normalize(embedding)
-    return SimilarityFeatures(_tier_similarity(unit, top), _tier_similarity(unit, bottom))
+    return SimilarityFeatures(
+        _tier_similarity(unit, top, skip=own_id), _tier_similarity(unit, bottom)
+    )
 
 
-def _tier_similarity(unit: Embedding, tier: Mapping[str, Embedding]) -> TierSimilarity | None:
-    """For unit vectors, cosine similarity is the dot product."""
-    if not tier:
+def _tier_similarity(
+    unit: Embedding, tier: Mapping[str, Embedding], skip: str | None = None
+) -> TierSimilarity | None:
+    """For unit vectors, cosine similarity is the dot product. `skip` leaves one video of
+    the tier out."""
+    similarities = {
+        video_id: math.sumprod(unit, vector)
+        for video_id, vector in tier.items()
+        if video_id != skip
+    }
+    if not similarities:
         return None
-    similarities = {video_id: math.sumprod(unit, vector) for video_id, vector in tier.items()}
     nearest = max(similarities, key=similarities.__getitem__)
     return TierSimilarity(
         max=similarities[nearest],
@@ -454,7 +477,9 @@ def rank(
             )
         embedding = embeddings.get(candidate.video_id)
         features = (
-            None if embedding is None else _similarity_features(embedding, top_tier, bottom_tier)
+            None
+            if embedding is None
+            else _similarity_features(embedding, top_tier, bottom_tier, own_id=candidate.video_id)
         )
         passed.append(
             ModelCandidate(

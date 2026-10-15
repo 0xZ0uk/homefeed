@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -11,7 +12,7 @@ import { RatingPicker } from "#/components/RatingPicker";
 import { ScoreScale } from "#/components/ScoreScale";
 import { VideoPlayer, type VideoPlayerHandle } from "#/components/VideoPlayer";
 import type { Chapter } from "#/lib/chapters";
-import { scoreText } from "#/lib/scores";
+import { SCORE_SCALE_HINT, scoreText } from "#/lib/scores";
 import type { WatchEvent } from "#/lib/player-events";
 import { createWatchEventReporter, sendWatchEvent } from "#/lib/watch-reporter";
 import { ratingQuery, removeRating, saveRating } from "#/server/ratings";
@@ -23,7 +24,7 @@ interface WatchAndRateProps {
   startAt?: number | null;
   /** Marked on the player's progress bar. */
   chapters?: readonly Chapter[];
-  /** Shown between the player and the rating, e.g. the video's title. */
+  /** Shown below the rating, e.g. the video's title and details. */
   children?: ReactNode;
   /** Shown beside the info column on wide screens (xl). */
   aside?: ReactNode;
@@ -130,10 +131,11 @@ export function WatchAndRate({
 }
 
 /**
- * The rating, always on the page right under the player. Picking a face saves
- * it at once, picking the lit face again removes the rating, and picking
- * another changes it. The scale shows the latest pick straight away; saves run
- * one at a time, in order, so the last pick is the one that sticks.
+ * The rating, always on the page right under the player, with its label and a
+ * hint of what the ends of the scale mean. Picking a face saves it at once,
+ * picking the lit face again removes the rating, and picking another changes
+ * it. The scale shows the latest pick straight away; saves run one at a time,
+ * in order, so the last pick is the one that sticks.
  */
 function InlineRating({
   score,
@@ -154,6 +156,8 @@ function InlineRating({
   const queue = useRef(Promise.resolve());
   const pending = useRef(0);
   const shown = intent === undefined ? score : intent;
+  const labelId = useId();
+  const hintId = useId();
 
   const pick = (picked: number) => {
     const next = picked === shown ? null : picked;
@@ -187,12 +191,23 @@ function InlineRating({
           Couldn&apos;t load your rating.
         </p>
       )}
-      <ScoreScale
-        value={shown}
-        onPick={pick}
-        label="Rate this video"
-        className="w-full max-w-xl"
-      />
+      <div className="flex w-full max-w-xl flex-col">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+          <p id={labelId} className="font-medium">
+            Rate this video
+          </p>
+          <p id={hintId} className="text-sm text-muted-foreground">
+            {SCORE_SCALE_HINT}
+          </p>
+        </div>
+        <ScoreScale
+          value={shown}
+          onPick={pick}
+          label="Rate this video"
+          labelledBy={labelId}
+          describedBy={hintId}
+        />
+      </div>
       <p role="status" className="sr-only">
         {announcement}
       </p>

@@ -8,18 +8,24 @@ homefeed_core.ranking_models), blended in by `alpha`; the feed records its versi
 first (and, in the worker, enriches the candidates: see homefeed_core.enricher); the
 worker runs it daily at `FEED_REFRESH_TIME` and `POST /feed/refresh` can run it on
 demand. `get_feed` and `list_feeds` read feeds back with their items joined to video
-and channel info, each marked `watched` if the user has watched it since.
+and channel info, each marked `watched` if the user has watched it since. An item also
+carries what its card shows to help decide: whether its channel is subscribed, the
+video's rating, feedback ("more like this" or "less like this", see homefeed_core.feedback)
+and progress through it, up to three tags and its LLM scores.
 `extend_feed` appends the next page of ranked picks to a stored feed (the "Show more"
 button), leaving out videos already in it. `dismiss_feed_item` hides an item from the
 user with an optional reason; the video is then left out of every later feed and counts
-as a weak negative for training. `discover` ranks the pool the same way for the home
-page's Discovery carousel: the best picks from outside the subscriptions, not stored.
+as a weak negative for training. `undismiss_feed_item` takes that back. `discover` ranks
+the pool the same way for the home page's Discovery carousel: the best picks from outside
+the subscriptions, not stored. `wildcards` picks from the same pool a few videos on topics
+the user doesn't follow, for the closing block of the home page, also not stored.
 
 A date can have several feeds (each refresh adds one, so dismissals and what was shown
 stay on record); the feed for a date is the latest one built for it. Dates are local
 calendar dates, like `FEED_REFRESH_TIME`, in the user's time zone (see `local_today`).
 
-The feed size, exploration slots and duration bounds are user settings (see
+The feed size, exploration slots, the most of a feed one topic may take (`feed_max_topic_share`,
+see homefeed_core.composer) and duration bounds are user settings (see
 homefeed_core.user_settings): stored values over `settings`.
 
 History sources:
@@ -42,7 +48,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from homefeed_core import channel_hides, poller, watch_events
 from homefeed_core import curation as curation_prefs
-from homefeed_core.candidates import SUBSCRIPTION, list_candidates
+from homefeed_core.candidates import SUBSCRIPTION, TAG, list_candidates
 from homefeed_core.composer import (
     ChannelRatings,
     ComposeSettings,
@@ -54,8 +60,10 @@ from homefeed_core.composer import (
 from homefeed_core.config import Settings, get_settings
 from homefeed_core.db import get_session_factory
 from homefeed_core.embeddings import calibration, get_embeddings
+from homefeed_core.feedback import LESS, MORE, list_feedback
 from homefeed_core.gateway.events import format_timestamp
-from homefeed_core.llm_tags import get_scores
+from homefeed_core.history import watched_fractions
+from homefeed_core.llm_tags import LLMTags, get_scores
 from homefeed_core.ranker import (
     ChannelCuration,
     DurationBounds,
@@ -70,12 +78,14 @@ from homefeed_core.ranker import (
 from homefeed_core.ranking_models import load_active_model, ranker_model
 from homefeed_core.ratings import list_ratings
 from homefeed_core.scores import is_bottom_tier, is_good, is_top_tier
-from homefeed_core.tags import get_video_tags
+from homefeed_core.tags import VideoTag, get_video_tags
 from homefeed_core.user_settings import get_user_settings
 
 logger = logging.getLogger(__name__)
 
 DISMISS_REASON_MAX_LENGTH = 200
+# Tags a feed or Discovery item carries for its card, the most confident first.
+ITEM_TAGS = 3
 
 
 @dataclass(frozen=True)
@@ -104,6 +114,13 @@ class FeedItem:
     dismissed_at: str | None
     dismiss_reason: str | None
     watched: bool  # played or rated, as of when the feed is read (see `watched_video_ids`)
+    # The rest is as of when the feed is read, too.
+    rating: int | None  # the video's score, 1 to 10
+    watched_fraction: float | None  # how far through it the user got, 0 to 1
+    feedback: int | None  # 1: more like this, -1: less like this
+    channel_subscribed: bool  # whether the channel has preferences, as a subscription does
+    tags: tuple[VideoTag, ...]  # up to `ITEM_TAGS`, the most confident first
+    llm: LLMTags | None  # None until the video is LLM-tagged
 
 
 @dataclass(frozen=True)
@@ -123,6 +140,10 @@ class DiscoveryItem:
     score: float
     breakdown: ScoreBreakdown
     explanation: str
+    channel_subscribed: bool
+    feedback: int | None  # 1: more like this, -1: less like this
+    tags: tuple[VideoTag, ...]  # up to `ITEM_TAGS`, the most confident first
+    llm: LLMTags | None  # None until the video is LLM-tagged
 
 
 @dataclass(frozen=True)
@@ -257,25 +278,32 @@ def discover(
     by related videos, featured channels, tag searches, saved searches and external
     sources), one per channel, best first.
 
-    Ranking is the feed's, so watched, dismissed and filtered videos never show. Videos
-    of subscribed channels and every video in today's feed (dismissed ones included)
-    are left out too, so the carousel doesn't repeat the feed. Nothing is stored and
-    there's no randomness: the picks change only when the pool or the ranking does."""
+    Ranking is the feed's, so watched, dismissed and filtered videos never show, and
+    no topic takes more than its share (`feed_max_topic_share`). Videos of subscribed
+    channels and every video in today's feed (dismissed ones included) are left out too,
+    so the carousel doesn't repeat the feed. Nothing is stored and there's no
+    randomness: the picks change only when the pool or the ranking does."""
     settings = settings or get_settings()
     now = now or datetime.now(UTC)
-    today = get_feed(session, local_today(now, get_user_settings(session, settings).tz))
+    user = get_user_settings(session, settings)
+    in_todays_feed = _feed_video_ids(session, local_today(now, user.tz))
     subscribed = set(curation_prefs.subscribed_channel_ids(session))
     ranking = _rank_pool(
         session,
         settings=settings,
         now=now,
-        exclude={item.video_id for item in today.items} if today else (),
+        exclude=in_todays_feed,
         keep=lambda c: c.source != SUBSCRIPTION and c.channel_id not in subscribed,
     )
     slots = _compose(
         session,
         ranking,
-        ComposeSettings(size=size, per_channel_cap=1, exploration_slots=0),
+        ComposeSettings(
+            size=size,
+            per_channel_cap=1,
+            exploration_slots=0,
+            max_topic_share=user.feed_max_topic_share,
+        ),
         random.Random(0),  # ties only; no exploration
     )
     return _discovery_items(session, slots)
@@ -284,32 +312,132 @@ def discover(
 def _discovery_items(session: Session, slots: Sequence[FeedSlot]) -> list[DiscoveryItem]:
     if not slots:
         return []
+    video_ids = [slot.item.candidate.video_id for slot in slots]
     rows = {
         row[0]: row
         for row in session.execute(
             text(
                 """
                 SELECT v.id, v.title, v.duration_seconds, v.published_at, v.thumbnail_url,
-                       v.view_count, c.id, c.title, c.handle, c.thumbnail_url
+                       v.view_count, c.id, c.title, c.handle, c.thumbnail_url,
+                       EXISTS (SELECT 1 FROM channel_prefs AS p WHERE p.channel_id = c.id),
+                       (SELECT f.signal FROM video_feedback AS f WHERE f.video_id = v.id)
                 FROM videos AS v JOIN channels AS c ON c.id = v.channel_id
                 WHERE v.id IN :ids
                 """
             ).bindparams(bindparam("ids", expanding=True)),
-            {"ids": [slot.item.candidate.video_id for slot in slots]},
+            {"ids": video_ids},
         )
     }
-    return [
-        DiscoveryItem(
-            *rows[slot.item.candidate.video_id],
-            source=slot.item.candidate.source,
-            source_detail=slot.item.candidate.source_detail,
-            score=slot.item.score,
-            breakdown=slot.item.breakdown,
-            explanation=slot.explanation,
+    tags = get_video_tags(session, video_ids)
+    llm = get_scores(session, video_ids)
+    items: list[DiscoveryItem] = []
+    for slot in slots:
+        video_id = slot.item.candidate.video_id
+        if video_id not in rows:
+            continue
+        row = rows[video_id]
+        items.append(
+            DiscoveryItem(
+                *row[:10],
+                source=slot.item.candidate.source,
+                source_detail=slot.item.candidate.source_detail,
+                score=slot.item.score,
+                breakdown=slot.item.breakdown,
+                explanation=slot.explanation,
+                channel_subscribed=bool(row[10]),
+                feedback=row[11],
+                tags=tuple(tags.get(video_id, ())[:ITEM_TAGS]),
+                llm=llm.get(video_id),
+            )
         )
-        for slot in slots
-        if slot.item.candidate.video_id in rows
+    return items
+
+
+# Videos in the closing block of the home page, "Show 3 wildcards".
+WILDCARD_SIZE = 3
+# The wildcards are drawn from this many of the best candidates.
+WILDCARD_POOL = 20
+# How many days back they look for candidates: further than the feed does, since the
+# closing block comes once "Show more" has shown everything in the feed's own window.
+WILDCARD_DAYS = 30
+WILDCARD_EXPLANATION = "Wildcard: outside the topics you follow"
+
+
+def wildcards(
+    session: Session,
+    *,
+    size: int = WILDCARD_SIZE,
+    exclude: Collection[str] = (),
+    settings: Settings | None = None,
+    now: datetime | None = None,
+) -> list[DiscoveryItem]:
+    """Up to `size` videos from outside everything the feed is built around, for the end
+    of the day's feed: a nudge to look past the usual.
+
+    A candidate qualifies when it passes the feed's filters (so it is not watched or
+    dismissed, a short, live, outside the duration bounds or muted by a keyword), is
+    not in today's feed or among the `exclude`d videos (what else the page shows), comes
+    from a channel that is neither subscribed nor hidden, and shares no tag with the tags
+    I follow or mute (tag searches, which exist to find a followed tag's videos, don't
+    count as candidates at all). They look back `WILDCARD_DAYS` days, further than the
+    feed does: once "Show more" has nothing more, every candidate of the feed's window is
+    in the feed, and the wildcards are what lies beyond it. The qualifying channels' best
+    videos, one per channel, are ranked: those with tags and an embedding first, since
+    only they are known to be outside my topics and to suit my taste, then by similarity
+    to the videos I rated well, then newest first. The picks are a random draw from the
+    best `WILDCARD_POOL`, seeded with the date so they stay the same all day for as long
+    as the pool does, and come back best first. Nothing is stored."""
+    settings = settings or get_settings()
+    now = now or datetime.now(UTC)
+    user = get_user_settings(session, settings)
+    today = local_today(now, user.tz)
+    subscribed = set(curation_prefs.subscribed_channel_ids(session))
+    hidden = {hide.channel_id for hide in channel_hides.list_hides(session)}
+    ranking = _rank_pool(
+        session,
+        settings=settings,
+        now=now,
+        exclude=_feed_video_ids(session, today) | set(exclude),
+        candidate_days=WILDCARD_DAYS,
+        keep=lambda c: (
+            c.source not in (SUBSCRIPTION, TAG)
+            and c.channel_id not in subscribed
+            and c.channel_id not in hidden
+        ),
+    )
+    video_tags = get_video_tags(session, [item.candidate.video_id for item in ranking.scored])
+    weighted = {s.tag_id for s in curation_prefs.list_tag_subscriptions(session) if s.weight != 0}
+    outside = [
+        item
+        for item in ranking.scored
+        if not any(tag.tag_id in weighted for tag in video_tags.get(item.candidate.video_id, ()))
     ]
+
+    def known(item: ScoredCandidate) -> int:
+        """How much is known of the video: whether it has tags, and an embedding."""
+        return (item.candidate.video_id in video_tags) + (
+            item.breakdown.similarity_features is not None
+        )
+
+    # Each sort keeps the order of the one before it for ties: newest, then similar, then known.
+    outside.sort(key=lambda item: item.candidate.published_at or "", reverse=True)
+    outside.sort(key=lambda item: item.breakdown.similarity, reverse=True)
+    outside.sort(key=known, reverse=True)
+    best: list[ScoredCandidate] = []
+    channels: set[str] = set()
+    for item in outside:
+        if item.candidate.channel_id not in channels and len(best) < WILDCARD_POOL:
+            channels.add(item.candidate.channel_id)
+            best.append(item)
+    drawn = random.Random(f"wildcards:{today.isoformat()}").sample(
+        range(len(best)), k=min(size, len(best))
+    )
+    slots = [
+        FeedSlot(item=best[index], position=position, explanation=WILDCARD_EXPLANATION)
+        for position, index in enumerate(sorted(drawn))
+    ]
+    return _discovery_items(session, slots)
 
 
 def _rank_and_compose(
@@ -328,7 +456,11 @@ def _rank_and_compose(
     slots = _compose(
         session,
         ranking,
-        ComposeSettings(size=user.feed_size, exploration_slots=user.feed_exploration_slots),
+        ComposeSettings(
+            size=user.feed_size,
+            exploration_slots=user.feed_exploration_slots,
+            max_topic_share=user.feed_max_topic_share,
+        ),
         rng or random.Random(),
     )
     return slots, len(ranking.scored), ranking.model_version
@@ -348,12 +480,15 @@ def _rank_pool(
     now: datetime,
     exclude: Collection[str],
     keep: Callable[[RankCandidate], bool] | None = None,
+    candidate_days: int | None = None,
 ) -> _Ranking:
     """Rank the recent candidate pool (only the candidates `keep` accepts, if given),
-    best first, leaving out `exclude`d videos."""
+    best first, leaving out `exclude`d videos. The pool is what entered it in the last
+    `feed_candidate_days` days, or `candidate_days` if given."""
     user = get_user_settings(session, settings)
-    curation = load_curation(session)
-    pool = load_rank_candidates(session, since=now - timedelta(days=settings.feed_candidate_days))
+    curation = load_curation(session, now=now)
+    days = settings.feed_candidate_days if candidate_days is None else candidate_days
+    pool = load_rank_candidates(session, since=now - timedelta(days=days))
     # Uploads of channels unsubscribed since they were polled no longer belong.
     pool = [c for c in pool if c.source != SUBSCRIPTION or c.channel_id in curation]
     if keep is not None:
@@ -412,6 +547,25 @@ def _tag_confidences(
     }
 
 
+def _feed_video_ids(session: Session, feed_date: date) -> set[str]:
+    """The videos in the latest feed built for `feed_date`, dismissed ones included. It
+    reads no more than that, unlike `get_feed`."""
+    return set(
+        session.execute(
+            text(
+                """
+                SELECT i.video_id FROM feed_items AS i
+                WHERE i.feed_id = (
+                    SELECT id FROM feeds WHERE date = :date
+                    ORDER BY created_at DESC, id DESC LIMIT 1
+                )
+                """
+            ),
+            {"date": feed_date.isoformat()},
+        ).scalars()
+    )
+
+
 def get_feed(session: Session, feed_date: date) -> Feed | None:
     """The latest feed built for `feed_date`, or None."""
     feed_id = session.execute(
@@ -452,7 +606,29 @@ def list_feeds(session: Session, *, limit: int = 30) -> list[FeedSummary]:
 def get_feed_item(session: Session, item_id: int) -> FeedItem | None:
     """A feed item by id, or None."""
     row = session.execute(text(f"{_ITEM_SELECT} WHERE i.id = :id"), {"id": item_id}).one_or_none()
-    return None if row is None else _item(row)
+    return None if row is None else _items(session, [row])[0]
+
+
+def undismiss_feed_item(session: Session, item_id: int) -> FeedItem | None:
+    """Take a dismissal back, or return None if there is no such item.
+
+    Clears `dismissed_at` and `dismiss_reason`, so the item is as it was before it was
+    dismissed, and returns it. An item that isn't dismissed is returned unchanged. The
+    video is no longer left out of later feeds because of this item (it still is if
+    another item of the same video, in an earlier feed, was dismissed)."""
+    updated = session.execute(
+        text(
+            """
+            UPDATE feed_items SET dismissed_at = NULL, dismiss_reason = NULL
+            WHERE id = :id
+            RETURNING id
+            """
+        ),
+        {"id": item_id},
+    ).first()
+    if updated is None:
+        return None
+    return get_feed_item(session, item_id)
 
 
 def normalize_dismiss_reason(reason: str | None) -> str | None:
@@ -492,10 +668,20 @@ def dismiss_feed_item(
     return get_feed_item(session, item_id)
 
 
-def load_curation(session: Session) -> dict[str, ChannelCuration]:
-    """Channel preferences by channel id, for the ranker and composer. A blocked channel
-    (see `channel_hides`) counts as muted, keeping its other preferences if subscribed."""
-    rows = session.execute(text("SELECT channel_id, prior, pinned, muted FROM channel_prefs"))
+def load_curation(session: Session, *, now: datetime | None = None) -> dict[str, ChannelCuration]:
+    """Channel preferences by channel id, for the ranker and composer. A channel counts as
+    muted while it is muted for good or until a time still ahead of `now` (default: the
+    current time), and so does a blocked one (see `channel_hides`), keeping its other
+    preferences if subscribed."""
+    rows = session.execute(
+        text(
+            f"""
+            SELECT p.channel_id, p.prior, p.pinned, {curation_prefs.muted_sql("p")}
+            FROM channel_prefs AS p
+            """
+        ),
+        {"now": format_timestamp(now or datetime.now(UTC))},
+    )
     result = {
         channel_id: ChannelCuration(prior=prior, pinned=bool(pinned), muted=bool(muted))
         for channel_id, prior, pinned, muted in rows
@@ -562,38 +748,42 @@ def load_channel_ratings(session: Session) -> dict[str, ChannelRatings]:
 
 
 def load_rated_tiers(session: Session) -> RatedTiers:
-    """Embeddings of the top-tier and bottom-tier rated videos (those enriched)."""
+    """Embeddings of the top-tier and bottom-tier videos (those enriched): rated 7 and up
+    or 4 and down, and unrated videos marked "more like this" (top tier) or "less like
+    this" (bottom tier). An explicit rating always wins over feedback: a rated video
+    counts by its score alone, so one rated 5 or 6 is in neither tier whatever its
+    feedback."""
     ratings = list_ratings(session)
-    embeddings = get_embeddings(session, (rating.video_id for rating in ratings))
+    rated = {rating.video_id for rating in ratings}
+    marked = [item for item in list_feedback(session) if item.video_id not in rated]
+    top = [r.video_id for r in ratings if is_top_tier(r.score)]
+    top += [f.video_id for f in marked if f.signal == MORE]
+    bottom = [r.video_id for r in ratings if is_bottom_tier(r.score)]
+    bottom += [f.video_id for f in marked if f.signal == LESS]
+    embeddings = get_embeddings(session, [*top, *bottom])
     return RatedTiers(
-        top={
-            r.video_id: embeddings[r.video_id]
-            for r in ratings
-            if is_top_tier(r.score) and r.video_id in embeddings
-        },
-        bottom={
-            r.video_id: embeddings[r.video_id]
-            for r in ratings
-            if is_bottom_tier(r.score) and r.video_id in embeddings
-        },
+        top={video_id: embeddings[video_id] for video_id in top if video_id in embeddings},
+        bottom={video_id: embeddings[video_id] for video_id in bottom if video_id in embeddings},
     )
 
 
 def load_video_refs(session: Session, video_ids: Collection[str]) -> dict[str, VideoRef]:
-    """Titles and scores (if rated) of stored videos, for explanations."""
+    """Titles, scores (if rated) and feedback of stored videos, for explanations."""
     if not video_ids:
         return {}
     rows = session.execute(
         text(
             """
-            SELECT v.id, v.title, r.score
-            FROM videos AS v LEFT JOIN ratings AS r ON r.video_id = v.id
+            SELECT v.id, v.title, r.score, f.signal
+            FROM videos AS v
+            LEFT JOIN ratings AS r ON r.video_id = v.id
+            LEFT JOIN video_feedback AS f ON f.video_id = v.id
             WHERE v.id IN :ids
             """
         ).bindparams(bindparam("ids", expanding=True)),
         {"ids": list(video_ids)},
     )
-    return {video_id: VideoRef(title, score) for video_id, title, score in rows}
+    return {video_id: VideoRef(title, score, signal) for video_id, title, score, signal in rows}
 
 
 def load_rank_candidates(session: Session, *, since: datetime | None = None) -> list[RankCandidate]:
@@ -686,14 +876,17 @@ _ITEM_SELECT = """
            i.source, i.source_detail, i.score, i.breakdown, i.explanation,
            i.is_pinned, i.is_exploration, i.selection_probability,
            i.dismissed_at, i.dismiss_reason,
-           EXISTS (SELECT 1 FROM ratings AS r WHERE r.video_id = v.id)
-           OR EXISTS (
+           r.video_id IS NOT NULL OR EXISTS (
                SELECT 1 FROM watch_events AS w
                WHERE w.video_id = v.id AND w.event_type = 'play'
-           )
+           ),
+           r.score, f.signal,
+           EXISTS (SELECT 1 FROM channel_prefs AS p WHERE p.channel_id = c.id)
     FROM feed_items AS i
     JOIN videos AS v ON v.id = i.video_id
     JOIN channels AS c ON c.id = v.channel_id
+    LEFT JOIN ratings AS r ON r.video_id = v.id
+    LEFT JOIN video_feedback AS f ON f.video_id = v.id
 """
 
 
@@ -704,27 +897,42 @@ def _get_feed_by_id(session: Session, feed_id: int) -> Feed | None:
     ).one_or_none()
     if row is None:
         return None
-    items = session.execute(
+    rows = session.execute(
         text(f"{_ITEM_SELECT} WHERE i.feed_id = :id ORDER BY i.position"), {"id": feed_id}
-    )
+    ).all()
     return Feed(
         id=row[0],
         date=date.fromisoformat(row[1]),
         created_at=row[2],
         model_version=row[3],
-        items=[_item(item) for item in items],
+        items=_items(session, rows),
     )
 
 
-def _item(row: Sequence[Any]) -> FeedItem:
-    return FeedItem(
-        *row[:16],
-        breakdown=ScoreBreakdown.from_dict(json.loads(row[16])),
-        explanation=row[17],
-        is_pinned=bool(row[18]),
-        is_exploration=bool(row[19]),
-        selection_probability=row[20],
-        dismissed_at=row[21],
-        dismiss_reason=row[22],
-        watched=bool(row[23]),
-    )
+def _items(session: Session, rows: Sequence[Sequence[Any]]) -> list[FeedItem]:
+    """Feed items from `_ITEM_SELECT` rows, with the details that take a query of their own
+    (tags and LLM scores for all items at once, progress for those that are `watched`)."""
+    video_ids = [row[2] for row in rows]
+    tags = get_video_tags(session, video_ids)
+    llm = get_scores(session, video_ids)
+    progress = watched_fractions(session, [row[2] for row in rows if row[23]])
+    return [
+        FeedItem(
+            *row[:16],
+            breakdown=ScoreBreakdown.from_dict(json.loads(row[16])),
+            explanation=row[17],
+            is_pinned=bool(row[18]),
+            is_exploration=bool(row[19]),
+            selection_probability=row[20],
+            dismissed_at=row[21],
+            dismiss_reason=row[22],
+            watched=bool(row[23]),
+            rating=row[24],
+            watched_fraction=progress.get(row[2]),
+            feedback=row[25],
+            channel_subscribed=bool(row[26]),
+            tags=tuple(tags.get(row[2], ())[:ITEM_TAGS]),
+            llm=llm.get(row[2]),
+        )
+        for row in rows
+    ]

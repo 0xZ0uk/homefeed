@@ -26,12 +26,12 @@ export function HiddenChannels() {
     <SettingsCard
       id="hidden-channels-heading"
       title="Hidden channels"
-      description="Channels you dismissed from Discover or kept out of your feed."
+      description="Channels you skipped in Discover or hid from your feed."
     >
       <CardContent>
         {hides.length === 0 ? (
           <p className="text-sm text-pretty text-muted-foreground">
-            No hidden channels. Use Dismiss or Don't show on{" "}
+            No hidden channels. Use Not now or Hide channel on{" "}
             <Link
               to="/discover"
               className="underline underline-offset-2 hover:text-foreground"
@@ -106,7 +106,7 @@ function HiddenRow({ item }: { item: ChannelHide }) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
-            variant="secondary"
+            variant="outline"
             size="lg"
             className="px-4"
             disabled={busy}
@@ -117,14 +117,14 @@ function HiddenRow({ item }: { item: ChannelHide }) {
           </Button>
           {item.kind === "blocked" && (
             <Button
-              variant="ghost"
+              variant="outline"
               size="lg"
-              className="px-3"
+              className="px-4"
               disabled={busy}
-              aria-label={`Dismiss only ${item.title}`}
+              aria-label={`Only skip in Discover: ${item.title}`}
               onClick={() => demote.mutate()}
             >
-              Dismiss only
+              Only skip in Discover
             </Button>
           )}
         </div>

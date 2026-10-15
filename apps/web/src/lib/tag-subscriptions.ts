@@ -40,7 +40,7 @@ export function isMuted(subscription: { weight: number }): boolean {
   return subscription.weight < 0;
 }
 
-/** A tag for the sidebar. */
+/** A tag as the Explore page lists it. */
 export interface SidebarTag {
   slug: string;
   label: string;

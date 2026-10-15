@@ -6,27 +6,34 @@ interface Subscription {
   hide: boolean;
 }
 
-test("muting a tag lists it in the sidebar and can hide its videos", async ({
+test("muting a tag lists it under Explore and can hide its videos", async ({
   page,
   request,
 }) => {
-  await open(page, "/tags/woodworking");
+  // Explore lists the tags you follow and the ones you muted.
   const muted = page.getByRole("list", { name: "Muted tags" });
   const subscribed = page.getByRole("list", { name: "Subscribed tags" });
+  await open(page, "/explore");
+  await expect(
+    page.getByText("You haven't followed or muted any tags"),
+  ).toBeVisible();
   await expect(muted).toHaveCount(0);
 
+  await open(page, "/tags/woodworking");
   await page.getByRole("button", { name: "Mute", exact: true }).click();
 
   // Mute makes a subscription at -0.50; the page offers Unmute and the slider, and
-  // the sidebar lists the tag under Muted tags rather than Subscribed tags.
+  // Explore lists the tag under Muted tags rather than Subscribed tags.
   await expect(page.getByRole("button", { name: "Unmute" })).toBeVisible();
   const slider = page.getByRole("slider", { name: "Weight" });
   await expect(slider).toHaveAttribute("aria-valuetext", "Suppress −0.50");
-  await expect(muted.getByRole("link", { name: "woodworking" })).toBeVisible();
-  await expect(subscribed).toHaveCount(0);
   expect(
     (await apiGet<Subscription[]>(request, "/tag-subscriptions")).body,
   ).toMatchObject([{ weight: -0.5, hide: false, slug: "woodworking" }]);
+  await open(page, "/explore");
+  await expect(muted.getByRole("link", { name: "woodworking" })).toBeVisible();
+  await expect(subscribed).toHaveCount(0);
+  await open(page, "/tags/woodworking");
 
   // Hiding is only offered at -1.
   const hide = page.getByRole("checkbox", {
@@ -73,10 +80,14 @@ test("muting a tag lists it in the sidebar and can hide its videos", async ({
 
   await page.getByRole("button", { name: "Unmute" }).click();
   await expect(page.getByRole("button", { name: "Subscribe" })).toBeVisible();
-  await expect(muted).toHaveCount(0);
   expect(
     (await apiGet<Subscription[]>(request, "/tag-subscriptions")).body,
   ).toEqual([]);
+  await open(page, "/explore");
+  await expect(
+    page.getByText("You haven't followed or muted any tags"),
+  ).toBeVisible();
+  await expect(muted).toHaveCount(0);
 });
 
 test("muting a subscribed tag flips it to muted", async ({ page, request }) => {

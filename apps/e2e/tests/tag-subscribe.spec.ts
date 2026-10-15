@@ -5,23 +5,25 @@ interface Subscription {
   weight: number;
 }
 
-test("subscribing on a tag page lists the tag in the sidebar", async ({
+test("subscribing on a tag page lists the tag under Explore", async ({
   page,
   request,
 }) => {
-  await open(page, "/tags/woodworking");
-  const sidebar = page.getByRole("list", { name: "Subscribed tags" });
-  await expect(sidebar).toHaveCount(0);
+  // Explore lists the tags you follow.
+  const yourTags = page.getByRole("list", { name: "Subscribed tags" });
+  await open(page, "/explore");
+  await expect(
+    page.getByText("You haven't followed or muted any tags"),
+  ).toBeVisible();
+  await expect(yourTags).toHaveCount(0);
 
+  await open(page, "/tags/woodworking");
   await page.getByRole("button", { name: "Subscribe" }).click();
 
   // The button turns into Unsubscribe next to the weight slider, at +0.50.
   await expect(page.getByRole("button", { name: "Unsubscribe" })).toBeVisible();
   const slider = page.getByRole("slider", { name: "Weight" });
   await expect(slider).toHaveAttribute("aria-valuetext", "Boost +0.50");
-  await expect(
-    sidebar.getByRole("link", { name: "woodworking" }),
-  ).toBeVisible();
   expect(
     (await apiGet<Subscription[]>(request, "/tag-subscriptions")).body,
   ).toMatchObject([{ weight: 0.5, slug: "woodworking" }]);
@@ -37,13 +39,10 @@ test("subscribing on a tag page lists the tag in the sidebar", async ({
     )
     .toBeCloseTo(0.55);
 
-  // The sidebar link leads back to the tag, from another page, and the
-  // subscription survives a reload.
-  await open(page, "/history");
-  await page
-    .getByRole("list", { name: "Subscribed tags" })
-    .getByRole("link", { name: "woodworking" })
-    .click();
+  // Explore lists it and leads back to the tag, and the subscription survives
+  // a reload.
+  await open(page, "/explore");
+  await yourTags.getByRole("link", { name: "woodworking" }).click();
   await expect(page).toHaveURL("/tags/woodworking");
   await page.reload();
   await expect(page.getByRole("button", { name: "Unsubscribe" })).toBeVisible();
@@ -63,8 +62,12 @@ test("subscribing on a tag page lists the tag in the sidebar", async ({
   await open(page, "/tags/woodworking");
   await page.getByRole("button", { name: "Unsubscribe" }).click();
   await expect(page.getByRole("button", { name: "Subscribe" })).toBeVisible();
-  await expect(sidebar).toHaveCount(0);
   expect(
     (await apiGet<Subscription[]>(request, "/tag-subscriptions")).body,
   ).toEqual([]);
+  await open(page, "/explore");
+  await expect(
+    page.getByText("You haven't followed or muted any tags"),
+  ).toBeVisible();
+  await expect(yourTags).toHaveCount(0);
 });

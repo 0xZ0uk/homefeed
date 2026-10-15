@@ -63,6 +63,7 @@ def test_get_settings_shows_values_defaults_and_sources(client: TestClient) -> N
     assert response.status_code == 200
     body = response.json()
     assert body["values"]["feed_size"] == 25
+    assert body["values"]["feed_max_topic_share"] == 0.4
     assert body["values"]["feed_refresh_time"] == "06:00"
     assert body["values"]["timezone"] is None
     assert body["values"] == body["defaults"]
@@ -105,6 +106,21 @@ def test_patch_sets_and_resets(client: TestClient) -> None:
     }
 
 
+def test_the_share_of_a_feed_one_topic_may_take_is_a_setting(client: TestClient) -> None:
+    body = patch(client, {"set": {"feed_max_topic_share": 0.25}})
+
+    assert body["values"]["feed_max_topic_share"] == 0.25
+    assert body["defaults"]["feed_max_topic_share"] == 0.4
+    assert body["sources"]["feed_max_topic_share"] == "user"
+    assert client.get("/settings").json() == body
+
+    body = patch(client, {"reset": ["feed_max_topic_share"]})
+
+    assert body["values"]["feed_max_topic_share"] == 0.4
+    assert body["sources"]["feed_max_topic_share"] == "default"
+    assert stored() == {}
+
+
 def test_null_sets_a_nullable_setting(client: TestClient) -> None:
     patch(client, {"set": {"feed_max_duration_seconds": 600}})
 
@@ -121,6 +137,8 @@ def test_null_sets_a_nullable_setting(client: TestClient) -> None:
         ({"set": {"timezone": "Atlantis/Capital"}}, "Unknown time zone: Atlantis/Capital"),
         ({"set": {"sponsorblock_categories": ["ads"]}}, "Unknown SponsorBlock categories"),
         ({"set": {"feed_exploration_slots": 30}}, "more than the feed size"),
+        ({"set": {"feed_max_topic_share": 0.05}}, "feed_max_topic_share"),
+        ({"set": {"feed_max_topic_share": 1.5}}, "feed_max_topic_share"),
         ({"set": {"feed_size": 5}, "reset": ["feed_size"]}, "both changed and reset"),
     ],
 )

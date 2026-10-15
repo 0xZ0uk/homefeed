@@ -181,6 +181,8 @@ The worker builds the feed on a schedule and writes it to SQLite. The API reads 
 
 **Features.** Embedding (384-dim); max and mean cosine similarity to the top-tier set and to the bottom-tier set; duration (log); upload age (log days); candidate source (categorical); LLM tags when present (topic, depth, clickbait score, rage-bait score); channel score.
 
+**Feedback.** A feed card can also be marked "more like this" or "less like this" (`video_feedback`, one signal per video, cleared by pressing it again). It is a quick steer, not a rating: it is not counted in `n`, `alpha`, the insights or training. Its one effect is on the similarity features, where an unrated video marked "more like this" joins the top-tier set and one marked "less like this" the bottom-tier set (when it has an embedding). An explicit rating always wins: a rated video is placed by its score alone. A candidate is not compared with itself in the top tier, so a video marked "more like this" doesn't push itself up the next feed; one marked "less like this" still keeps itself down.
+
 **Channel score (Bayesian shrinkage).**
 
 ```
@@ -201,29 +203,32 @@ similarity = 0.5 * (affinity(max_sim_top) - affinity(max_sim_bottom)),
 
 Before a model exists, `alpha = 0` and `model_score = 0`. Every scored item carries a breakdown `{model, alpha, channel, similarity, tags: {...}}` whose parts sum to `final`, plus the similarity features it came from (max, mean and nearest video for each tier set).
 
-**Feed composition.** Default size 15. Order: pins first (new uploads from pinned channels), then exploration slots (default 3), then top-scored items, with at most 2 items per channel. Exploration uses Thompson sampling over per-channel `Beta(good + 1, not_good + 1)` posteriors (good = 6 or higher), restricted to channels with fewer than 5 ratings or never-rated sources. Estimate each item's selection probability by Monte Carlo (e.g. 500 draws) and store it.
+**Feed composition.** Default size 15. Order: pins first (new uploads from pinned channels), then exploration slots (default 3), then top-scored items, with at most 2 items per channel. Exploration uses Thompson sampling over per-channel `Beta(good + 1, not_good + 1)` posteriors (good = 6 or higher), restricted to channels with fewer than 5 ratings or never-rated sources. Estimate each item's selection probability by Monte Carlo (e.g. 500 draws) and store it. No followed topic takes over the feed: at most `ceil(max_topic_share * size)` picks may share a topic (the tags of an item's breakdown with a boost; `FEED_MAX_TOPIC_SHARE`, default 0.4, a user setting). An item that would go over is deferred, and deferred items fill the places nothing else can, so the cap never leaves the feed short; pins are never deferred but count towards their topics.
 
-**Explanations.** One line per item derived from its largest positive breakdown term and its source, e.g. "Related to *X* (A+) · channel you love" or "Exploring: new channel from your 'woodworking' search".
+**Explanations.** One line per item derived from its largest positive breakdown term and its source, e.g. "Related to “X”, which you rated 8 · channel you love", "New from your subscriptions · similar to “X”, which you wanted more of" or "Exploring: new channel · from your 'woodworking' search". It is shown on every card.
 
 **Training and promotion.** Hold out the most recent 20% of explicit ratings by time. Metrics: Spearman correlation and MAE on the holdout. Promote a new model only if Spearman is not worse than the active model's by more than 0.02. Exclude pinned items from training; reweight exploration ratings by inverse selection probability (clipped). Keep the last 10 model versions for rollback.
 
 ## 8. Data model
 
-Tables (SQLite): `channels`, `videos`, `video_features` (embedding in a sqlite-vec virtual table, plus tags and the model/prompt versions that produced them), `video_llm_tags` (topic, depth, clickbait, rage-bait per video and prompt version, with the model that produced them), `tags` (slug, label), `tag_aliases` (alias slug, tag, source auto|user), `video_tags` (video, tag, source llm|manual, confidence, prompt_version, removed_at tombstone), `candidates` (video, source, source_detail, first_seen), `tag_discovery_runs` (tag, last run), `feeds` (date, created_at, model_version), `feed_items` (feed, video, position, score breakdown JSON, explanation, is_exploration, selection_probability, dismissed_at, dismiss_reason), `ratings` (video, score, value, rated_at, updated_at), `watch_events` (video, position, event type, at), `channel_prefs` (prior, pinned, muted), `tag_subscriptions` (tag, weight, hide), `keyword_mutes`, `saved_searches` (query, filters, schedule), `external_sources` (kind, url, schedule), `queue_items`, `playlists`, `playlist_items`, `model_versions` (path, metrics JSON, created_at, active), `extractor_events` (operation, success, error, at), `settings`.
+Tables (SQLite): `channels`, `videos`, `video_features` (embedding in a sqlite-vec virtual table, plus tags and the model/prompt versions that produced them), `video_llm_tags` (topic, depth, clickbait, rage-bait per video and prompt version, with the model that produced them), `tags` (slug, label), `tag_aliases` (alias slug, tag, source auto|user), `video_tags` (video, tag, source llm|manual, confidence, prompt_version, removed_at tombstone), `candidates` (video, source, source_detail, first_seen), `tag_discovery_runs` (tag, last run), `feeds` (date, created_at, model_version), `feed_items` (feed, video, position, score breakdown JSON, explanation, is_exploration, selection_probability, dismissed_at, dismiss_reason), `ratings` (video, score, value, rated_at, updated_at), `watch_events` (video, position, event type, at), `channel_prefs` (prior, pinned, muted, muted_until, trial_until), `tag_subscriptions` (tag, weight, hide), `keyword_mutes`, `saved_searches` (query, filters, schedule), `external_sources` (kind, url, schedule), `queue_items`, `playlists`, `playlist_items`, `model_versions` (path, metrics JSON, created_at, active), `extractor_events` (operation, success, error, at), `settings`.
 
 Store the score as an integer (`7`) and the numeric value alongside it.
+
+`video_feedback` (video, signal 1 or -1, created_at, updated_at) holds the "more like this" and "less like this" of section 7: one row per stored video, which it goes with.
 
 ## 9. API contract (FastAPI, JSON)
 
 | Area | Endpoints |
 | --- | --- |
-| Feed | `GET /feed/today`, `GET /feed/{date}`, `GET /feeds` (history), `POST /feed/refresh`, `POST /feed-items/{id}/dismiss` `{reason?}` |
-| Videos | `GET /videos/{id}`, `GET /videos/{id}/manifest.mpd`, `GET /videos/{id}/media/{itag}` (Range proxy), `GET /videos/{id}/segments` (SponsorBlock), `POST /resolve` `{url}` |
-| Ratings and watching | `GET /ratings/{video_id}`, `PUT /ratings/{video_id}` `{score}`, `DELETE /ratings/{video_id}`, `POST /watch-events` `{video_id, event_type, position, duration}` |
-| Library | `GET/POST/PATCH/DELETE /queue`, `GET /history?q=`, `/playlists` CRUD |
-| Curation | `/channels` (subscribe by URL, list, update prior/pin/mute, unsubscribe), `/tag-subscriptions` and `/tags/{slug}/subscribe|mute|subscription`, `/keyword-mutes`, `/saved-searches`, `/external-sources` |
+| Feed | `GET /feed/today`, `GET /feed/{date}`, `GET /feeds` (history), `POST /feed/refresh`, `POST /feeds/{id}/more` (the next page of picks), `GET /feeds/wildcards?limit=3` (videos from outside the topics followed, for the end of the day), `POST /feed-items/{id}/dismiss` `{reason?}`, `DELETE /feed-items/{id}/dismiss` (undo) |
+| Videos | `GET /videos/{id}`, `GET /videos/{id}/manifest.mpd`, `GET /videos/{id}/media/{itag}` (Range proxy), `GET /videos/{id}/segments` (SponsorBlock), `GET /videos/{id}/similar` (only when asked), `POST /resolve` `{url}` |
+| Ratings and watching | `GET /ratings/{video_id}`, `PUT /ratings/{video_id}` `{score}`, `DELETE /ratings/{video_id}`, `PUT /videos/{video_id}/feedback` `{signal}` (1 or -1), `DELETE /videos/{video_id}/feedback`, `POST /watch-events` `{video_id, event_type, position, duration}` |
+| Library | `GET/POST/PATCH/DELETE /queue`, `GET /history?q=&unrated=`, `GET /history/summary` (watched and unrated counts), `/playlists` CRUD |
+| Curation | `/channels` (subscribe by URL, list, update prior/pin/mute or mute for some days, unsubscribe), `/channels/health` (per channel: picks lately, how many watched, ratings, last watched), `/channels/{id}/trial` (start a two-week trial; `/keep` it; `DELETE` ends it), `/tag-subscriptions` and `/tags/{slug}/subscribe|mute|subscription`, `/keyword-mutes`, `/saved-searches`, `/external-sources` |
 | Discovery | `GET /search?q=&filters`, `GET /channels/{id}/uploads`, `GET /channels/{id}/featured`, `GET /discover/suggested-channels` |
-| Insights and models | `GET /insights/weekly` (good rate, score distribution, rating rate, model vs curation share), `GET /models`, `POST /models/{id}/activate` |
+| Insights and models | `GET /insights/weekly` (good rate, score distribution, rating rate, model vs curation share), `GET /insights/discoveries?days=` (the last `days` days against the days before: channels first watched, kept and rated 7 or higher, the share of watched videos from them, new topics), `GET /models`, `POST /models/{id}/activate` |
+| Taste | `GET /taste?days=30` (per followed or muted tag: picks, watched, ratings; channels per preference; channels rated well but not followed; counts of ratings, feedback and dismissals by reason) |
 | Ops | `GET /health`, `GET /status/extractors`, `POST /import/takeout`, `GET /export` |
 
 Auth lives in the web app (single password, session cookie). The API binds to the internal Docker network only.
@@ -232,7 +237,9 @@ Auth lives in the web app (single password, session cookie). The API binds to th
 
 `/` home feed · `/watch/$videoId` · `/queue` · `/history` · `/curation` (tabs: channels, tags, mutes, searches, sources) · `/discover` · `/insights` · `/settings` · `/status` · `/login`.
 
-Home feed items show thumbnail, channel avatar, title, channel, duration, view count, upload age, explanation (expandable to the score breakdown), and status icons (pinned, exploring, dismissed). The watch page shows chapters and description, skips SponsorBlock segments, saves resume position, and ends in the rating prompt. It never shows suggested videos and never autoplays.
+Today (`/`) is the day's feed in two lanes, "New to you" (picks from channels I don't follow, topped by the Discovery carousel) and "From your channels", under one bar of filters by intent (new to me, quick, 10–30 min, deep dives) and a sort menu; both lanes say why they are empty. Under its header, a strip names the five topics most of today's picks are about, with how many picks carry each, the mix the next feed will be built with and a "Rebalance" popover: the dial (Familiar, Balanced or Adventurous: discovery slots and the most of a feed one topic may take, saved as settings) and the boost of each followed tag; both apply to the next feed, which it offers to build. With no feed yet, Today still has something to show: when the next feed comes, a button to build it now, what is left unwatched of the last feed and the queue. The feed is finite: after the last card, once "Show more" has nothing more, it ends with "That's today." and a button that shows three wildcards, videos from outside the topics I follow, from further back than the feed looks.
+
+Home feed items show thumbnail, channel avatar, title, channel with the length in words, duration, view count, upload age, the reason it is there on the card itself (with a "Details" button for the score breakdown), chips (new to you when the channel is not subscribed, up to three topic tags, "Deep dive", "Likely clickbait"), and, always visible, quick actions: "More like this", "Less like this" and "Later" (the watch queue), whose outcome is said in a status line with an Undo. Watched and dismissed cards say so in words (a bar along the thumbnail shows how far you got), and a watched card can be rated in place. The watch page shows chapters and description, skips SponsorBlock segments, saves resume position, and ends in the rating prompt. It never suggests videos on its own and never autoplays: a "Find more like this" button lists similar videos (YouTube's related ones and the nearest by embedding) only when pressed. The history page can be narrowed to the watched videos still unrated, each rated in place.
 
 ## 11. Milestones
 
@@ -278,7 +285,7 @@ Each milestone ends with tests passing, lint clean, and a short summary of what 
 - Status page from `extractor_events`; scheduled live smoke test of the Gateway (not in CI).
 - Full JSON export.
 - Dockerfiles (web via `turbo prune @homefeed/web --docker`; Python images via `uv sync --package <name> --frozen`) and `docker-compose.yml` with a shared data volume.
-- Playwright flows: view feed, watch and rate, dismiss, edit a channel prior.
+- Playwright flows: view feed, watch and rate, dismiss, edit a channel prior, try a suggested channel.
 
 ## 12. Testing
 
@@ -287,7 +294,7 @@ Test each module through its public interface; assert behavior, not internals.
 | Module | What to test |
 | --- | --- |
 | `ranker` | Filters remove Shorts, muted channels/keywords, out-of-range durations; channel score moves from prior toward evidence as ratings grow; alpha is 0 with no ratings; breakdown sums to the final score |
-| `composer` | Exact feed size; pins always included; per-channel cap; exploration slot count; probabilities recorded; deterministic with a seeded rng |
+| `composer` | Exact feed size; pins always included; per-channel cap; topic cap (deferred picks fill the feed); exploration slot count; probabilities recorded; deterministic with a seeded rng |
 | `trainer` | Score → value mapping across the 1 to 10 range; implicit weights; time decay; pinned items excluded; worse model not promoted; rollback works (use synthetic histories with a learnable pattern) |
 | `candidates` | Dedup across sources; source attribution; one failing source doesn't fail the run (fake sources) |
 | `enricher` | Cache hits skip work; version change recomputes; missing captions handled (stub embedding/LLM providers) |

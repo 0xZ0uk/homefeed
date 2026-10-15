@@ -1,7 +1,9 @@
 import {
   getHistoryEntry,
+  getHistorySummary,
   searchHistory,
   type HistoryEntry,
+  type HistorySummary,
 } from "@homefeed/api-client";
 import { queryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
@@ -17,7 +19,7 @@ import { apiClient, apiErrorMessage } from "#/server/api";
 
 /** Server functions for the history page and the watch page's resume position. */
 
-export type { HistoryEntry };
+export type { HistoryEntry, HistorySummary };
 
 export type HistoryOutcome =
   | { ok: true; entries: HistoryEntry[]; hasMore: boolean }
@@ -28,7 +30,7 @@ const fetchHistory = createServerFn({ method: "GET" })
   .handler(async ({ data }): Promise<HistoryOutcome> => {
     const { data: entries, error } = await searchHistory({
       client: apiClient(),
-      query: { q: data.q, ...pageWindow(data) },
+      query: { q: data.q, unrated: data.unrated, ...pageWindow(data) },
     });
     if (entries) {
       return {
@@ -46,13 +48,29 @@ const fetchHistory = createServerFn({ method: "GET" })
     };
   });
 
-/** One page of watch history, optionally searched. */
+/** One page of watch history, optionally searched or only the unrated. */
 export function historyQuery(params: HistoryParams) {
   return queryOptions({
     queryKey: ["history", params],
     queryFn: () => fetchHistory({ data: params }),
   });
 }
+
+const fetchHistorySummary = createServerFn({ method: "GET" }).handler(
+  async (): Promise<HistorySummary> => {
+    const { data } = await getHistorySummary({
+      client: apiClient(),
+      throwOnError: true,
+    });
+    return data;
+  },
+);
+
+/** How many videos were watched and how many of them are still unrated. */
+export const historySummaryQuery = queryOptions({
+  queryKey: ["history", "summary"],
+  queryFn: () => fetchHistorySummary(),
+});
 
 /**
  * Where to resume `videoId` in seconds, or null to start from the beginning.

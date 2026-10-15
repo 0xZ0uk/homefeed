@@ -11,8 +11,14 @@ from homefeed_api.main import app, get_feed_poll, get_gateway
 from homefeed_core import feeds
 from homefeed_core.candidates import RELATED, SUBSCRIPTION, record
 from homefeed_core.config import get_settings
+from homefeed_core.curation import subscribe_tag
 from homefeed_core.db import get_session_factory
+from homefeed_core.feedback import MORE, set_feedback
 from homefeed_core.gateway.fake import FakeGateway
+from homefeed_core.llm_tags import TAG_PROMPT_VERSION, LLMTags, store_tags
+from homefeed_core.ratings import set_rating
+from homefeed_core.tags import ProposedTag, resolve_tag, set_llm_tags
+from homefeed_core.watch_events import record_watch_event
 
 WOOD = "UC" + "w" * 22
 BIRDS = "UC" + "b" * 22
@@ -155,6 +161,12 @@ def test_refresh_polls_then_builds_todays_feed(client: TestClient, poll: PollRec
         "dismissed_at": None,
         "dismiss_reason": None,
         "watched": False,
+        "rating": None,
+        "watched_fraction": None,
+        "feedback": None,
+        "channel_subscribed": True,
+        "tags": [],
+        "llm": None,
     }
     durations = {item["video_id"]: item["duration_seconds"] for item in body["items"]}
     assert durations["w0000000000"] == 600
@@ -326,6 +338,108 @@ def test_dismiss_rejects_bad_input(client: TestClient) -> None:
     assert client.get("/feed/today").json()["items"][0]["dismissed_at"] is None
 
 
+def test_undismiss_takes_a_dismissal_back(client: TestClient) -> None:
+    seed()
+    item = client.post("/feed/refresh").json()["items"][1]
+    client.post(f"/feed-items/{item['id']}/dismiss", json={"reason": "Clickbait"})
+
+    response = client.delete(f"/feed-items/{item['id']}/dismiss")
+
+    assert response.status_code == 200, response.text
+    assert response.json() == item
+    today = client.get("/feed/today").json()["items"]
+    assert [i["dismissed_at"] for i in today] == [None] * 4
+    assert [i["dismiss_reason"] for i in today] == [None] * 4
+
+
+def test_undismissed_videos_come_back_in_later_feeds(client: TestClient) -> None:
+    seed()
+    item = client.post("/feed/refresh").json()["items"][0]
+    client.post(f"/feed-items/{item['id']}/dismiss")
+    assert len(client.post("/feed/refresh").json()["items"]) == 3
+
+    client.delete(f"/feed-items/{item['id']}/dismiss")
+
+    refreshed = client.post("/feed/refresh").json()
+    assert item["video_id"] in {i["video_id"] for i in refreshed["items"]}
+
+
+def test_undismiss_of_an_item_that_is_not_dismissed_changes_nothing(client: TestClient) -> None:
+    seed()
+    item = client.post("/feed/refresh").json()["items"][0]
+
+    response = client.delete(f"/feed-items/{item['id']}/dismiss")
+
+    assert response.status_code == 200
+    assert response.json() == item
+
+
+def test_undismiss_is_404_for_a_missing_item(client: TestClient) -> None:
+    response = client.delete("/feed-items/999/dismiss")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Feed item not found"}
+    assert client.delete("/feed-items/0/dismiss").status_code == 422
+
+
+def test_items_carry_what_helps_decide(client: TestClient) -> None:
+    seed()
+    feed = client.post("/feed/refresh").json()
+    target = feed["items"][0]["video_id"]
+    with get_session_factory().begin() as session:
+        set_rating(session, target, 7)
+        set_feedback(session, target, MORE)
+        record_watch_event(session, target, "play", 0.0, 600.0)
+        record_watch_event(session, target, "pause", 300.0, 600.0)
+        # Four tags: only the three most confident are shown on a card.
+        proposals = [("Woodworking", 0.9), ("Hand tools", 0.5), ("Chisels", 0.7), ("Rust", 0.3)]
+        set_llm_tags(
+            session,
+            target,
+            [ProposedTag(label, confidence) for label, confidence in proposals],
+            prompt_version=TAG_PROMPT_VERSION,
+        )
+        store_tags(session, target, LLMTags("hobbies", 0.8, 0.65, 0.1), model="stub")
+
+    items = {i["video_id"]: i for i in client.get("/feed/today").json()["items"]}
+
+    item = items[target]
+    assert (item["watched"], item["rating"], item["feedback"]) == (True, 7, 1)
+    assert item["watched_fraction"] == 0.5
+    assert item["channel_subscribed"] is True
+    assert item["tags"] == [
+        {"slug": "woodworking", "label": "Woodworking"},
+        {"slug": "chisels", "label": "Chisels"},
+        {"slug": "hand-tools", "label": "Hand tools"},
+    ]
+    assert item["llm"] == {"depth": 0.8, "clickbait": 0.65, "rage_bait": 0.1}
+    other = items[feed["items"][1]["video_id"]]
+    assert (other["rating"], other["feedback"], other["watched_fraction"]) == (None, None, None)
+    assert (other["tags"], other["llm"]) == ([], None)
+
+
+def test_items_from_channels_not_subscribed_say_so(client: TestClient) -> None:
+    seed()
+    outside = "UC" + "o" * 22
+    with get_session_factory().begin() as session:
+        session.execute(
+            text("INSERT INTO channels (id, title) VALUES (:id, 'Outside')"), {"id": outside}
+        )
+        session.execute(
+            text("INSERT INTO videos (id, channel_id, title) VALUES ('o0000000000', :id, 'Far')"),
+            {"id": outside},
+        )
+        record(session, ["o0000000000"], source=RELATED, source_detail="w0000000000")
+
+    items = client.post("/feed/refresh").json()["items"]
+
+    assert {i["channel_id"]: i["channel_subscribed"] for i in items} == {
+        WOOD: True,
+        BIRDS: True,
+        outside: False,
+    }
+
+
 def test_more_appends_new_picks_to_the_feed(client: TestClient) -> None:
     seed()
     feed = client.post("/feed/refresh").json()
@@ -392,4 +506,134 @@ def test_discovery_videos_come_from_outside_the_subscriptions(client: TestClient
     assert (item["channel_title"], item["source"]) == ("Outside", RELATED)
     assert item["explanation"].startswith("Related to")
     assert set(item["breakdown"]) >= {"final", "channel", "similarity"}
+    assert (item["channel_subscribed"], item["feedback"], item["tags"], item["llm"]) == (
+        False,
+        None,
+        [],
+        None,
+    )
     assert client.get("/discover/videos", params={"limit": 0}).status_code == 422
+
+
+def test_discovery_videos_carry_feedback_tags_and_llm_scores(client: TestClient) -> None:
+    seed()
+    outside = "UC" + "o" * 22
+    with get_session_factory().begin() as session:
+        session.execute(
+            text("INSERT INTO channels (id, title) VALUES (:id, 'Outside')"), {"id": outside}
+        )
+        session.execute(
+            text("INSERT INTO videos (id, channel_id, title) VALUES ('o0000000000', :id, 'Far')"),
+            {"id": outside},
+        )
+        record(session, ["o0000000000"], source=RELATED, source_detail="w0000000000")
+        set_feedback(session, "o0000000000", MORE)
+        set_llm_tags(
+            session, "o0000000000", [ProposedTag("Birds", 0.9)], prompt_version=TAG_PROMPT_VERSION
+        )
+        store_tags(session, "o0000000000", LLMTags("nature", 0.2, 0.9, 0.0), model="stub")
+
+    [item] = client.get("/discover/videos").json()
+
+    assert item["feedback"] == 1
+    assert item["tags"] == [{"slug": "birds", "label": "Birds"}]
+    assert item["llm"] == {"depth": 0.2, "clickbait": 0.9, "rage_bait": 0.0}
+
+
+# Channel ids for the videos of `add_outside`, leaving out `w` and `b`, the seeded channels.
+OUTSIDE_LETTERS = "acdefghijklmnopqrstuvxyz"
+
+
+def add_outside(letter: str, *, tags: list[str] | None = None) -> str:
+    """A video on an unsubscribed channel of its own, found as related to a video; its id."""
+    channel_id = "UC" + letter * 22
+    video_id = f"{letter}0000000000"
+    with get_session_factory().begin() as session:
+        session.execute(
+            text("INSERT INTO channels (id, title) VALUES (:id, :title)"),
+            {"id": channel_id, "title": f"Outside {letter}"},
+        )
+        session.execute(
+            text("INSERT INTO videos (id, channel_id, title) VALUES (:id, :channel, 'Far')"),
+            {"id": video_id, "channel": channel_id},
+        )
+        record(session, [video_id], source=RELATED, source_detail="w0000000000")
+        if tags:
+            proposals = [ProposedTag(tag, 0.9) for tag in tags]
+            set_llm_tags(session, video_id, proposals, prompt_version=TAG_PROMPT_VERSION)
+    return video_id
+
+
+def shown_by_discovery(client: TestClient) -> set[str]:
+    return {item["video_id"] for item in client.get("/discover/videos").json()}
+
+
+def test_wildcards_are_empty_without_candidates_outside(client: TestClient) -> None:
+    seed()
+
+    response = client.get("/feeds/wildcards")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_wildcards_leave_out_what_discovery_shows(client: TestClient) -> None:
+    seed()
+    # Discovery shows ten of these (one per channel); the rest are the wildcards' to draw.
+    outside = [add_outside(letter) for letter in OUTSIDE_LETTERS[:13]]
+    shown = shown_by_discovery(client)
+
+    response = client.get("/feeds/wildcards", params={"limit": 20})
+
+    assert response.status_code == 200, response.text
+    items = response.json()
+    assert len(shown) == feeds.DISCOVERY_SIZE
+    assert {item["video_id"] for item in items} == set(outside) - shown
+    item = items[0]
+    assert item["explanation"] == "Wildcard: outside the topics you follow"
+    assert item["source"] == RELATED
+    assert set(item["breakdown"]) >= {"final", "channel", "similarity"}
+    assert (item["channel_subscribed"], item["feedback"], item["llm"]) == (False, None, None)
+
+
+def test_wildcards_come_from_outside_the_topics_i_follow_and_mute(client: TestClient) -> None:
+    seed()
+    plain = [add_outside(letter) for letter in OUTSIDE_LETTERS[:11]]
+    muted = add_outside(OUTSIDE_LETTERS[11], tags=["Drama"])
+    other = add_outside(OUTSIDE_LETTERS[12], tags=["Birds"])
+    with get_session_factory().begin() as session:
+        drama = resolve_tag(session, "Drama")
+        assert drama is not None
+        subscribe_tag(session, drama, weight=-0.5)
+    # The muted one ranks last, so Discovery doesn't show it: only the rule leaves it out.
+    shown = shown_by_discovery(client)
+    assert muted not in shown
+
+    items = client.get("/feeds/wildcards", params={"limit": 20}).json()
+
+    drawn = {item["video_id"] for item in items}
+    assert muted not in drawn
+    assert drawn == (set(plain) | {other}) - shown
+
+
+def test_wildcards_limit(client: TestClient) -> None:
+    seed()
+    for letter in OUTSIDE_LETTERS[:15]:  # five beyond what Discovery shows
+        add_outside(letter)
+
+    assert len(client.get("/feeds/wildcards").json()) == 3  # three by default
+    assert len(client.get("/feeds/wildcards", params={"limit": 5}).json()) == 5
+    assert len(client.get("/feeds/wildcards", params={"limit": 1}).json()) == 1
+    assert client.get("/feeds/wildcards", params={"limit": 0}).status_code == 422
+    assert client.get("/feeds/wildcards", params={"limit": 21}).status_code == 422
+
+
+def test_wildcards_leave_out_todays_feed(client: TestClient) -> None:
+    seed()
+    outside = [add_outside(letter) for letter in OUTSIDE_LETTERS[:12]]
+    assert len(client.get("/feeds/wildcards").json()) == 2
+
+    feed = client.post("/feed/refresh").json()
+
+    assert set(outside) <= {item["video_id"] for item in feed["items"]}
+    assert client.get("/feeds/wildcards").json() == []

@@ -1,37 +1,89 @@
 import { describe, expect, it } from "vitest";
 
+import { DEEP_DIVE_DEPTH } from "./card";
 import {
   CHANNEL_COLORS,
+  FEED_FILTERS,
   channelColor,
+  isFeedFilter,
   isFeedSort,
-  isLengthFilter,
-  matchesLength,
+  matchesFilter,
   sortFeedItems,
+  type FeedFilter,
   type FeedSort,
 } from "./feed-grid";
 
-describe("matchesLength", () => {
-  it("buckets by minutes", () => {
-    expect(matchesLength(599, "short")).toBe(true);
-    expect(matchesLength(600, "short")).toBe(false);
-    expect(matchesLength(600, "medium")).toBe(true);
-    expect(matchesLength(1799, "medium")).toBe(true);
-    expect(matchesLength(1800, "long")).toBe(true);
-    expect(matchesLength(1800, "medium")).toBe(false);
+describe("matchesFilter", () => {
+  const matching = (
+    filter: FeedFilter,
+    item: Parameters<typeof matchesFilter>[0],
+  ) => matchesFilter(item, filter);
+
+  it("shows everything under all", () => {
+    expect(matching("all", {})).toBe(true);
+    expect(matching("all", { duration_seconds: null })).toBe(true);
+    expect(matching("all", { channel_subscribed: true, llm: null })).toBe(true);
   });
 
-  it("shows unknown lengths only under all", () => {
-    expect(matchesLength(null, "all")).toBe(true);
-    expect(matchesLength(null, "short")).toBe(false);
-    expect(matchesLength(undefined, "long")).toBe(false);
+  it("finds videos from channels I don't subscribe to", () => {
+    expect(matching("new", { channel_subscribed: false })).toBe(true);
+    expect(matching("new", { channel_subscribed: true })).toBe(false);
+    // Unknown is not "new": a past feed or a tag page may not say.
+    expect(matching("new", {})).toBe(false);
+  });
+
+  it("buckets by minutes", () => {
+    expect(matching("quick", { duration_seconds: 599 })).toBe(true);
+    expect(matching("quick", { duration_seconds: 600 })).toBe(false);
+    expect(matching("medium", { duration_seconds: 600 })).toBe(true);
+    expect(matching("medium", { duration_seconds: 1799 })).toBe(true);
+    expect(matching("medium", { duration_seconds: 1800 })).toBe(false);
+    expect(matching("medium", { duration_seconds: 599 })).toBe(false);
+  });
+
+  it("leaves videos of unknown length out of the length buckets", () => {
+    for (const filter of ["quick", "medium", "deep"] as const) {
+      expect(matching(filter, { duration_seconds: null })).toBe(false);
+      expect(matching(filter, { duration_seconds: undefined })).toBe(false);
+      expect(matching(filter, { duration_seconds: -1 })).toBe(false);
+    }
+  });
+
+  it("calls a video a deep dive by its depth once it's tagged", () => {
+    const depth = (value: number, seconds: number | null = 300) => ({
+      duration_seconds: seconds,
+      llm: { depth: value },
+    });
+    expect(matching("deep", depth(DEEP_DIVE_DEPTH))).toBe(true);
+    expect(matching("deep", depth(0.95))).toBe(true);
+    expect(matching("deep", depth(DEEP_DIVE_DEPTH - 0.01))).toBe(false);
+    // The score decides, whatever the length: a long, shallow video isn't one.
+    expect(matching("deep", depth(0.2, 5400))).toBe(false);
+    expect(matching("deep", depth(0.9, null))).toBe(true);
+  });
+
+  it("calls a video that isn't tagged yet a deep dive when it's over 30 minutes", () => {
+    expect(matching("deep", { duration_seconds: 1800, llm: null })).toBe(true);
+    expect(matching("deep", { duration_seconds: 1799, llm: null })).toBe(false);
+    expect(matching("deep", { duration_seconds: 7200 })).toBe(true);
+  });
+
+  it("has a filter for each chip", () => {
+    expect(FEED_FILTERS.map(({ label }) => label)).toEqual([
+      "All",
+      "New to me",
+      "Quick",
+      "10–30 min",
+      "Deep dives",
+    ]);
   });
 });
 
-describe("isLengthFilter", () => {
+describe("isFeedFilter", () => {
   it("accepts known filters only", () => {
-    expect(isLengthFilter("long")).toBe(true);
-    expect(isLengthFilter("huge")).toBe(false);
-    expect(isLengthFilter(undefined)).toBe(false);
+    expect(isFeedFilter("deep")).toBe(true);
+    expect(isFeedFilter("long")).toBe(false);
+    expect(isFeedFilter(undefined)).toBe(false);
   });
 });
 

@@ -34,6 +34,18 @@ interface ScoreScaleProps {
   onPick: (score: number) => void;
   /** Names the group for screen readers, e.g. "Rate this video". */
   label: string;
+  /**
+   * The id of text the page shows as the scale's label (a heading, or "Rate
+   * this video" above it). The group is named after that text, not `label`.
+   */
+  labelledBy?: string;
+  /** The id of text that describes the scale, e.g. what its ends mean. */
+  describedBy?: string;
+  /**
+   * A smaller scale for lists. It keeps no room above the pill for the picked
+   * word's bubble, which then overlaps whatever is above.
+   */
+  compact?: boolean;
   disabled?: boolean;
   /** The face that takes focus (the picked one, else the first). */
   buttonRef?: Ref<HTMLButtonElement>;
@@ -41,20 +53,49 @@ interface ScoreScaleProps {
 }
 
 /**
- * A 1 to 10 score as ten face buttons on a pill, a wail at 1 and a grin at 10.
- * The picked face grows into a coloured disc that slides along the pill, its
- * word in a bubble above. A click picks at once; a drag shows each face it
- * passes and picks the one it ends on. Arrow keys, Home and End move focus
- * without picking, and Enter or Space picks.
+ * The scale's measurements. `disc` is the picked face's disc, which grows past
+ * the pill, and its distance from the top (half the pill's height).
+ */
+const SIZES = {
+  default: {
+    group: "pt-9",
+    pill: "h-11",
+    face: "size-6",
+    disc: "top-5.5 w-[clamp(2.75rem,calc(10%+1.25rem),3.5rem)]",
+    number: "pt-2",
+  },
+  compact: {
+    group: "",
+    pill: "h-9",
+    face: "size-5",
+    disc: "top-4.5 w-[clamp(2.25rem,calc(10%+1rem),2.75rem)]",
+    number: "pt-1.5",
+  },
+} as const;
+
+/**
+ * A 1 to 10 score as ten face buttons on a pill, a wail at 1 and a grin at 10,
+ * each with its number under it. The picked face grows into a coloured disc
+ * that slides along the pill, its word in a bubble above. A click picks at
+ * once; a drag shows each face it passes and picks the one it ends on. Arrow
+ * keys, Home and End move focus without picking, and Enter or Space picks.
+ *
+ * The faces say nothing by themselves: show what the scale is for and what its
+ * ends mean (see `SCORE_SCALE_HINT`) next to it, and point `labelledBy` and
+ * `describedBy` at that text.
  */
 export function ScoreScale({
   value,
   onPick,
   label,
+  labelledBy,
+  describedBy,
+  compact = false,
   disabled = false,
   buttonRef,
   className,
 }: ScoreScaleProps) {
+  const size = SIZES[compact ? "compact" : "default"];
   const track = useRef<HTMLDivElement>(null);
   const buttons = useRef(new Map<number, HTMLButtonElement>());
   // The face under the pointer while it is pressed; null when not dragging.
@@ -127,10 +168,13 @@ export function ScoreScale({
   return (
     <div
       role="group"
-      aria-label={label}
+      aria-label={labelledBy ? undefined : label}
+      aria-labelledby={labelledBy}
+      aria-describedby={describedBy}
       aria-disabled={disabled || undefined}
       className={cn(
-        "group/scale pt-9 pb-1.5 aria-disabled:opacity-50",
+        "group/scale pb-1.5 aria-disabled:opacity-50",
+        size.group,
         className,
       )}
     >
@@ -141,8 +185,15 @@ export function ScoreScale({
         onPointerUp={onPointerUp}
         onPointerCancel={() => setDragged(null)}
         onKeyDown={onKeyDown}
-        className="relative grid h-11 touch-pan-y grid-cols-10 rounded-full bg-secondary select-none"
+        className="relative grid touch-pan-y grid-cols-10 select-none"
       >
+        <div
+          aria-hidden="true"
+          className={cn(
+            "absolute inset-x-0 top-0 rounded-full bg-secondary",
+            size.pill,
+          )}
+        />
         <TooltipProvider delay={200} closeDelay={0}>
           {SCORES.map((score) => (
             <Tooltip
@@ -166,22 +217,40 @@ export function ScoreScale({
                     onFocus={() => setFocusable(score)}
                     onClick={(event) => onClick(event, score)}
                     className={cn(
-                      "group/face relative flex items-center justify-center text-muted-foreground/70 outline-none transition-colors hover:text-foreground motion-reduce:transition-none",
-                      // A short divider before every face but the first.
-                      score > MIN_SCORE &&
-                        "before:absolute before:inset-y-3 before:left-0 before:w-px before:bg-border",
+                      "group/face relative flex flex-col items-center text-muted-foreground outline-none transition-colors hover:text-foreground motion-reduce:transition-none",
                       disabled ? "cursor-default" : "cursor-pointer",
                     )}
                   >
-                    <ScoreFace
-                      score={score}
-                      title={scoreLabel(score)}
+                    <span
                       className={cn(
-                        "pointer-events-none size-6 rounded-full transition-[scale,opacity] duration-150 ease-out group-focus-visible/face:ring-3 group-focus-visible/face:ring-ring/50 motion-reduce:transition-none",
-                        shown === score && "opacity-0",
-                        !disabled && "group-hover/face:scale-110",
+                        "relative flex w-full items-center justify-center",
+                        size.pill,
+                        // A short divider before every face but the first.
+                        score > MIN_SCORE &&
+                          "before:absolute before:inset-y-[27%] before:left-0 before:w-px before:bg-border",
                       )}
-                    />
+                    >
+                      <ScoreFace
+                        score={score}
+                        title={scoreLabel(score)}
+                        className={cn(
+                          "pointer-events-none rounded-full transition-[scale,opacity] duration-150 ease-out group-focus-visible/face:ring-3 group-focus-visible/face:ring-ring/50 motion-reduce:transition-none",
+                          size.face,
+                          shown === score && "opacity-0",
+                          !disabled && "group-hover/face:scale-110",
+                        )}
+                      />
+                    </span>
+                    {/* The face's number: the picked one is bold as well as lit. */}
+                    <span
+                      className={cn(
+                        "text-xs leading-4 tabular-nums",
+                        size.number,
+                        shown === score && "font-semibold text-foreground",
+                      )}
+                    >
+                      {score}
+                    </span>
                   </button>
                 }
               />
@@ -198,7 +267,10 @@ export function ScoreScale({
             style={{
               left: `${((shown - MIN_SCORE + 0.5) / SCORES.length) * 100}%`,
             }}
-            className="pointer-events-none absolute top-1/2 aspect-square w-[clamp(2.75rem,calc(10%+1.25rem),3.5rem)] -translate-x-1/2 -translate-y-1/2 rounded-full shadow-md transition-[left,scale,box-shadow] duration-200 ease-out group-has-[[aria-pressed=true]:focus-visible]/scale:ring-3 group-has-[[aria-pressed=true]:focus-visible]/scale:ring-ring/50 data-dragging:scale-105 data-dragging:duration-100 motion-reduce:transition-none"
+            className={cn(
+              "pointer-events-none absolute aspect-square -translate-x-1/2 -translate-y-1/2 rounded-full shadow-md transition-[left,scale,box-shadow] duration-200 ease-out group-has-[[aria-pressed=true]:focus-visible]/scale:ring-3 group-has-[[aria-pressed=true]:focus-visible]/scale:ring-ring/50 data-dragging:scale-105 data-dragging:duration-100 motion-reduce:transition-none",
+              size.disc,
+            )}
           >
             <ScoreFace score={shown} filled className="size-full" />
             <span className="absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 rounded-md bg-foreground px-2 py-1 text-sm font-semibold whitespace-nowrap text-background shadow-md">

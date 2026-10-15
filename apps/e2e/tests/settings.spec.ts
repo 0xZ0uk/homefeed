@@ -1,7 +1,11 @@
 import { apiGet, expect, open, test } from "./fixtures";
 
 interface Settings {
-  values: { feed_size: number; timezone: string | null };
+  values: {
+    feed_size: number;
+    feed_max_topic_share: number;
+    timezone: string | null;
+  };
   sources: Record<string, string>;
 }
 
@@ -67,6 +71,45 @@ test("an invalid value isn't saved", async ({ page, request }) => {
   await expect(slots).toHaveAttribute("aria-invalid", "true");
   const { body } = await apiGet<Settings>(request, "/settings");
   expect(body.sources.feed_exploration_slots).not.toBe("user");
+});
+
+test("the most of a feed one topic may take is set as a percentage", async ({
+  page,
+  request,
+}) => {
+  await open(page, "/settings");
+
+  const feed = page.getByRole("region", { name: "Feed", exact: true });
+  const share = feed.getByLabel("Most of a feed one topic may take");
+  await expect(share).toHaveValue("40");
+  await share.fill("25");
+  await feed.getByRole("button", { name: "Save" }).click();
+  await expect(feed.getByRole("status")).toHaveText("Saved.");
+  await expect(feed.getByText("Default: 40%.")).toBeVisible();
+  const { body } = await apiGet<Settings>(request, "/settings");
+  expect(body.values.feed_max_topic_share).toBe(0.25);
+  expect(body.sources.feed_max_topic_share).toBe("user");
+
+  // Between 10 and 100 only, and nothing is saved otherwise.
+  await share.fill("5");
+  await feed.getByRole("button", { name: "Save" }).click();
+  await expect(feed.getByRole("alert")).toHaveText(
+    "Most of a feed one topic may take must be a whole number from 10 to 100.",
+  );
+  await expect(share).toBeFocused();
+  await expect(share).toHaveAttribute("aria-invalid", "true");
+  expect(
+    (await apiGet<Settings>(request, "/settings")).body.values
+      .feed_max_topic_share,
+  ).toBe(0.25);
+
+  await share.fill("25");
+  await feed.getByRole("button", { name: "Reset to default" }).click();
+  await expect(share).toHaveValue("40");
+  expect(
+    (await apiGet<Settings>(request, "/settings")).body.values
+      .feed_max_topic_share,
+  ).toBe(0.4);
 });
 
 test("the API key is saved but never shown", async ({ page, request }) => {

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   nextInQueue,
   parseVideoInput,
+  queueButtonLabel,
   withItemMoved,
   withoutItem,
 } from "./queue";
@@ -96,5 +97,13 @@ describe("parseVideoInput", () => {
     `https://www.youtube.com/watch?v=short`,
   ])("rejects %j", (input) => {
     expect(parseVideoInput(input)).toBeNull();
+  });
+});
+
+describe("queueButtonLabel", () => {
+  it("names the queue, with its length once there is one", () => {
+    expect(queueButtonLabel(0)).toBe("Queue");
+    expect(queueButtonLabel(1)).toBe("Queue, 1 video");
+    expect(queueButtonLabel(12)).toBe("Queue, 12 videos");
   });
 });

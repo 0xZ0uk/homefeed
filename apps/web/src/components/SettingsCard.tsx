@@ -28,7 +28,7 @@ export function SettingsCard({
     <section aria-labelledby={id}>
       <Card>
         <CardHeader>
-          <CardTitle render={<h3 id={id} />} className="text-lg">
+          <CardTitle render={<h2 id={id} />} className="text-lg">
             {title}
           </CardTitle>
           {description && (

@@ -12,11 +12,19 @@ the start (under `RESUME_MIN_SECONDS`). Then the video starts from the beginning
 ended before playback got anywhere (e.g. leaving before the player loaded), and shouldn't
 lose the earlier position.
 
+`watched_fractions` turns the same data into how far through a video the user got, for
+the progress bar on a feed card.
+
 Search matches every word of the query, case-insensitively, against the video title and
 the channel title. Filtering happens in Python (`str.casefold`) rather than SQLite's
 `LIKE`, which only folds ASCII case; one person's history is small enough for that.
+
+`unrated` narrows the history to the videos without a rating: what I watched but never
+scored, which the History page offers to rate in a row. `history_summary` counts them
+beside everything watched, so the page can show the number without paging through.
 """
 
+from collections.abc import Collection
 from dataclasses import dataclass
 
 from sqlalchemy import text
@@ -84,14 +92,17 @@ _QUERY = """
     LEFT JOIN videos AS v ON v.id = w.video_id
     LEFT JOIN channels AS c ON c.id = v.channel_id
     LEFT JOIN ratings AS r ON r.video_id = w.video_id
+    {unrated}
     ORDER BY w.last_at DESC, w.last_id DESC
 """
 
 
-def _entries(session: Session, video_id: str | None = None) -> list[HistoryEntry]:
+def _entries(
+    session: Session, video_id: str | None = None, *, unrated: bool = False
+) -> list[HistoryEntry]:
     where = "" if video_id is None else "WHERE video_id = :video_id"
     rows = session.execute(
-        text(_QUERY.format(where=where)),
+        text(_QUERY.format(where=where, unrated="WHERE r.video_id IS NULL" if unrated else "")),
         {"video_id": video_id, "min_seconds": RESUME_MIN_SECONDS},
     )
     entries = []
@@ -142,17 +153,69 @@ def search_history(
     *,
     limit: int = DEFAULT_HISTORY_LIMIT,
     offset: int = 0,
+    unrated: bool = False,
 ) -> list[HistoryEntry]:
     """Watched videos, most recently watched first, optionally only those whose title or
-    channel contains every word of `query` (case-insensitive)."""
-    entries = _entries(session)
+    channel contains every word of `query` (case-insensitive) and, with `unrated`, only
+    those without a rating."""
+    entries = _entries(session, unrated=unrated)
     terms = (query or "").casefold().split()
     if terms:
         entries = [entry for entry in entries if _matches(entry, terms)]
     return entries[offset : offset + limit]
 
 
+@dataclass(frozen=True)
+class HistorySummary:
+    watched: int  # videos with a `play` event: the whole history
+    unrated: int  # of those, the ones without a rating
+
+
+def history_summary(session: Session) -> HistorySummary:
+    """How many videos the history holds and how many of them are still unrated."""
+    watched, unrated = session.execute(
+        text(
+            """
+            SELECT count(*), coalesce(sum(r.video_id IS NULL), 0)
+            FROM (
+                SELECT video_id FROM watch_events
+                GROUP BY video_id
+                HAVING max(event_type = 'play') = 1
+            ) AS w
+            LEFT JOIN ratings AS r ON r.video_id = w.video_id
+            """
+        )
+    ).one()
+    return HistorySummary(watched=watched, unrated=unrated)
+
+
 def get_history_entry(session: Session, video_id: str) -> HistoryEntry | None:
     """`video_id`'s history entry (with its resume position), or None if never played."""
     entries = _entries(session, video_id)
     return entries[0] if entries else None
+
+
+def progress_fraction(entry: HistoryEntry) -> float | None:
+    """How far through the video the user got, 0 to 1, or None when it can't be told.
+
+    That is the resume position over the duration (what the History page shows as
+    "Stopped at 8:07 of 48:45"); 1 for a video with nothing to resume because it was
+    played to the end (an `ended` event, or leaving within `RESUME_END_MARGIN` seconds of
+    the duration). None for one left before it got anywhere, or of unknown length."""
+    if entry.resume_position is not None:
+        return min(1.0, entry.resume_position / entry.duration) if entry.duration else None
+    near_end = entry.duration is not None and entry.position >= entry.duration - RESUME_END_MARGIN
+    return 1.0 if entry.finished or near_end else None
+
+
+def watched_fractions(session: Session, video_ids: Collection[str]) -> dict[str, float]:
+    """`progress_fraction` of each of `video_ids` the user has played and that has one;
+    the others are left out. It takes a query per video, so give it videos known to have
+    been played (a feed item that is `watched`), not a whole feed."""
+    fractions: dict[str, float] = {}
+    for video_id in video_ids:
+        entry = get_history_entry(session, video_id)
+        fraction = None if entry is None else progress_fraction(entry)
+        if fraction is not None:
+            fractions[video_id] = fraction
+    return fractions

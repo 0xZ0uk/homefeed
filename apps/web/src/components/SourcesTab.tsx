@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 
+import { ConfirmButton } from "#/components/ConfirmButton";
 import {
   KIND_LABELS,
   KIND_PLACEHOLDERS,
@@ -217,17 +218,16 @@ function SourceRow({ source }: { source: ExternalSource }) {
           ))}
         </select>
       </div>
-      <button
-        type="button"
+      <ConfirmButton
         disabled={busy}
-        onClick={() => {
-          if (window.confirm(`Remove ${source.label}?`)) remove.mutate();
-        }}
         aria-label={`Remove ${source.label}`}
-        className="text-sm text-destructive underline disabled:opacity-50"
+        title={`Remove ${source.label}?`}
+        description="Homefeed stops checking it. The videos it already found stay among your candidates."
+        confirmLabel="Remove"
+        onConfirm={() => remove.mutate()}
       >
         Remove
-      </button>
+      </ConfirmButton>
       {(update.isError || remove.isError) && (
         <p role="alert" className="w-full text-sm text-destructive">
           Couldn't save that change. Try again.

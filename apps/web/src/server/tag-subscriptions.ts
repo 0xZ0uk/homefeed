@@ -44,7 +44,7 @@ const getTagSubscriptions = createServerFn({ method: "GET" }).handler(
   },
 );
 
-/** Every subscribed and muted tag, for the sidebar and the tag chips. */
+/** Every subscribed and muted tag, for Explore's lists and the tag chips. */
 export const tagSubscriptionsQuery = queryOptions({
   queryKey: ["tag-subscriptions"],
   queryFn: () => getTagSubscriptions(),

@@ -109,6 +109,39 @@ def test_pages_history(client: TestClient) -> None:
     assert ids(client.get("/history", params={"offset": 2})) == []
 
 
+@pytest.mark.usefixtures("watched")
+def test_lists_only_the_unrated_videos(client: TestClient) -> None:
+    assert ids(client.get("/history", params={"unrated": True})) == [BREAD, PLANE]
+
+    assert client.put(f"/ratings/{BREAD}", json={"score": 8}).status_code == 200
+
+    assert ids(client.get("/history", params={"unrated": True})) == [PLANE]
+    assert ids(client.get("/history", params={"unrated": "true", "q": "plane"})) == [PLANE]
+    assert ids(client.get("/history", params={"unrated": True, "q": "bread"})) == []
+    assert ids(client.get("/history", params={"unrated": True, "limit": 1, "offset": 1})) == []
+    # Rated videos are still in the history itself.
+    assert ids(client.get("/history")) == [BREAD, PLANE]
+    assert ids(client.get("/history", params={"unrated": False})) == [BREAD, PLANE]
+
+
+def test_summary_counts_the_history_and_what_is_unrated(client: TestClient) -> None:
+    assert client.get("/history/summary").json() == {"watched": 0, "unrated": 0}
+
+    store(PLANE, "Hand plane restoration", "Wood Shop")
+    store(BREAD, "Sourdough basics", "Bread Lab")
+    watch(client, PLANE, ("play", 0), ("pause", 125.5))
+    watch(client, BREAD, ("play", 0), ("ended", 600))
+    watch(client, "ccccccccccc", ("close", 0))  # opened, never played
+    assert client.get("/history/summary").json() == {"watched": 2, "unrated": 2}
+
+    assert client.put(f"/ratings/{PLANE}", json={"score": 5}).status_code == 200
+    assert client.put("/ratings/ddddddddddd", json={"score": 5}).status_code == 200  # not played
+
+    assert client.get("/history/summary").json() == {"watched": 2, "unrated": 1}
+    # It is not taken for the entry of a video called "summary".
+    assert client.get("/history/summaryxxxx").status_code == 404
+
+
 @pytest.mark.parametrize("params", [{"limit": 0}, {"limit": 201}, {"offset": -1}, {"q": "x" * 201}])
 def test_rejects_bad_params(client: TestClient, params: dict[str, Any]) -> None:
     assert client.get("/history", params=params).status_code == 422

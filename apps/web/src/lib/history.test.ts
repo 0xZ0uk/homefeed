@@ -2,8 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   HISTORY_PAGE_SIZE,
+  afterRating,
   describeProgress,
+  describeRated,
+  isHistoryPageKey,
+  neighbourOf,
   pageWindow,
+  paramsWith,
   parseHistoryParams,
   progressFraction,
 } from "./history";
@@ -30,6 +35,59 @@ describe("parseHistoryParams", () => {
 
   it("caps the query length", () => {
     expect(parseHistoryParams({ q: "x".repeat(300) }).q).toHaveLength(200);
+  });
+
+  it("keeps the unrated filter, as it is written in a URL or as a boolean", () => {
+    expect(parseHistoryParams({ unrated: true })).toEqual({ unrated: true });
+    expect(parseHistoryParams({ unrated: "true", q: "saw" })).toEqual({
+      q: "saw",
+      unrated: true,
+    });
+  });
+
+  it("drops the unrated filter when it is off or not a boolean", () => {
+    for (const unrated of [false, "false", "", 1, "yes", null, ["true"]]) {
+      expect(parseHistoryParams({ unrated })).toEqual({});
+    }
+  });
+});
+
+describe("paramsWith", () => {
+  it("applies a change, keeping the rest", () => {
+    expect(paramsWith({ q: "saw" }, { unrated: true })).toEqual({
+      q: "saw",
+      unrated: true,
+    });
+    expect(paramsWith({ q: "saw", unrated: true }, { unrated: false })).toEqual(
+      { q: "saw" },
+    );
+    expect(paramsWith({ unrated: true }, { q: "plane" })).toEqual({
+      q: "plane",
+      unrated: true,
+    });
+  });
+
+  it("starts over at the first page unless the page is what changes", () => {
+    expect(paramsWith({ q: "saw", page: 3 }, { unrated: true })).toEqual({
+      q: "saw",
+      unrated: true,
+    });
+    expect(paramsWith({ q: "saw", page: 3 }, { q: "plane" })).toEqual({
+      q: "plane",
+    });
+    expect(paramsWith({ q: "saw", page: 3 }, { page: 4 })).toEqual({
+      q: "saw",
+      page: 4,
+    });
+    expect(paramsWith({ q: "saw", page: 3 }, { page: 1 })).toEqual({
+      q: "saw",
+    });
+  });
+
+  it("clears the search with a blank query", () => {
+    expect(paramsWith({ q: "saw", unrated: true }, { q: "  " })).toEqual({
+      unrated: true,
+    });
   });
 });
 
@@ -90,5 +148,70 @@ describe("progressFraction", () => {
     expect(
       progressFraction({ position: 600, duration: 600, finished: true }),
     ).toBeNull();
+  });
+});
+
+const ENTRIES = [
+  { video_id: "aaaaaaaaaaa", score: null },
+  { video_id: "bbbbbbbbbbb", score: 4 },
+  { video_id: "ccccccccccc" },
+];
+
+describe("afterRating", () => {
+  it("takes the video out of a list of the unrated", () => {
+    expect(afterRating(ENTRIES, "aaaaaaaaaaa", 8, true)).toEqual([
+      ENTRIES[1],
+      ENTRIES[2],
+    ]);
+    expect(afterRating(ENTRIES, "zzzzzzzzzzz", 8, true)).toEqual(ENTRIES);
+  });
+
+  it("shows the rating in the whole history, leaving the rest alone", () => {
+    const after = afterRating(ENTRIES, "ccccccccccc", 9, false);
+    expect(after.map((entry) => entry.score)).toEqual([null, 4, 9]);
+    expect(after[0]).toBe(ENTRIES[0]);
+    expect(ENTRIES[2]).toEqual({ video_id: "ccccccccccc" });
+  });
+});
+
+describe("isHistoryPageKey", () => {
+  it("tells the pages of the unrated from the pages of everything", () => {
+    expect(isHistoryPageKey(["history", { unrated: true }], true)).toBe(true);
+    expect(isHistoryPageKey(["history", { unrated: true }], false)).toBe(false);
+    expect(isHistoryPageKey(["history", { q: "saw" }], false)).toBe(true);
+    expect(isHistoryPageKey(["history", {}], true)).toBe(false);
+  });
+
+  it("leaves out everything that isn't a page of the history", () => {
+    expect(isHistoryPageKey(["history", "summary"], false)).toBe(false);
+    expect(isHistoryPageKey(["history"], false)).toBe(false);
+    expect(isHistoryPageKey(["video", { unrated: true }], true)).toBe(false);
+  });
+});
+
+describe("neighbourOf", () => {
+  it("is the next entry, else the one before, else nothing", () => {
+    expect(neighbourOf(ENTRIES, "aaaaaaaaaaa")?.video_id).toBe("bbbbbbbbbbb");
+    expect(neighbourOf(ENTRIES, "bbbbbbbbbbb")?.video_id).toBe("ccccccccccc");
+    expect(neighbourOf(ENTRIES, "ccccccccccc")?.video_id).toBe("bbbbbbbbbbb");
+    expect(neighbourOf(ENTRIES.slice(0, 1), "aaaaaaaaaaa")).toBeNull();
+    expect(neighbourOf(ENTRIES, "zzzzzzzzzzz")).toBeNull();
+  });
+});
+
+describe("describeRated", () => {
+  it("says what was rated and how many are left", () => {
+    expect(describeRated("Sharpening a hand plane", 8, 4)).toBe(
+      "Rated 8 out of 10: Sharpening a hand plane. 4 left to rate.",
+    );
+    expect(describeRated("Owls at night", 3, 0)).toBe(
+      "Rated 3 out of 10: Owls at night. Everything you watched is rated.",
+    );
+  });
+
+  it("leaves the count out when it is not known", () => {
+    expect(describeRated("Owls at night", 10, null)).toBe(
+      "Rated 10 out of 10: Owls at night.",
+    );
   });
 });

@@ -4,14 +4,19 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpToLine,
-  ChevronDown,
-  ChevronUp,
   EllipsisVertical,
   ListVideo,
   Play,
   Trash2,
+  X,
 } from "lucide-react";
-import { useRef, useState, type FormEvent, type RefObject } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type RefObject,
+} from "react";
 
 import { Button } from "#/components/ui/button";
 import {
@@ -23,15 +28,20 @@ import {
 } from "#/components/ui/dropdown-menu";
 import { Input } from "#/components/ui/input";
 import {
-  Popover,
-  PopoverContent,
-  PopoverDescription,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverTrigger,
-} from "#/components/ui/popover";
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
+} from "#/components/ui/sheet";
 import { formatDuration } from "#/lib/format";
-import { parseVideoInput, withItemMoved, withoutItem } from "#/lib/queue";
+import {
+  parseVideoInput,
+  queueButtonLabel,
+  withItemMoved,
+  withoutItem,
+} from "#/lib/queue";
 import { cn } from "#/lib/utils";
 import {
   dequeue,
@@ -44,90 +54,92 @@ import {
 
 type Status = { ok: boolean; message: string };
 
+// The buttons that open the queue (the masthead's, the Library's card) are in
+// different components than the sheet, and every page renders its own shell:
+// the mounted sheet registers here, and `openQueue()` opens it. Nothing else is
+// remembered, so a sheet left open never reopens on the next page.
+const queueOpeners = new Set<() => void>();
+
+/** Open the queue sheet of the page you're on. */
+export function openQueue() {
+  for (const open of queueOpeners) open();
+}
+
 /**
- * The watch queue, after YouTube's: a bar docked at the bottom right of every
- * signed-in page showing what's up next, which opens the whole queue above it
- * to reorder, remove, add or clear. On a watch page the video playing is
- * marked when it's queued.
+ * The watch queue: a masthead button showing how many videos are queued, which
+ * opens a sheet from the right to reorder, remove, add by link or clear them.
+ * On a watch page the video playing is marked when it's queued. The button is
+ * icon-only on narrow screens; its name always includes the count.
  */
-export function QueueDock() {
+export function QueueSheet() {
   const { data: items, isError, refetch } = useQuery(queueQuery);
   const { videoId } = useParams({ strict: false });
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
   const actions = useQueueActions(setStatus, statusRef);
+
+  useEffect(() => {
+    const opener = () => setOpen(true);
+    queueOpeners.add(opener);
+    return () => {
+      queueOpeners.delete(opener);
+    };
+  }, []);
 
   const count = items?.length ?? 0;
   const currentIndex = items?.findIndex((item) => item.video_id === videoId);
   const playing = currentIndex !== undefined && currentIndex >= 0;
-  const headline = items?.[playing ? currentIndex : 0];
   const close = () => setOpen(false);
 
   return (
-    <div className="fixed right-4 bottom-4 z-40 flex justify-end">
-      <Popover
-        open={open}
-        onOpenChange={(next) => {
-          setOpen(next);
-          if (!next) setStatus(null);
-        }}
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setStatus(null);
+      }}
+    >
+      <SheetTrigger
+        render={
+          <Button
+            variant="outline"
+            size="lg"
+            aria-label={queueButtonLabel(count)}
+            className="relative px-0 max-md:size-9 md:gap-2 md:px-3"
+          />
+        }
       >
-        <PopoverTrigger
-          className={cn(
-            "flex items-center gap-3 rounded-xl bg-popover text-left text-popover-foreground shadow-lg ring-1 ring-foreground/10 transition-colors outline-none hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/50",
-            headline
-              ? "w-80 max-w-[calc(100vw-2rem)] py-2.5 pr-3 pl-4"
-              : "h-11 px-4",
-          )}
-        >
-          {headline ? (
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate font-medium">
-                {itemTitle(headline)}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                Queue •{" "}
-                {playing ? (
-                  <span className="tabular-nums">
-                    {currentIndex + 1} / {count}
-                  </span>
-                ) : (
-                  <>
-                    Up next
-                    {count > 1 && (
-                      <span className="tabular-nums"> · {count} videos</span>
-                    )}
-                  </>
-                )}
-              </span>
-            </span>
-          ) : (
-            <>
-              <ListVideo aria-hidden="true" className="size-5" />
-              <span className="font-medium">Queue</span>
-            </>
-          )}
-          {open ? (
-            <ChevronDown aria-hidden="true" className="size-5 shrink-0" />
-          ) : (
-            <ChevronUp aria-hidden="true" className="size-5 shrink-0" />
-          )}
-        </PopoverTrigger>
-        <PopoverContent
-          side="top"
-          align="end"
-          sideOffset={8}
-          className="w-[26rem] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden rounded-xl p-0 shadow-lg"
-        >
-          <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
-            <PopoverHeader className="min-w-0">
-              <PopoverTitle className="text-base">Queue</PopoverTitle>
-              <p className="text-xs text-muted-foreground tabular-nums">
-                {count === 1 ? "1 video" : `${count} videos`}
-                {playing && ` · playing ${currentIndex + 1} of ${count}`}
-              </p>
-            </PopoverHeader>
+        <ListVideo aria-hidden="true" className="size-5 md:size-4" />
+        <span aria-hidden="true" className="max-md:hidden">
+          Queue
+        </span>
+        {count > 0 && (
+          <span
+            aria-hidden="true"
+            className="flex h-5 min-w-5 items-center justify-center rounded-full bg-foreground px-1.5 text-xs font-medium text-background tabular-nums max-md:absolute max-md:-top-1 max-md:-right-1 max-md:h-4 max-md:min-w-4 max-md:px-1"
+          >
+            {count > 99 ? "99+" : count}
+          </span>
+        )}
+      </SheetTrigger>
+      <SheetContent
+        side="right"
+        showCloseButton={false}
+        // Not on Clear, which comes first in the tab order.
+        initialFocus={closeRef}
+        className="gap-0 p-0 data-[side=right]:w-[26rem] data-[side=right]:max-w-full data-[side=right]:sm:max-w-[26rem]"
+      >
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b py-3 pr-2 pl-4">
+          <div className="flex min-w-0 flex-col">
+            <SheetTitle>Queue</SheetTitle>
+            <SheetDescription className="text-xs tabular-nums">
+              {count === 1 ? "1 video" : `${count} videos`}
+              {playing && ` · playing ${currentIndex + 1} of ${count}`}
+            </SheetDescription>
+          </div>
+          <div className="flex items-center gap-1">
             {count > 0 && (
               <ClearQueue
                 count={count}
@@ -136,71 +148,83 @@ export function QueueDock() {
                 }
               />
             )}
-          </div>
-          {/* Focus moves here when a removed item disappears from the list. */}
-          <p
-            ref={statusRef}
-            role="status"
-            tabIndex={-1}
-            className="px-4 text-xs focus:outline-none empty:hidden has-[span]:py-2"
-          >
-            {status && (
-              <span
-                className={
-                  status.ok ? "text-muted-foreground" : "text-destructive"
-                }
-              >
-                {status.message}
-              </span>
-            )}
-          </p>
-          {isError ? (
-            <div role="alert" className="flex flex-col items-start gap-2 p-4">
-              <p>Couldn't load your queue. The API may be down.</p>
-              <button
-                type="button"
-                onClick={() => void refetch()}
-                className="underline"
-              >
-                Try again
-              </button>
-            </div>
-          ) : !items ? (
-            <p className="p-4 text-muted-foreground">Loading your queue…</p>
-          ) : items.length === 0 ? (
-            <PopoverDescription className="p-4">
-              Your queue is empty. Add videos from the feed, search or a watch
-              page, or paste a link below.
-            </PopoverDescription>
-          ) : (
-            <ol
-              aria-label="Queue"
-              className="max-h-[min(28rem,55svh)] overflow-y-auto overscroll-contain py-1"
-            >
-              {items.map((item, index) => (
-                <QueueRow
-                  key={item.id}
-                  item={item}
-                  index={index}
-                  count={items.length}
-                  current={item.video_id === videoId}
-                  actions={actions}
-                  onNavigate={close}
+            <SheetClose
+              render={
+                <Button
+                  ref={closeRef}
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Close queue"
                 />
-              ))}
-            </ol>
-          )}
-          <div className="flex flex-col gap-1 border-t px-4 pt-3 pb-2">
-            <AddForm />
-            {count > 0 && (
-              <PopoverDescription className="text-xs">
-                Videos leave the queue once you watch them to the end.
-              </PopoverDescription>
-            )}
+              }
+            >
+              <X className="size-5" />
+            </SheetClose>
           </div>
-        </PopoverContent>
-      </Popover>
-    </div>
+        </div>
+        {/* Focus moves here when a removed item disappears from the list. */}
+        <p
+          ref={statusRef}
+          role="status"
+          tabIndex={-1}
+          className="shrink-0 px-4 text-xs focus:outline-none empty:hidden has-[span]:py-2"
+        >
+          {status && (
+            <span
+              className={
+                status.ok ? "text-muted-foreground" : "text-destructive"
+              }
+            >
+              {status.message}
+            </span>
+          )}
+        </p>
+        {isError ? (
+          <div role="alert" className="flex flex-col items-start gap-2 p-4">
+            <p>Couldn't load your queue. The API may be down.</p>
+            <button
+              type="button"
+              onClick={() => void refetch()}
+              className="underline"
+            >
+              Try again
+            </button>
+          </div>
+        ) : !items ? (
+          <p className="p-4 text-muted-foreground">Loading your queue…</p>
+        ) : items.length === 0 ? (
+          <p className="p-4">
+            Your queue is empty. Add videos from the feed, search or a watch
+            page, or paste a link below.
+          </p>
+        ) : (
+          <ol
+            aria-label="Queue"
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-1"
+          >
+            {items.map((item, index) => (
+              <QueueRow
+                key={item.id}
+                item={item}
+                index={index}
+                count={items.length}
+                current={item.video_id === videoId}
+                actions={actions}
+                onNavigate={close}
+              />
+            ))}
+          </ol>
+        )}
+        <div className="mt-auto flex shrink-0 flex-col gap-1 border-t px-4 pt-3 pb-3">
+          <AddForm />
+          {count > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Videos leave the queue once you watch them to the end.
+            </p>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -349,7 +373,7 @@ function QueueRow({
           />
         )}
         {duration && (
-          <span className="absolute right-1 bottom-1 rounded bg-black/80 px-1 text-[0.6875rem] leading-4 font-medium text-white tabular-nums">
+          <span className="absolute right-1 bottom-1 rounded bg-black/80 px-1 text-xs leading-4 font-medium text-white tabular-nums">
             {duration}
           </span>
         )}
@@ -359,7 +383,7 @@ function QueueRow({
           to="/watch/$videoId"
           params={params}
           onClick={onNavigate}
-          className="line-clamp-2 text-sm leading-5 font-medium break-words outline-none hover:underline focus-visible:underline"
+          className="line-clamp-2 min-h-6 text-sm leading-5 font-medium break-words outline-none hover:underline focus-visible:underline"
         >
           {current && <span className="sr-only">Playing: </span>}
           {title}

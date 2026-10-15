@@ -1,26 +1,29 @@
 import type { ScoreBreakdownOut } from "@homefeed/api-client";
-import { Info } from "lucide-react";
 import { useId } from "react";
 
+import { Button } from "#/components/ui/button";
 import {
   Popover,
   PopoverContent,
+  PopoverTitle,
   PopoverTrigger,
 } from "#/components/ui/popover";
 import { breakdownTerms, formatScore } from "#/lib/breakdown";
 
 /**
- * An info button for the top-right of a feed card's thumbnail. Hovering it
- * (or clicking, tapping, or pressing Enter/Space on it) opens a popover with
- * the item's one-line explanation and its full score breakdown; Escape or
- * moving away closes it. Like the card's menu, the button shows only on card
- * hover on devices that hover, and always on touch screens. Its parent must
- * be the card's `relative` thumbnail.
+ * The "Details" button beside a card's reason. Pressing it (click, tap, or
+ * Enter or Space on it) opens a popover with the whole reason and the score
+ * breakdown, how the item's score was made; Escape or clicking away closes
+ * it. The button is raised above the card's stretched link so it can be
+ * pressed, and names the video for screen readers.
  */
 export function WhyThisPopover({
+  title,
   explanation,
   breakdown,
 }: {
+  /** The video's title, to tell this card's button from the others'. */
+  title: string;
   explanation: string;
   breakdown: ScoreBreakdownOut;
 }) {
@@ -28,19 +31,25 @@ export function WhyThisPopover({
   return (
     <Popover>
       <PopoverTrigger
-        openOnHover
-        delay={150}
-        closeDelay={100}
-        aria-label="Why this is here"
-        className="absolute top-1.5 right-1.5 z-10 flex size-7 items-center justify-center rounded-full bg-black/70 text-white outline-none hover:bg-black/85 focus-visible:ring-3 focus-visible:ring-ring/50 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/card:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100 [@media(hover:hover)]:data-popup-open:opacity-100"
+        render={
+          <Button
+            variant="ghost"
+            size="sm"
+            className="relative z-10 -my-0.5 shrink-0 px-2"
+          />
+        }
       >
-        <Info aria-hidden="true" className="size-4" />
+        Details<span className="sr-only"> for {title}</span>
       </PopoverTrigger>
       <PopoverContent
         side="bottom"
-        align="end"
-        className="w-80 max-w-[calc(100vw-2rem)] gap-3 p-3"
+        align="start"
+        className="w-80 max-w-[calc(100vw-2rem)] gap-3 p-3 motion-reduce:data-open:animate-none motion-reduce:data-closed:animate-none"
       >
+        {/* An h3 like the card titles, so the breakdown's h4 follows it in order. */}
+        <PopoverTitle render={<h3 />} className="text-sm font-semibold">
+          Why this is here
+        </PopoverTitle>
         <p className="text-sm">{explanation}</p>
         <section aria-labelledby={headingId}>
           <h4 id={headingId} className="mb-2 text-sm font-semibold">

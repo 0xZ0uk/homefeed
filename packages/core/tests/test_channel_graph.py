@@ -23,6 +23,8 @@ from homefeed_core.db import open_database
 from homefeed_core.gateway import Channel, ExtractionError, RateLimitedError, UnavailableError
 from homefeed_core.gateway.fake import FakeGateway, make_channel, make_video
 from homefeed_core.ratings import set_rating
+from homefeed_core.tags import ProposedTag, remove_video_tag, set_llm_tags
+from homefeed_core.videos import store_video
 
 T0 = datetime(2026, 10, 12, 6, 0, tzinfo=UTC)
 
@@ -95,6 +97,16 @@ def rate(sessions: sessionmaker[Session], video_id: str, channel: Channel, score
         set_rating(session, video_id, score)
 
 
+def tag(session: Session, video_id: str, *proposals: tuple[str, float]) -> None:
+    """Tag a stored video the way the LLM tagger would."""
+    set_llm_tags(
+        session,
+        video_id,
+        [ProposedTag(label, confidence) for label, confidence in proposals],
+        prompt_version=1,
+    )
+
+
 @pytest.fixture
 def curated(sessions: sessionmaker[Session], gateway: FakeGateway) -> None:
     subscribe(sessions, gateway, LIKED, "like")
@@ -112,6 +124,23 @@ def test_liked_channels_are_loved_liked_then_top_tier_rated_never_muted(
     with sessions() as session:
         assert liked_channel_ids(session) == [LOVED.id, LIKED.id, RATED.id]
         assert liked_channel_ids(session, limit=2) == [LOVED.id, LIKED.id]
+
+
+def test_a_channel_muted_for_a_time_is_not_liked_until_it_runs_out(
+    sessions: sessionmaker[Session], curated: None
+) -> None:
+    rate(sessions, "lllllllllll", LIKED, 9)  # liked by its rating too
+    with sessions.begin() as session:
+        curation.update_channel(session, LIKED.id, mute_days=7, now=T0)
+
+    with sessions() as session:
+        assert liked_channel_ids(session, now=T0) == [LOVED.id, RATED.id]
+        assert liked_channel_ids(session, now=T0 + timedelta(days=6)) == [LOVED.id, RATED.id]
+        assert liked_channel_ids(session, now=T0 + timedelta(days=7)) == [
+            LOVED.id,
+            LIKED.id,
+            RATED.id,
+        ]
 
 
 def test_a_channel_rated_below_top_tier_is_not_liked(
@@ -186,17 +215,67 @@ def test_suggestions_rank_by_how_many_liked_channels_feature_them(
     # (NEUTRAL, LOVED), and those featured only by unliked (W) or muted (V) channels,
     # are left out.
     assert [s.channel_id for s in suggestions] == [Y.id, Z.id, X.id]
+    # Each featuring channel says why it is liked: its prior, or a top-tier rating.
     assert suggestions[0].featured_by == [
-        ChannelRef(LOVED.id, "Loved"),
-        ChannelRef(LIKED.id, "Liked"),
+        ChannelRef(LOVED.id, "Loved", "love"),
+        ChannelRef(LIKED.id, "Liked", "like"),
     ]
     assert suggestions[1].featured_by == [
-        ChannelRef(LIKED.id, "Liked"),
-        ChannelRef(RATED.id, "Rated"),
+        ChannelRef(LIKED.id, "Liked", "like"),
+        ChannelRef(RATED.id, "Rated", "rated"),
     ]
     assert (suggestions[0].subscriber_count, suggestions[1].subscriber_count) == (1000, None)
     with sessions() as session:
         assert [s.channel_id for s in suggested_channels(session, limit=1)] == [Y.id]
+
+
+def test_a_neutral_subscription_with_a_top_tier_rating_is_liked_for_the_rating(
+    sessions: sessionmaker[Session], gateway: FakeGateway
+) -> None:
+    subscribe(sessions, gateway, NEUTRAL)
+    rate(sessions, "nnnnnnnnnnn", NEUTRAL, 9)
+    refresh(sessions, gateway, [NEUTRAL.id], now=T0)
+
+    with sessions() as session:
+        [suggestion] = suggested_channels(session)
+
+    assert suggestion.channel_id == W.id
+    assert suggestion.featured_by == [ChannelRef(NEUTRAL.id, "Neutral", "rated")]
+
+
+def test_second_hop_suggestions_are_featured_by_suggestions_without_a_relation(
+    sessions: sessionmaker[Session], gateway: FakeGateway, curated: None
+) -> None:
+    gateway.add_featured(X.id, [W])
+    refresh(sessions, gateway, [LOVED.id, X.id], now=T0)
+
+    with sessions() as session:
+        by_id = {s.channel_id: s for s in suggested_channels(session, second_hop=True)}
+
+    assert by_id[W.id].featured_by == [ChannelRef(X.id, "Xylo")]
+    assert by_id[X.id].featured_by == [ChannelRef(LOVED.id, "Loved", "love")]
+
+
+def test_suggestions_carry_the_tags_their_stored_videos_are_most_about(
+    sessions: sessionmaker[Session], gateway: FakeGateway, curated: None
+) -> None:
+    refresh(sessions, gateway, [LOVED.id, LIKED.id], now=T0)
+    uploads = gateway.uploads[Y.id]
+    with sessions.begin() as session:
+        for upload in uploads:
+            store_video(session, gateway.videos[upload.id])
+        tag(session, uploads[0].id, ("Woodworking", 0.9), ("Hand tools", 0.9), ("Router", 0.2))
+        tag(session, uploads[1].id, ("Woodworking", 0.8), ("Joinery", 0.5), ("Hand tools", 0.1))
+        tag(session, uploads[2].id, ("Joinery", 0.4), ("Sanding", 0.3), ("Spam", 1.0))
+        remove_video_tag(session, uploads[2].id, "spam")
+
+    with sessions() as session:
+        by_id = {s.channel_id: s for s in suggested_channels(session)}
+
+    # By total confidence: Woodworking 1.7, Hand tools 1.0, Joinery 0.9, then Sanding 0.3
+    # and Router 0.2, which don't fit; a tag removed by hand doesn't count.
+    assert by_id[Y.id].top_tags == ["Woodworking", "Hand tools", "Joinery"]
+    assert by_id[Z.id].top_tags == []  # no stored videos
 
 
 def test_subscribing_removes_a_suggestion(

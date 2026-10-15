@@ -15,8 +15,6 @@ test("subscribe to a tag in one click from the Tags tab", async ({
     list
       .getByRole("listitem")
       .filter({ has: page.getByRole("link", { name: label, exact: true }) });
-  const sidebar = page.getByRole("list", { name: "Subscribed tags" });
-  await expect(sidebar).toHaveCount(0);
 
   // Search narrows the list; each tag offers Subscribe.
   await page.getByRole("searchbox", { name: "Search tags" }).fill("wo");
@@ -27,16 +25,13 @@ test("subscribe to a tag in one click from the Tags tab", async ({
     .getByRole("button", { name: "Subscribe to woodworking" })
     .click();
 
-  // The row shows it as subscribed and offers Unsubscribe; the sidebar lists it.
+  // The row shows it as subscribed and offers Unsubscribe.
   const unsubscribe = row("woodworking").getByRole("button", {
     name: "Unsubscribe from woodworking",
   });
   await expect(unsubscribe).toBeVisible();
   await expect(
     row("woodworking").getByText("Subscribed", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    sidebar.getByRole("link", { name: "woodworking" }),
   ).toBeVisible();
   expect(
     (await apiGet<Subscription[]>(request, "/tag-subscriptions")).body,
@@ -51,12 +46,11 @@ test("subscribe to a tag in one click from the Tags tab", async ({
   await expect(row("workbench")).toHaveCount(0);
   await expect(row("woodworking")).toBeVisible();
 
-  // Unsubscribing takes it out of the filtered list, the sidebar and the API.
+  // Unsubscribing takes it out of the filtered list and the API.
   await unsubscribe.click();
   await expect(
     page.getByText("You haven't subscribed to any tags yet."),
   ).toBeVisible();
-  await expect(sidebar).toHaveCount(0);
   expect(
     (await apiGet<Subscription[]>(request, "/tag-subscriptions")).body,
   ).toEqual([]);

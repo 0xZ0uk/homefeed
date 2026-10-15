@@ -340,6 +340,25 @@ def test_muted_and_unsubscribed_channels_are_not_polled(
     assert feeds.calls == []
 
 
+def test_channels_muted_for_a_time_are_polled_again_once_it_runs_out(
+    sessions: sessionmaker[Session], feeds: Feeds, clock: Clock
+) -> None:
+    with sessions.begin() as session:
+        update_channel(session, MKBHD, mute_days=3, now=T0)
+
+    poll(sessions, feeds, clock)
+    assert feeds.calls == [JAWED]
+
+    feeds.calls.clear()
+    clock.advance(timedelta(days=2, hours=23))
+    poll(sessions, feeds, clock)
+    assert MKBHD not in feeds.calls
+
+    clock.advance(timedelta(hours=1))
+    poll(sessions, feeds, clock)
+    assert MKBHD in feeds.calls
+
+
 def test_due_channels_most_overdue_first_and_limited(
     sessions: sessionmaker[Session], feeds: Feeds, clock: Clock
 ) -> None:

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from homefeed_api.main import app, get_gateway, get_playback
@@ -92,10 +93,33 @@ def test_get_video_returns_and_stores_metadata(client: TestClient) -> None:
     assert body["duration_seconds"] == 600
     assert body["published_at"] == "2026-01-01T00:00:00.000Z"
     assert body["tags"] == []
+    assert body["channel_thumbnail_url"] is None  # the channel was never looked up
     assert body["is_stale"] is False
     with get_session_factory()() as session:
         stored = get_stored_video(session, VIDEO)
     assert stored is not None and stored.title == "Planing"
+
+
+def test_get_video_has_the_channels_picture_once_it_is_known(
+    client: TestClient, gateway: FakeGateway
+) -> None:
+    client.get(f"/videos/{VIDEO}")
+    with get_session_factory().begin() as session:
+        session.execute(
+            text("UPDATE channels SET thumbnail_url = 'https://example.invalid/wood.jpg'")
+        )
+
+    assert client.get(f"/videos/{VIDEO}").json()["channel_thumbnail_url"] == (
+        "https://example.invalid/wood.jpg"
+    )
+
+    # The stored copy has it too.
+    fresh = Playback(gateway)
+    app.dependency_overrides[get_playback] = lambda: fresh
+    gateway.fail("get_video", VIDEO, ExtractionError("network down"))
+    body = client.get(f"/videos/{VIDEO}").json()
+    assert body["is_stale"] is True
+    assert body["channel_thumbnail_url"] == "https://example.invalid/wood.jpg"
 
 
 def test_get_video_returns_its_tags(client: TestClient, gateway: FakeGateway) -> None:

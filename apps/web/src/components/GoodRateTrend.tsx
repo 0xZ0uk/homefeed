@@ -108,8 +108,9 @@ export function GoodRateTrend({
         onBlur={() => setActive(null)}
         onKeyDown={onKeyDown}
       >
+        {/* One string: React 19 leaves out a <title> with several children. */}
         <title id={titleId}>
-          Weekly good rate{showRatingRate ? " and rating rate" : ""}
+          {`Weekly good rate${showRatingRate ? " and rating rate" : ""}`}
         </title>
         <desc id={descId}>
           {rated.length === 0

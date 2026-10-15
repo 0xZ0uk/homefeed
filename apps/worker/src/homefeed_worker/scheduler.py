@@ -2,7 +2,7 @@ import logging
 import signal
 import threading
 from collections.abc import Callable
-from datetime import UTC, datetime, time, timedelta, tzinfo
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from types import FrameType
 from typing import Any
 
@@ -20,6 +20,7 @@ from homefeed_core import (
     poller,
     smoke_test,
     trainer,
+    trials,
     ytdlp_updates,
 )
 from homefeed_core.config import get_settings
@@ -47,6 +48,9 @@ TAG_DISCOVERY_CHECK_MINUTES = 60
 # How often the user settings are read again, so a feed or training time (or time zone)
 # changed on the settings screen applies without a restart, whichever process runs the jobs.
 SETTINGS_CHECK_MINUTES = 1
+# The trial job runs this long before the daily feed build, so a channel whose trial ended
+# is already gone when that day's feed is ranked.
+TRIAL_SETTLE_LEAD = timedelta(minutes=5)
 # How often the worker looks for a newer yt-dlp when YTDLP_AUTO_UPDATE is on (it also
 # looks shortly after startup).
 YTDLP_UPDATE_HOURS = 24
@@ -119,6 +123,15 @@ def discover_tag_videos() -> None:
         logger.warning("Candidate source %r failed: %s", name, error)
 
 
+def settle_channel_trials() -> None:
+    """Decide the channel trials that have run out: keep a channel when a video of it was
+    rated top tier during its trial, else unsubscribe and record a "Not now" hide (see
+    homefeed_core.trials)."""
+    with get_session_factory().begin() as session:
+        report = trials.settle_trials(session)
+    logger.info("Channel trials settled: %d kept, %d ended", len(report.kept), len(report.ended))
+
+
 def build_daily_feed() -> None:
     """Gather candidates (subscriptions, related videos), enrich them, then rank and
     compose today's feed (poll → candidates → enrich → rank → compose)."""
@@ -145,14 +158,21 @@ def run_gateway_smoke_test() -> None:
 
 def daily_triggers(user: UserSettings, smoke_time: time | None) -> dict[str, CronTrigger]:
     """The daily jobs' triggers, by job id: the feed and training at the user settings'
-    times, and the smoke test (if `smoke_time` is set), all in the user's time zone."""
+    times, the channel trials just before the feed, and the smoke test (if `smoke_time`
+    is set), all in the user's time zone."""
     triggers = {
         "daily_feed": _daily(user.feed_refresh_time, user.tz),
+        "settle_trials": _daily(_before(user.feed_refresh_time, TRIAL_SETTLE_LEAD), user.tz),
         "train_model": _daily(user.model_training_time, user.tz),
     }
     if smoke_time is not None:
         triggers["gateway_smoke_test"] = _daily(smoke_time, user.tz)
     return triggers
+
+
+def _before(at: time, lead: timedelta) -> time:
+    """The time of day `lead` before `at`, wrapping around midnight."""
+    return (datetime.combine(date(2000, 1, 1), at) - lead).time()
 
 
 def _daily(at: time, tz: tzinfo | None) -> CronTrigger:
@@ -191,6 +211,7 @@ def register_jobs(
     enrich: Callable[[], None] = enrich_candidates,
     build_feed: Callable[[], None] = build_daily_feed,
     train: Callable[[], None] = train_model,
+    settle: Callable[[], None] = settle_channel_trials,
     smoke: Callable[[], None] = run_gateway_smoke_test,
     ytdlp_update: Callable[[], None] = update_ytdlp,
     *,
@@ -205,12 +226,14 @@ def register_jobs(
 
     The daily feed runs at the `feed_refresh_time` and model training at the
     `model_training_time` of the user settings (`user`, default: read now), in their time
-    zone; `build_feed_now` also builds the feed right away. A job re-reads the settings
-    every `SETTINGS_CHECK_MINUTES` and reschedules those when they change. The live
-    Gateway smoke test is opt-in: it runs daily at `gateway_smoke_test_time` (default
-    `GATEWAY_SMOKE_TEST_TIME`) and isn't scheduled when neither is set. So is the
-    yt-dlp update check (daily, and once shortly after startup): it needs
-    `ytdlp_auto_update` (default `YTDLP_AUTO_UPDATE`).
+    zone; `build_feed_now` also builds the feed right away. Channel trials are settled
+    daily shortly before the feed (`TRIAL_SETTLE_LEAD`), and once at startup: that is
+    cheap, and a process that was down at the usual time would otherwise leave them until
+    the next day. A job re-reads the settings every `SETTINGS_CHECK_MINUTES` and
+    reschedules those when they change. The live Gateway smoke test is opt-in: it runs
+    daily at `gateway_smoke_test_time` (default `GATEWAY_SMOKE_TEST_TIME`) and isn't
+    scheduled when neither is set. So is the yt-dlp update check (daily, and once
+    shortly after startup): it needs `ytdlp_auto_update` (default `YTDLP_AUTO_UPDATE`).
 
     `build_feed_now` and `train_now` are startup catch-up: cron runs missed while the
     process was down don't fire on their own, so those jobs also run once right away (in
@@ -257,6 +280,16 @@ def register_jobs(
         coalesce=True,
         misfire_grace_time=None,
         next_run_time=datetime.now(UTC) if train_now else undefined,
+    )
+    scheduler.add_job(
+        settle,
+        triggers["settle_trials"],
+        id="settle_trials",
+        name="Settle channel trials",
+        next_run_time=datetime.now(UTC),  # also on startup
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=None,
     )
     scheduler.add_job(
         fetch_external_sources,

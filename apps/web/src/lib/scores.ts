@@ -7,6 +7,13 @@
 export const MIN_SCORE = 1;
 export const MAX_SCORE = 10;
 
+/**
+ * From this score up a rating is top tier, as the API counts it: videos rated
+ * this high make their channels ones you like, whose featured channels Discover
+ * suggests.
+ */
+export const TOP_TIER_THRESHOLD = 7;
+
 /** Every score, worst first. */
 export const SCORES: readonly number[] = Array.from(
   { length: MAX_SCORE - MIN_SCORE + 1 },
@@ -45,3 +52,10 @@ export function scoreLabel(score: number): string {
 export function scoreText(score: number): string {
   return `${scoreLabel(score)}, ${score} out of 10`;
 }
+
+/**
+ * What the two ends of the scale mean, in the scale's own words, e.g.
+ * "1 = awful · 10 = amazing": the hint shown beside the faces, which are only
+ * named in tooltips otherwise.
+ */
+export const SCORE_SCALE_HINT = `${MIN_SCORE} = ${scoreLabel(MIN_SCORE).toLowerCase()} · ${MAX_SCORE} = ${scoreLabel(MAX_SCORE).toLowerCase()}`;

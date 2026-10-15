@@ -26,6 +26,7 @@ import {
   healthSummary,
   operationLabel,
   parseStatusHours,
+  stripAnsi,
   type ExtractorHealth,
 } from "#/lib/status";
 import { cn } from "#/lib/utils";
@@ -60,7 +61,7 @@ function Status() {
     <AppShell className="flex max-w-5xl flex-col gap-10">
       <header className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-          <h2 className="text-xl font-semibold">Extractor status</h2>
+          <h1 className="text-xl font-semibold">Extractor status</h1>
           <nav aria-label="Time window" className="flex gap-2">
             {STATUS_WINDOWS.map((window) => (
               <Link
@@ -134,9 +135,9 @@ function Section({
 }) {
   return (
     <section aria-labelledby={id} className="flex flex-col gap-3">
-      <h3 id={id} className="text-lg font-semibold">
+      <h2 id={id} className="text-lg font-semibold">
         {title}
-      </h3>
+      </h2>
       {children}
     </section>
   );
@@ -155,7 +156,9 @@ function SmokeTest({ run }: { run: SmokeTestRun | null }) {
             </span>
           </p>
           {run.error && (
-            <p className="text-sm break-words text-destructive">{run.error}</p>
+            <p className="text-sm break-words text-destructive">
+              {stripAnsi(run.error)}
+            </p>
           )}
         </div>
       ) : (
@@ -198,7 +201,7 @@ function LastFailure({ op }: { op: OperationStatus }) {
       {op.last_error_kind && (
         <span
           className="text-muted-foreground"
-          title={op.last_error ?? undefined}
+          title={op.last_error ? stripAnsi(op.last_error) : undefined}
         >
           {" "}
           ({op.last_error_kind})
@@ -341,7 +344,7 @@ function RecentFailures({ failures }: { failures: FailedEvent[] }) {
               </div>
               {failure.error && (
                 <p className="break-words text-muted-foreground">
-                  {failure.error}
+                  {stripAnsi(failure.error)}
                 </p>
               )}
             </li>

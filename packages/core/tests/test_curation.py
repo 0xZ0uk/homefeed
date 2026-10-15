@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from homefeed_core.curation import (
     KEYWORD_MAX_LENGTH,
+    MAX_MUTE_DAYS,
     MUTE_WEIGHT,
     PRIOR_VALUES,
     PRIORS,
@@ -26,6 +27,7 @@ from homefeed_core.curation import (
     list_tag_subscriptions,
     mute_tag,
     muted_keywords,
+    muted_sql,
     relink_tag_subscription,
     subscribe,
     subscribe_tag,
@@ -41,11 +43,13 @@ from homefeed_core.curation import (
 from homefeed_core.db import migrate, open_database
 from homefeed_core.db.migrate import load_migrations
 from homefeed_core.gateway import UnavailableError, UnsupportedUrlError
+from homefeed_core.gateway.events import format_timestamp
 from homefeed_core.gateway.fake import FakeGateway, make_channel
 from homefeed_core.tags import Tag, resolve_tag
 
 WOOD = make_channel("UC" + "w" * 22, title="Woodworking", handle="@wood")
 BIRDS = make_channel("UC" + "b" * 22, title="birds", handle="@birds")
+NOW = datetime(2026, 10, 12, 6, 0, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -180,6 +184,115 @@ def test_update_channel_changes_only_given_fields(
     assert skeptical.subscribed_at == before.subscribed_at
 
 
+def test_a_new_subscription_is_neither_on_trial_nor_muted_for_a_time(
+    sessions: sessionmaker[Session], gateway: FakeGateway
+) -> None:
+    with sessions.begin() as session:
+        channel, _ = subscribe(session, gateway, "@wood")
+
+    assert (channel.muted_until, channel.trial_until) == (None, None)
+
+
+def test_mute_for_days_sets_an_end_time_that_stops_being_reported_once_it_passes(
+    sessions: sessionmaker[Session], gateway: FakeGateway
+) -> None:
+    with sessions.begin() as session:
+        subscribe(session, gateway, "@wood")
+        muted = update_channel(session, WOOD.id, mute_days=30, now=NOW)
+
+    assert muted is not None
+    assert (muted.muted, muted.muted_until) == (False, "2026-11-11T06:00:00.000Z")
+    with sessions() as session:
+        last_day = get_channel(session, WOOD.id, now=NOW + timedelta(days=29, hours=23))
+        over = get_channel(session, WOOD.id, now=NOW + timedelta(days=30))
+        assert last_day is not None and last_day.muted_until == "2026-11-11T06:00:00.000Z"
+        assert over is not None and (over.muted, over.muted_until) == (False, None)
+        assert [c.muted_until for c in list_channels(session, now=NOW)] == [
+            "2026-11-11T06:00:00.000Z"
+        ]
+        assert [c.muted_until for c in list_channels(session, now=NOW + timedelta(days=31))] == [
+            None
+        ]
+
+
+def test_the_kinds_of_mute_replace_each_other(
+    sessions: sessionmaker[Session], gateway: FakeGateway
+) -> None:
+    with sessions.begin() as session:
+        subscribe(session, gateway, "@wood")
+        for_good = update_channel(session, WOOD.id, muted=True, now=NOW)
+        for_a_time = update_channel(session, WOOD.id, mute_days=7, now=NOW)
+        for_good_again = update_channel(session, WOOD.id, muted=True, now=NOW)
+        update_channel(session, WOOD.id, mute_days=7, now=NOW)
+        unmuted = update_channel(session, WOOD.id, muted=False, now=NOW)
+
+    assert for_good is not None and (for_good.muted, for_good.muted_until) == (True, None)
+    assert for_a_time is not None and (for_a_time.muted, for_a_time.muted_until) == (
+        False,
+        "2026-10-19T06:00:00.000Z",
+    )
+    assert for_good_again is not None and (for_good_again.muted, for_good_again.muted_until) == (
+        True,
+        None,
+    )
+    assert unmuted is not None and (unmuted.muted, unmuted.muted_until) == (False, None)
+
+
+def test_changing_other_preferences_keeps_a_timed_mute(
+    sessions: sessionmaker[Session], gateway: FakeGateway
+) -> None:
+    with sessions.begin() as session:
+        subscribe(session, gateway, "@wood")
+        update_channel(session, WOOD.id, mute_days=30, now=NOW)
+        changed = update_channel(session, WOOD.id, prior="love", pinned=True, now=NOW)
+
+    assert changed is not None
+    assert (changed.prior, changed.pinned, changed.muted_until) == (
+        "love",
+        True,
+        "2026-11-11T06:00:00.000Z",
+    )
+
+
+@pytest.mark.parametrize("days", [0, -1, MAX_MUTE_DAYS + 1])
+def test_mute_for_days_must_be_in_range(
+    sessions: sessionmaker[Session], gateway: FakeGateway, days: int
+) -> None:
+    with sessions.begin() as session:
+        subscribe(session, gateway, "@wood")
+        with pytest.raises(ValueError, match="mute_days"):
+            update_channel(session, WOOD.id, mute_days=days)
+
+
+def test_muted_and_mute_days_cannot_be_given_together(
+    sessions: sessionmaker[Session], gateway: FakeGateway
+) -> None:
+    with sessions.begin() as session:
+        subscribe(session, gateway, "@wood")
+        with pytest.raises(ValueError, match="either"):
+            update_channel(session, WOOD.id, muted=True, mute_days=7)
+
+
+def test_muted_sql_matches_both_kinds_of_mute_until_they_run_out(
+    sessions: sessionmaker[Session], gateway: FakeGateway
+) -> None:
+    with sessions.begin() as session:
+        subscribe(session, gateway, "@wood")
+        subscribe(session, gateway, "@birds")
+    query = text(f"SELECT p.channel_id FROM channel_prefs AS p WHERE {muted_sql('p')}")
+
+    def muted_at(now: datetime) -> set[str]:
+        with sessions() as session:
+            return set(session.execute(query, {"now": format_timestamp(now)}).scalars())
+
+    assert muted_at(NOW) == set()
+    with sessions.begin() as session:
+        update_channel(session, WOOD.id, muted=True)
+        update_channel(session, BIRDS.id, mute_days=3, now=NOW)
+    assert muted_at(NOW) == {WOOD.id, BIRDS.id}
+    assert muted_at(NOW + timedelta(days=3)) == {WOOD.id}
+
+
 def test_update_unknown_channel_returns_none(sessions: sessionmaker[Session]) -> None:
     with sessions.begin() as session:
         assert update_channel(session, WOOD.id, pinned=True) is None
@@ -264,9 +377,6 @@ def test_keyword_mute_rejects_blank_and_long_keywords(
         with pytest.raises(ValueError):
             add_keyword_mute(session, keyword)
         assert list_keyword_mutes(session) == []
-
-
-NOW = datetime(2026, 10, 12, 6, 0, tzinfo=UTC)
 
 
 def make_tag(session: Session, label: str) -> Tag:

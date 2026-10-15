@@ -46,6 +46,7 @@ type SettingSource = Literal["default", "env", "user"]
 type UserSettingKey = Literal[
     "feed_size",
     "feed_exploration_slots",
+    "feed_max_topic_share",
     "feed_min_duration_seconds",
     "feed_max_duration_seconds",
     "feed_refresh_time",
@@ -60,6 +61,9 @@ type UserSettingKey = Literal[
 ]
 
 MAX_FEED_SIZE = 200
+# The range of the share of a feed one followed topic may take (see homefeed_core.composer).
+MIN_TOPIC_SHARE = 0.1
+MAX_TOPIC_SHARE = 1.0
 MAX_LLM_MODEL_LENGTH = 200
 MAX_API_KEY_LENGTH = 500
 # How many characters of the API key the settings screen shows.
@@ -75,6 +79,7 @@ class UserSettings(BaseModel):
     # Feed
     feed_size: int = Field(ge=1, le=MAX_FEED_SIZE)
     feed_exploration_slots: int = Field(ge=0, le=MAX_FEED_SIZE)
+    feed_max_topic_share: float = Field(ge=MIN_TOPIC_SHARE, le=MAX_TOPIC_SHARE)
     feed_min_duration_seconds: int | None = Field(ge=0)
     feed_max_duration_seconds: int | None = Field(ge=0)
     # Schedule, in `timezone`

@@ -5,6 +5,13 @@ Order: pins first (candidates from pinned channels), then exploration slots, the
 top-scored rest, with at most `per_channel_cap` items per channel overall (pins and
 exploration included) and exactly `size` items when there are enough candidates.
 
+No one followed topic takes over the feed: at most `ceil(max_topic_share * size)` picks
+may share a topic. An item's followed topics are the labels of the subscribed tags it
+matched (the tags of its breakdown with a boost; a muted tag's term is a penalty, not a
+topic). An item that would take a topic over its share is deferred, and deferred items
+fill the slots that nothing else can, best first, so the cap never leaves the feed
+short. Pins are never deferred, but count towards their topics.
+
 Exploration slots (`exploration_slots`, default 3) go to under-rated channels: those
 with fewer than `EXPLORATION_MAX_RATINGS` ratings, including never-rated channels from
 new sources. Each is picked by Thompson sampling: draw once from every eligible
@@ -19,12 +26,14 @@ Equal scores are common in a rules-only feed (every video of a channel shares it
 channel score), so ties go to the more recently published video, then to `rng`.
 
 Every slot gets a one-line explanation (`explain`): where the item came from, then the
-largest positive term of its score breakdown, e.g. "Related to X (8) · channel you
-love". Explanations name rated videos (the seed of a related video, the nearest
-top-tier video of a similar one), so `compose` takes their titles and scores as
-`videos`; `referenced_video_ids` says which ones to look up.
+largest positive term of its score breakdown, e.g. "Related to “X”, which you rated 8 ·
+channel you love". Explanations name videos the user rated or asked for more of (the
+seed of a related video, the nearest top-tier video of a similar one), so `compose`
+takes their titles, scores and feedback as `videos`; `referenced_video_ids` says which
+ones to look up.
 """
 
+import math
 import random
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -33,12 +42,15 @@ from types import MappingProxyType
 
 from homefeed_core.candidates import CHANNEL_GRAPH, RELATED, SAVED_SEARCH, SUBSCRIPTION, TAG
 from homefeed_core.external_sources import EXTERNAL
+from homefeed_core.feedback import MORE
 from homefeed_core.ranker import ChannelCuration, Curation, ScoredCandidate
 from homefeed_core.scores import value_score
 
 DEFAULT_FEED_SIZE = 20
 DEFAULT_PER_CHANNEL_CAP = 2
 DEFAULT_EXPLORATION_SLOTS = 3
+# The most of a feed one followed topic may take, as a share of its size.
+DEFAULT_MAX_TOPIC_SHARE = 0.4
 # Monte Carlo draws to estimate exploration selection probabilities.
 DEFAULT_EXPLORATION_DRAWS = 500
 # Channels with fewer ratings than this are eligible for exploration slots.
@@ -54,10 +66,12 @@ TITLE_MAX_LENGTH = 60
 
 @dataclass(frozen=True)
 class VideoRef:
-    """A video an explanation names: its title and, if rated, its score."""
+    """A video an explanation names: its title and, if rated, its score or, if not, the
+    feedback it got (an explicit rating wins over feedback, as in the ranker)."""
 
     title: str
     score: int | None = None
+    feedback: int | None = None  # 1: more like this, -1: less like this
 
 
 # Video refs by video id.
@@ -88,6 +102,15 @@ class ComposeSettings:
     per_channel_cap: int = DEFAULT_PER_CHANNEL_CAP
     exploration_slots: int = DEFAULT_EXPLORATION_SLOTS
     exploration_draws: int = DEFAULT_EXPLORATION_DRAWS
+    # The most of the feed one followed topic may take, as a share of `size`; 1 is no limit.
+    max_topic_share: float = DEFAULT_MAX_TOPIC_SHARE
+
+    @property
+    def max_per_topic(self) -> int:
+        """How many picks may share one followed topic: `ceil(max_topic_share * size)`,
+        and always at least one."""
+        # Rounded first, so float noise (0.14 * 50 is 7.000000000000001) can't add a pick.
+        return max(1, math.ceil(round(self.max_topic_share * self.size, 6)))
 
 
 @dataclass(frozen=True)
@@ -118,7 +141,12 @@ def compose(
     rest = [item for item in ordered if not _curation(curation, item).pinned]
 
     per_channel: Counter[str] = Counter()
+    per_topic: Counter[str] = Counter()
     chosen: list[FeedSlot] = []
+
+    def topic_full(item: ScoredCandidate) -> bool:
+        """Whether taking `item` would put one of its topics over its share."""
+        return any(per_topic[topic] >= settings.max_per_topic for topic in followed_topics(item))
 
     def take(
         item: ScoredCandidate,
@@ -127,10 +155,12 @@ def compose(
         is_exploration: bool = False,
         selection_probability: float | None = None,
     ) -> bool:
+        # The topic cap is the callers' to apply (they defer rather than drop).
         channel_id = item.candidate.channel_id
         if len(chosen) >= settings.size or per_channel[channel_id] >= settings.per_channel_cap:
             return False
         per_channel[channel_id] += 1
+        per_topic.update(followed_topics(item))
         chosen.append(
             FeedSlot(
                 item=item,
@@ -149,12 +179,23 @@ def compose(
     slots = min(settings.exploration_slots, settings.size - len(chosen))
     explored: set[str] = set()
     for item, probability in _explore(rest, channel_ratings, slots, settings, rng):
-        if take(item, is_exploration=True, selection_probability=probability):
+        # An item whose topic is full isn't explored; it waits with the rest.
+        if not topic_full(item) and take(
+            item, is_exploration=True, selection_probability=probability
+        ):
             explored.add(item.candidate.video_id)
 
+    deferred: list[ScoredCandidate] = []
     for item in rest:
-        if item.candidate.video_id not in explored:
+        if item.candidate.video_id in explored:
+            continue
+        if topic_full(item):
+            deferred.append(item)
+        else:
             take(item)
+    # Only what nothing else can fill goes over a topic's share.
+    for item in deferred:
+        take(item)
 
     return [
         replace(
@@ -213,6 +254,12 @@ def _explore(
     return [(best[channel_id], wins[channel_id] / draws) for channel_id in picked]
 
 
+def followed_topics(item: ScoredCandidate) -> tuple[str, ...]:
+    """The followed topics of `item`: the labels of the subscribed tags it matched, which
+    are the tags of its breakdown with a positive boost (see `ranker.tag_boosts`)."""
+    return tuple(label for label, boost in item.breakdown.tags.items() if boost > 0)
+
+
 def referenced_video_ids(scored: Iterable[ScoredCandidate]) -> set[str]:
     """The videos the explanations of `scored` may name: seeds of related videos and
     the nearest top-tier video of each similar one."""
@@ -234,9 +281,10 @@ def explain(
     videos: VideoRefs = NO_VIDEO_REFS,
 ) -> str:
     """One line on why the item is in the feed: its source, then the largest positive
-    term of its score breakdown (if any), e.g. "Related to X (8) · channel you love".
-    An exploration item (`exploration` holds its channel's rating counts) says so
-    first, e.g. "Exploring: new channel · related to X (8)".
+    term of its score breakdown (if any), e.g. "Related to “X”, which you rated 8 ·
+    channel you love". An exploration item (`exploration` holds its channel's rating
+    counts) says so first, e.g. "Exploring: new channel · related to “X”, which you rated
+    8".
 
     A term that would only repeat the source (similarity to the very video a related
     video came from) gives way to the next largest one."""
@@ -326,16 +374,24 @@ def _similarity_phrase(
 
 
 def _describe_video(ref: VideoRef | None) -> str:
-    """ "Title (8)", or a stand-in for an unknown title or score."""
+    """ "“Title”, which you rated 8" (a whole score) or, for a video that got "more like
+    this" and no rating, "“Title”, which you wanted more of". A video that is neither is
+    just its quoted title. Stand-ins cover an unknown title or video."""
     if ref is None:
         return "a video you rated highly"
-    rated = ref.score is not None
     title = ref.title.strip()
     if len(title) > TITLE_MAX_LENGTH:
         title = title[: TITLE_MAX_LENGTH - 1].rstrip() + "…"
+    note: str | None  # what follows the quoted title
+    if ref.score is not None:
+        note, stand_in = f"which you rated {ref.score}", f"a video you rated {ref.score}"
+    elif ref.feedback == MORE:
+        note, stand_in = "which you wanted more of", "a video you wanted more of"
+    else:
+        note, stand_in = None, "a video you rated highly"
     if not title:
-        return f"a video you rated {ref.score}" if rated else "a video you rated highly"
-    return f"{title} ({ref.score})" if rated else title
+        return stand_in
+    return f"“{title}”, {note}" if note else f"“{title}”"
 
 
 def _order(scored: Sequence[ScoredCandidate], rng: random.Random) -> list[ScoredCandidate]:

@@ -13,7 +13,7 @@ interface Channel {
   prior: string;
 }
 
-test("edit a channel prior and see it in the feed", async ({
+test("edit a channel preference and see it in the feed", async ({
   page,
   request,
 }) => {
@@ -23,11 +23,11 @@ test("edit a channel prior and see it in the feed", async ({
     .getByRole("list", { name: "Subscriptions" })
     .getByRole("listitem")
     .filter({ hasText: BIRDWATCHING.title });
-  const prior = row.getByLabel("Prior");
-  await expect(prior).toHaveValue("neutral");
+  const preference = row.getByLabel("Preference");
+  await expect(preference).toHaveValue("neutral");
 
-  await prior.selectOption({ label: "Love" });
-  await expect(prior).toHaveValue("love");
+  await preference.selectOption({ label: "Love" });
+  await expect(preference).toHaveValue("love");
   await expect
     .poll(async () => {
       const { body } = await apiGet<Channel[]>(request, "/channels");
@@ -36,11 +36,11 @@ test("edit a channel prior and see it in the feed", async ({
     .toBe("love");
   await page.reload();
   await waitForHydration(page);
-  await expect(row.getByLabel("Prior")).toHaveValue("love");
+  await expect(row.getByLabel("Preference")).toHaveValue("love");
 
   // A refreshed feed now leads with the loved channel's uploads.
   await open(page, "/");
-  await expect(feedList(page)).toBeVisible();
+  await expect(feedList(page).first()).toBeVisible();
   await page.getByRole("button", { name: "Refresh feed" }).click();
   await expect(feedList(page).getByRole("listitem").first()).toContainText(
     BIRDWATCHING.title,

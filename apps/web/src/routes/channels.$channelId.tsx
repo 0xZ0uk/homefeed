@@ -17,7 +17,12 @@ import { AppShell } from "#/components/AppShell";
 import { ChannelAvatar } from "#/components/ChannelAvatar";
 import { VideoCard } from "#/components/VideoCard";
 import { Button } from "#/components/ui/button";
-import { channelUrl, formatSubscribers, isChannelId } from "#/lib/discover";
+import {
+  channelUrl,
+  formatSubscribers,
+  hideKindLabel,
+  isChannelId,
+} from "#/lib/discover";
 import { cn } from "#/lib/utils";
 import { channelsQuery, subscribe } from "#/server/channels";
 import { channelHidesQuery, hide, unhide } from "#/server/channel-hides";
@@ -50,8 +55,9 @@ export const Route = createFileRoute("/channels/$channelId")({
   errorComponent: ChannelError,
   notFoundComponent: () => (
     <Shell>
+      <h1 className="text-2xl font-bold">Channel not found</h1>
       <p>
-        There's no such channel. <BackToDiscover />
+        There's no channel with that link. <BackToDiscover />
       </p>
     </Shell>
   ),
@@ -75,9 +81,9 @@ function ChannelPage() {
       )}
       <Header profile={profile} />
       <section aria-labelledby="latest-heading" className="flex flex-col gap-4">
-        <h3 id="latest-heading" className="text-lg font-semibold">
+        <h2 id="latest-heading" className="text-lg font-semibold">
           Latest videos
-        </h3>
+        </h2>
         {profile.videos.length === 0 ? (
           <p className="text-muted-foreground">No videos to show.</p>
         ) : (
@@ -148,7 +154,7 @@ function Header({ profile }: { profile: ChannelProfileOut }) {
     .filter(Boolean)
     .join(" · ");
   const description = profile.description?.trim();
-  const blocked = profile.hidden === "blocked";
+  const hidden = profile.hidden ?? null;
 
   return (
     <div className="flex flex-wrap items-start gap-x-6 gap-y-4">
@@ -158,7 +164,7 @@ function Header({ profile }: { profile: ChannelProfileOut }) {
         className="size-20 text-3xl sm:size-28 sm:text-4xl [&_[data-slot=avatar-fallback]]:text-3xl"
       />
       <div className="flex min-w-64 flex-1 flex-col gap-2">
-        <h2 className="text-2xl font-bold break-words">{profile.title}</h2>
+        <h1 className="text-2xl font-bold break-words">{profile.title}</h1>
         {meta && <p className="text-muted-foreground">{meta}</p>}
         {description && (
           <div className="flex max-w-prose flex-col items-start gap-1">
@@ -197,30 +203,31 @@ function Header({ profile }: { profile: ChannelProfileOut }) {
               {subscribing.isPending ? "Subscribing…" : "Subscribe"}
             </Button>
           )}
-          {blocked ? (
-            <>
-              <span className="text-sm text-muted-foreground">
-                Hidden from feed
-              </span>
-              <Button
-                variant="secondary"
-                size="lg"
-                className="px-4"
-                disabled={busy}
-                onClick={() => restoring.mutate()}
-              >
-                {restoring.isPending ? "Restoring…" : "Show again"}
-              </Button>
-            </>
-          ) : (
+          {hidden && (
+            <span className="text-sm text-muted-foreground">
+              {hideKindLabel(hidden)}
+            </span>
+          )}
+          {hidden !== "blocked" && (
             <Button
-              variant="secondary"
+              variant="outline"
               size="lg"
               className="px-4"
               disabled={busy}
               onClick={() => hiding.mutate()}
             >
-              {hiding.isPending ? "Hiding…" : "Don't show"}
+              {hiding.isPending ? "Hiding…" : "Hide channel"}
+            </Button>
+          )}
+          {hidden && (
+            <Button
+              variant="outline"
+              size="lg"
+              className="px-4"
+              disabled={busy}
+              onClick={() => restoring.mutate()}
+            >
+              {restoring.isPending ? "Restoring…" : "Show again"}
             </Button>
           )}
         </div>
@@ -265,6 +272,7 @@ function ChannelError({ error }: ErrorComponentProps) {
 
   return (
     <Shell>
+      <h1 className="text-2xl font-bold">Channel unavailable</h1>
       <div role="alert" className="flex flex-col items-start gap-3">
         <p>
           Couldn't load this channel

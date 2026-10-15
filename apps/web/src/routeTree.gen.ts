@@ -13,9 +13,11 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as CurationRouteImport } from './routes/curation'
 import { Route as DesktopAuthRouteImport } from './routes/desktop-auth'
 import { Route as DiscoverRouteImport } from './routes/discover'
+import { Route as ExploreRouteImport } from './routes/explore'
 import { Route as ExportDotjsonRouteImport } from './routes/export[.]json'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as InsightsRouteImport } from './routes/insights'
+import { Route as LibraryRouteImport } from './routes/library'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LogoutRouteImport } from './routes/logout'
 import { Route as ModelsRouteImport } from './routes/models'
@@ -23,8 +25,10 @@ import { Route as SearchRouteImport } from './routes/search'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as StatusRouteImport } from './routes/status'
 import { Route as SubscriptionsRouteImport } from './routes/subscriptions'
+import { Route as TasteRouteImport } from './routes/taste'
 import { Route as WatchEventsRouteImport } from './routes/watch-events'
 import { Route as WelcomeRouteImport } from './routes/welcome'
+import { Route as YouRouteImport } from './routes/you'
 import { Route as ChannelsChannelIdRouteImport } from './routes/channels.$channelId'
 import { Route as FeedDateRouteImport } from './routes/feed.$date'
 import { Route as PlaylistsIndexRouteImport } from './routes/playlists.index'
@@ -54,6 +58,11 @@ const DiscoverRoute = DiscoverRouteImport.update({
   path: '/discover',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ExploreRoute = ExploreRouteImport.update({
+  id: '/explore',
+  path: '/explore',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ExportDotjsonRoute = ExportDotjsonRouteImport.update({
   id: '/export.json',
   path: '/export.json',
@@ -67,6 +76,11 @@ const HistoryRoute = HistoryRouteImport.update({
 const InsightsRoute = InsightsRouteImport.update({
   id: '/insights',
   path: '/insights',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LibraryRoute = LibraryRouteImport.update({
+  id: '/library',
+  path: '/library',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -104,6 +118,11 @@ const SubscriptionsRoute = SubscriptionsRouteImport.update({
   path: '/subscriptions',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TasteRoute = TasteRouteImport.update({
+  id: '/taste',
+  path: '/taste',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WatchEventsRoute = WatchEventsRouteImport.update({
   id: '/watch-events',
   path: '/watch-events',
@@ -112,6 +131,11 @@ const WatchEventsRoute = WatchEventsRouteImport.update({
 const WelcomeRoute = WelcomeRouteImport.update({
   id: '/welcome',
   path: '/welcome',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const YouRoute = YouRouteImport.update({
+  id: '/you',
+  path: '/you',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChannelsChannelIdRoute = ChannelsChannelIdRouteImport.update({
@@ -161,9 +185,11 @@ export interface FileRoutesByFullPath {
   '/curation': typeof CurationRoute
   '/desktop-auth': typeof DesktopAuthRoute
   '/discover': typeof DiscoverRoute
+  '/explore': typeof ExploreRoute
   '/export.json': typeof ExportDotjsonRoute
   '/history': typeof HistoryRoute
   '/insights': typeof InsightsRoute
+  '/library': typeof LibraryRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
   '/models': typeof ModelsRoute
@@ -171,8 +197,10 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/status': typeof StatusRoute
   '/subscriptions': typeof SubscriptionsRoute
+  '/taste': typeof TasteRoute
   '/watch-events': typeof WatchEventsRoute
   '/welcome': typeof WelcomeRoute
+  '/you': typeof YouRoute
   '/channels/$channelId': typeof ChannelsChannelIdRoute
   '/feed/$date': typeof FeedDateRoute
   '/playlists/$playlistId': typeof PlaylistsPlaylistIdRoute
@@ -187,9 +215,11 @@ export interface FileRoutesByTo {
   '/curation': typeof CurationRoute
   '/desktop-auth': typeof DesktopAuthRoute
   '/discover': typeof DiscoverRoute
+  '/explore': typeof ExploreRoute
   '/export.json': typeof ExportDotjsonRoute
   '/history': typeof HistoryRoute
   '/insights': typeof InsightsRoute
+  '/library': typeof LibraryRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
   '/models': typeof ModelsRoute
@@ -197,8 +227,10 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/status': typeof StatusRoute
   '/subscriptions': typeof SubscriptionsRoute
+  '/taste': typeof TasteRoute
   '/watch-events': typeof WatchEventsRoute
   '/welcome': typeof WelcomeRoute
+  '/you': typeof YouRoute
   '/channels/$channelId': typeof ChannelsChannelIdRoute
   '/feed/$date': typeof FeedDateRoute
   '/playlists/$playlistId': typeof PlaylistsPlaylistIdRoute
@@ -214,9 +246,11 @@ export interface FileRoutesById {
   '/curation': typeof CurationRoute
   '/desktop-auth': typeof DesktopAuthRoute
   '/discover': typeof DiscoverRoute
+  '/explore': typeof ExploreRoute
   '/export.json': typeof ExportDotjsonRoute
   '/history': typeof HistoryRoute
   '/insights': typeof InsightsRoute
+  '/library': typeof LibraryRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
   '/models': typeof ModelsRoute
@@ -224,8 +258,10 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/status': typeof StatusRoute
   '/subscriptions': typeof SubscriptionsRoute
+  '/taste': typeof TasteRoute
   '/watch-events': typeof WatchEventsRoute
   '/welcome': typeof WelcomeRoute
+  '/you': typeof YouRoute
   '/channels/$channelId': typeof ChannelsChannelIdRoute
   '/feed/$date': typeof FeedDateRoute
   '/playlists/$playlistId': typeof PlaylistsPlaylistIdRoute
@@ -242,9 +278,11 @@ export interface FileRouteTypes {
     | '/curation'
     | '/desktop-auth'
     | '/discover'
+    | '/explore'
     | '/export.json'
     | '/history'
     | '/insights'
+    | '/library'
     | '/login'
     | '/logout'
     | '/models'
@@ -252,8 +290,10 @@ export interface FileRouteTypes {
     | '/settings'
     | '/status'
     | '/subscriptions'
+    | '/taste'
     | '/watch-events'
     | '/welcome'
+    | '/you'
     | '/channels/$channelId'
     | '/feed/$date'
     | '/playlists/$playlistId'
@@ -268,9 +308,11 @@ export interface FileRouteTypes {
     | '/curation'
     | '/desktop-auth'
     | '/discover'
+    | '/explore'
     | '/export.json'
     | '/history'
     | '/insights'
+    | '/library'
     | '/login'
     | '/logout'
     | '/models'
@@ -278,8 +320,10 @@ export interface FileRouteTypes {
     | '/settings'
     | '/status'
     | '/subscriptions'
+    | '/taste'
     | '/watch-events'
     | '/welcome'
+    | '/you'
     | '/channels/$channelId'
     | '/feed/$date'
     | '/playlists/$playlistId'
@@ -294,9 +338,11 @@ export interface FileRouteTypes {
     | '/curation'
     | '/desktop-auth'
     | '/discover'
+    | '/explore'
     | '/export.json'
     | '/history'
     | '/insights'
+    | '/library'
     | '/login'
     | '/logout'
     | '/models'
@@ -304,8 +350,10 @@ export interface FileRouteTypes {
     | '/settings'
     | '/status'
     | '/subscriptions'
+    | '/taste'
     | '/watch-events'
     | '/welcome'
+    | '/you'
     | '/channels/$channelId'
     | '/feed/$date'
     | '/playlists/$playlistId'
@@ -321,9 +369,11 @@ export interface RootRouteChildren {
   CurationRoute: typeof CurationRoute
   DesktopAuthRoute: typeof DesktopAuthRoute
   DiscoverRoute: typeof DiscoverRoute
+  ExploreRoute: typeof ExploreRoute
   ExportDotjsonRoute: typeof ExportDotjsonRoute
   HistoryRoute: typeof HistoryRoute
   InsightsRoute: typeof InsightsRoute
+  LibraryRoute: typeof LibraryRoute
   LoginRoute: typeof LoginRoute
   LogoutRoute: typeof LogoutRoute
   ModelsRoute: typeof ModelsRoute
@@ -331,8 +381,10 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   StatusRoute: typeof StatusRoute
   SubscriptionsRoute: typeof SubscriptionsRoute
+  TasteRoute: typeof TasteRoute
   WatchEventsRoute: typeof WatchEventsRoute
   WelcomeRoute: typeof WelcomeRoute
+  YouRoute: typeof YouRoute
   ChannelsChannelIdRoute: typeof ChannelsChannelIdRoute
   FeedDateRoute: typeof FeedDateRoute
   PlaylistsPlaylistIdRoute: typeof PlaylistsPlaylistIdRoute
@@ -373,6 +425,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DiscoverRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/explore': {
+      id: '/explore'
+      path: '/explore'
+      fullPath: '/explore'
+      preLoaderRoute: typeof ExploreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/export.json': {
       id: '/export.json'
       path: '/export.json'
@@ -392,6 +451,13 @@ declare module '@tanstack/react-router' {
       path: '/insights'
       fullPath: '/insights'
       preLoaderRoute: typeof InsightsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/library': {
+      id: '/library'
+      path: '/library'
+      fullPath: '/library'
+      preLoaderRoute: typeof LibraryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -443,6 +509,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SubscriptionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/taste': {
+      id: '/taste'
+      path: '/taste'
+      fullPath: '/taste'
+      preLoaderRoute: typeof TasteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/watch-events': {
       id: '/watch-events'
       path: '/watch-events'
@@ -455,6 +528,13 @@ declare module '@tanstack/react-router' {
       path: '/welcome'
       fullPath: '/welcome'
       preLoaderRoute: typeof WelcomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/you': {
+      id: '/you'
+      path: '/you'
+      fullPath: '/you'
+      preLoaderRoute: typeof YouRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/channels/$channelId': {
@@ -521,9 +601,11 @@ const rootRouteChildren: RootRouteChildren = {
   CurationRoute: CurationRoute,
   DesktopAuthRoute: DesktopAuthRoute,
   DiscoverRoute: DiscoverRoute,
+  ExploreRoute: ExploreRoute,
   ExportDotjsonRoute: ExportDotjsonRoute,
   HistoryRoute: HistoryRoute,
   InsightsRoute: InsightsRoute,
+  LibraryRoute: LibraryRoute,
   LoginRoute: LoginRoute,
   LogoutRoute: LogoutRoute,
   ModelsRoute: ModelsRoute,
@@ -531,8 +613,10 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   StatusRoute: StatusRoute,
   SubscriptionsRoute: SubscriptionsRoute,
+  TasteRoute: TasteRoute,
   WatchEventsRoute: WatchEventsRoute,
   WelcomeRoute: WelcomeRoute,
+  YouRoute: YouRoute,
   ChannelsChannelIdRoute: ChannelsChannelIdRoute,
   FeedDateRoute: FeedDateRoute,
   PlaylistsPlaylistIdRoute: PlaylistsPlaylistIdRoute,
