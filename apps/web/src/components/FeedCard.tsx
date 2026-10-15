@@ -17,7 +17,7 @@ import { DISMISS_GROUP_LABEL, DISMISS_REASONS } from "#/lib/dismiss";
 import type { FeedItem } from "#/server/feeds";
 
 /**
- * One feed item as a card: its reason, chips and quick actions (see
+ * One feed item as a card: its reason, tags and quick actions (see
  * `VideoCard`), a button to rate it once it's watched, and (in a feed that
  * can be dismissed from) a menu to dismiss it.
  */
@@ -40,6 +40,8 @@ export function FeedCard({
     <VideoCard
       video={item}
       now={now}
+      // The lane it's in already says whether it's new to me.
+      markNew={false}
       menu={
         dismissible && (
           <CardMenu

@@ -46,7 +46,7 @@ test("every card has its quick actions on show, without hovering", async ({
   for (const { title } of shown) {
     const card = feedItem(page, title);
     for (const action of [
-      "Details",
+      "Why this is here",
       "More like this",
       "Less like this",
       "Later",

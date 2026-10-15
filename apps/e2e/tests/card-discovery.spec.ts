@@ -27,9 +27,17 @@ test("a Discovery card says why it's there, like a feed card does", async ({
     has: page.getByRole("link", { name: DISCOVERY.title, exact: true }),
   });
   await expect(slide).toContainText("Featured by a channel you like");
-  await expect(slide).toContainText("New to you");
-  await expect(slide).toContainText("Joinery Journal · 25 min");
-  await cardButton(slide, "Details").click();
+  // It's in the "New to you" lane, which says so for all of Discovery.
+  await expect(
+    page
+      .locator("section", {
+        has: page.getByRole("heading", { name: /^New to you/ }),
+      })
+      .getByRole("list", { name: "Discovery videos" }),
+  ).toBeVisible();
+  await expect(slide).toContainText("Joinery Journal");
+  await expect(slide).toContainText("25 min");
+  await cardButton(slide, "Why this is here").click();
   await expect(
     page.getByRole("dialog", { name: "Why this is here" }),
   ).toContainText("Score breakdown");

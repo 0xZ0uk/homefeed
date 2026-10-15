@@ -103,15 +103,15 @@ test("Show 3 wildcards adds three videos from outside the topics I follow", asyn
     await expect(card).toContainText(WILDCARD);
     await expect(card).toContainText("New to you");
     await expect(card.getByRole("link").first()).toHaveText(/^Pool video \d$/);
-    await expect(cardButton(card, "Details")).toBeVisible();
+    await expect(cardButton(card, "Why this is here")).toBeVisible();
   }
   // They're asked for once: the button is gone.
   await expect(
     end(page).getByRole("button", { name: "Show 3 wildcards" }),
   ).toHaveCount(0);
 
-  // Details says the same, with the score behind it.
-  await cardButton(cards.first(), "Details").click();
+  // Pressing the reason says the same, with the score behind it.
+  await cardButton(cards.first(), "Why this is here").click();
   const details = page.getByRole("dialog", { name: "Why this is here" });
   await expect(details).toContainText(WILDCARD);
   await page.keyboard.press("Escape");

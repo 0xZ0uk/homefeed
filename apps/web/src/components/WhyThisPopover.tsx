@@ -1,7 +1,7 @@
 import type { ScoreBreakdownOut } from "@homefeed/api-client";
-import { useId } from "react";
+import { ChevronRight } from "lucide-react";
+import { useId, type ReactNode } from "react";
 
-import { Button } from "#/components/ui/button";
 import {
   Popover,
   PopoverContent,
@@ -9,37 +9,52 @@ import {
   PopoverTrigger,
 } from "#/components/ui/popover";
 import { breakdownTerms, formatScore } from "#/lib/breakdown";
+import { cn } from "#/lib/utils";
 
 /**
- * The "Details" button beside a card's reason. Pressing it (click, tap, or
- * Enter or Space on it) opens a popover with the whole reason and the score
+ * The look of a card's reason: a soft panel, so it reads as one thing (and,
+ * when it opens the breakdown, as a control) rather than loose text.
+ */
+export const REASON =
+  "flex w-full items-start gap-2 rounded-lg bg-secondary/60 px-2.5 py-2 text-start text-sm leading-snug";
+
+/**
+ * A card's reason (`children`) as a button: pressing it (click, tap, or Enter
+ * or Space on it) opens a popover with the whole reason and the score
  * breakdown, how the item's score was made; Escape or clicking away closes
- * it. The button is raised above the card's stretched link so it can be
- * pressed, and names the video for screen readers.
+ * it. A chevron says it opens. The button is raised above the card's
+ * stretched link so it can be pressed, and names the video for screen
+ * readers.
  */
 export function WhyThisPopover({
   title,
   explanation,
   breakdown,
+  children,
 }: {
   /** The video's title, to tell this card's button from the others'. */
   title: string;
   explanation: string;
   breakdown: ScoreBreakdownOut;
+  /** The reason as the card shows it. */
+  children: ReactNode;
 }) {
   const headingId = useId();
   return (
     <Popover>
       <PopoverTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="sm"
-            className="relative z-10 -my-0.5 shrink-0 px-2"
-          />
-        }
+        className={cn(
+          REASON,
+          "relative z-10 border border-transparent pe-1.5 outline-none hover:bg-secondary focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-expanded:bg-secondary",
+        )}
       >
-        Details<span className="sr-only"> for {title}</span>
+        <span className="sr-only">Why this is here: </span>
+        {children}
+        <span className="sr-only">, for {title}</span>
+        <ChevronRight
+          aria-hidden="true"
+          className="mt-px size-4 shrink-0 text-muted-foreground rtl:-scale-x-100"
+        />
       </PopoverTrigger>
       <PopoverContent
         side="bottom"
