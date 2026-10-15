@@ -1,8 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useBlocker } from "@tanstack/react-router";
 import {
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -37,15 +35,8 @@ interface WatchAndRateProps {
  * The player, its watch history and the rating prompt.
  *
  * Every play, pause, seek, end and close goes to `POST /watch-events`.
- * The prompt appears once per visit:
- * - when the video ends, or
- * - when leaving the page through the app (a link, back/forward) after
- *   playing an unrated video: the navigation is held, the video paused, and
- *   it goes ahead once the prompt is answered or skipped ("Keep watching"
- *   cancels it).
- * Closing or reloading the tab can't show a prompt (browsers only allow their
- * own "leave site?" dialog, which would nag); the `close` event is still
- * recorded, and the rating stays editable here later.
+ * The prompt appears once per visit, when the video ends. The rating stays
+ * editable under the player at any time.
  */
 export function WatchAndRate({
   videoId,
@@ -61,14 +52,7 @@ export function WatchAndRate({
   const score = rating?.score ?? null;
   const player = useRef<VideoPlayerHandle>(null);
   const [endedPrompt, setEndedPrompt] = useState(false);
-  // Read by the navigation blocker, so kept in refs rather than state.
-  const played = useRef(false);
   const answered = useRef(false);
-  const rated = useRef(false);
-
-  useEffect(() => {
-    rated.current = score !== null;
-  }, [score]);
 
   const reporter = useMemo(
     () =>
@@ -79,26 +63,10 @@ export function WatchAndRate({
   const onWatchEvent = useCallback(
     (event: WatchEvent) => {
       reporter.report(event);
-      if (event.type === "play") played.current = true;
       if (event.type === "ended" && !answered.current) setEndedPrompt(true);
     },
     [reporter],
   );
-
-  const blocker = useBlocker({
-    shouldBlockFn: ({ current, next }) =>
-      current.pathname !== next.pathname &&
-      played.current &&
-      !answered.current &&
-      !rated.current,
-    enableBeforeUnload: false,
-    withResolver: true,
-  });
-  const leaving = blocker.status === "blocked";
-
-  useEffect(() => {
-    if (leaving) player.current?.pause();
-  }, [leaving]);
 
   const rate = async (picked: number) => {
     const saved = await saveRating({ data: { videoId, score: picked } });
@@ -108,7 +76,6 @@ export function WatchAndRate({
   const closePrompt = () => {
     answered.current = true;
     setEndedPrompt(false);
-    if (blocker.status === "blocked") blocker.proceed();
   };
 
   const remove = async () => {
@@ -117,20 +84,14 @@ export function WatchAndRate({
   };
 
   let panel;
-  if (leaving || endedPrompt) {
+  if (endedPrompt) {
     panel = (
       <RatingPicker
-        key={leaving ? "leaving" : "ended"}
-        title={leaving ? "Rate it before you go?" : "How was it?"}
+        title="How was it?"
         current={score}
         onRate={rate}
         onClose={closePrompt}
         skipLabel="Skip"
-        cancel={
-          leaving
-            ? { label: "Keep watching", onCancel: () => blocker.reset() }
-            : undefined
-        }
         autoFocus
       />
     );

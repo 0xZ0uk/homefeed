@@ -3,6 +3,8 @@ import { Slider } from "@base-ui/react/slider";
 import {
   CheckIcon,
   ChevronRightIcon,
+  ListMinusIcon,
+  ListPlusIcon,
   LoaderCircleIcon,
   MaximizeIcon,
   MinimizeIcon,
@@ -30,6 +32,7 @@ import {
   type RefObject,
 } from "react";
 
+import { QueueStatus, useQueueToggle } from "#/components/QueueButton";
 import { Scrubber } from "#/components/player/Scrubber";
 import {
   useMediaState,
@@ -56,6 +59,7 @@ const IDLE_MS = 3000;
 const VOLUME_KEY = "player-volume";
 
 export interface PlayerControlsProps {
+  videoId: string;
   media: HTMLVideoElement | null;
   player: ShakaPlayer | null;
   /** The element that goes fullscreen (wraps the video and the controls). */
@@ -141,6 +145,7 @@ function clock(seconds: number): string {
  * shortcuts. They fade out while a playing video sits untouched.
  */
 export function PlayerControls({
+  videoId,
   media,
   player,
   containerRef,
@@ -149,6 +154,8 @@ export function PlayerControls({
   children,
 }: PlayerControlsProps) {
   const state = useMediaState(media);
+  const queue = useQueueToggle(videoId);
+  const queueLabel = queue.queued ? "Remove from queue" : "Add to queue";
   const { isFullscreen, toggle: toggleFullscreen } =
     useFullscreen(containerRef);
   const pipAvailable = usePictureInPictureAvailable();
@@ -406,6 +413,17 @@ export function PlayerControls({
                 containerRef={containerRef}
                 onOpenChange={setMenuOpen}
               />
+              <button
+                type="button"
+                className={BUTTON}
+                aria-label={queueLabel}
+                title={queueLabel}
+                disabled={!queue.ready}
+                onClick={queue.toggle}
+              >
+                {queue.queued ? <ListMinusIcon /> : <ListPlusIcon />}
+              </button>
+              <QueueStatus message={queue.message} className="sr-only" />
               {pipAvailable && (
                 <button
                   type="button"

@@ -9,7 +9,6 @@ import {
   type Ref,
 } from "react";
 
-import { ResumeNotice } from "#/components/ResumeNotice";
 import { useRegisterPlayerMedia } from "#/components/PlayerMedia";
 import { SponsorSkip } from "#/components/SponsorSkip";
 import type { ShakaPlayer } from "#/components/player/media-state";
@@ -45,7 +44,7 @@ interface VideoPlayerProps {
   /** Play, pause, seek, end and close (leaving the page), with the position. */
   onWatchEvent?: WatchEventListener;
   ref?: Ref<VideoPlayerHandle>;
-  /** Lays out what follows the player band; gets the resume notice and error
+  /** Lays out what follows the player band; gets the error
    * message to place inside the padded content area. */
   children?: (notices: ReactNode) => ReactNode;
 }
@@ -151,7 +150,6 @@ export function VideoPlayer({
 
   const notices = (
     <>
-      <ResumeNotice startAt={initialStartAt} videoRef={videoRef} />
       {error && (
         <p role="alert" className="text-destructive">
           {error}{" "}
@@ -182,6 +180,7 @@ export function VideoPlayer({
             className="size-full bg-black object-contain"
           />
           <PlayerControls
+            videoId={videoId}
             media={media}
             player={player}
             containerRef={containerRef}

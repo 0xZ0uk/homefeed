@@ -9,6 +9,12 @@ import {
 
 import { ScoreFace } from "#/components/ScoreFace";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "#/components/ui/tooltip";
+import {
   MAX_SCORE,
   MIN_SCORE,
   SCORES,
@@ -137,40 +143,54 @@ export function ScoreScale({
         onKeyDown={onKeyDown}
         className="relative grid h-11 touch-pan-y grid-cols-10 rounded-full bg-secondary select-none"
       >
-        {SCORES.map((score) => (
-          <button
-            key={score}
-            ref={(node) => {
-              if (node) buttons.current.set(score, node);
-              else buttons.current.delete(score);
-              if (score === tabStop) assignRef(buttonRef, node);
-            }}
-            type="button"
-            aria-label={scoreText(score)}
-            aria-pressed={value === score}
-            tabIndex={score === tabStop ? 0 : -1}
-            disabled={disabled}
-            onFocus={() => setFocusable(score)}
-            onClick={(event) => onClick(event, score)}
-            className={cn(
-              "group/face relative flex items-center justify-center text-muted-foreground/70 outline-none transition-colors hover:text-foreground motion-reduce:transition-none",
-              // A short divider before every face but the first.
-              score > MIN_SCORE &&
-                "before:absolute before:inset-y-3 before:left-0 before:w-px before:bg-border",
-              disabled ? "cursor-default" : "cursor-pointer",
-            )}
-          >
-            <ScoreFace
-              score={score}
-              title={scoreLabel(score)}
-              className={cn(
-                "pointer-events-none size-6 rounded-full transition-[scale,opacity] duration-150 ease-out group-focus-visible/face:ring-3 group-focus-visible/face:ring-ring/50 motion-reduce:transition-none",
-                shown === score && "opacity-0",
-                !disabled && "group-hover/face:scale-110",
-              )}
-            />
-          </button>
-        ))}
+        <TooltipProvider delay={200} closeDelay={0}>
+          {SCORES.map((score) => (
+            <Tooltip
+              key={score}
+              // The picked face already wears its word in the bubble.
+              disabled={disabled || dragged !== null || shown === score}
+            >
+              <TooltipTrigger
+                render={
+                  <button
+                    ref={(node) => {
+                      if (node) buttons.current.set(score, node);
+                      else buttons.current.delete(score);
+                      if (score === tabStop) assignRef(buttonRef, node);
+                    }}
+                    type="button"
+                    aria-label={scoreText(score)}
+                    aria-pressed={value === score}
+                    tabIndex={score === tabStop ? 0 : -1}
+                    disabled={disabled}
+                    onFocus={() => setFocusable(score)}
+                    onClick={(event) => onClick(event, score)}
+                    className={cn(
+                      "group/face relative flex items-center justify-center text-muted-foreground/70 outline-none transition-colors hover:text-foreground motion-reduce:transition-none",
+                      // A short divider before every face but the first.
+                      score > MIN_SCORE &&
+                        "before:absolute before:inset-y-3 before:left-0 before:w-px before:bg-border",
+                      disabled ? "cursor-default" : "cursor-pointer",
+                    )}
+                  >
+                    <ScoreFace
+                      score={score}
+                      title={scoreLabel(score)}
+                      className={cn(
+                        "pointer-events-none size-6 rounded-full transition-[scale,opacity] duration-150 ease-out group-focus-visible/face:ring-3 group-focus-visible/face:ring-ring/50 motion-reduce:transition-none",
+                        shown === score && "opacity-0",
+                        !disabled && "group-hover/face:scale-110",
+                      )}
+                    />
+                  </button>
+                }
+              />
+              <TooltipContent>
+                {score} · {scoreLabel(score)}
+              </TooltipContent>
+            </Tooltip>
+          ))}
+        </TooltipProvider>
         {shown !== null && (
           <div
             aria-hidden="true"

@@ -15,8 +15,6 @@ interface RatingPickerProps {
   skipLabel?: string;
   /** Move focus to the scale when the picker appears (for prompts). */
   autoFocus?: boolean;
-  /** An extra way out that neither rates nor skips, e.g. "Keep watching". */
-  cancel?: { label: string; onCancel: () => void };
 }
 
 /**
@@ -30,7 +28,6 @@ export function RatingPicker({
   onClose,
   skipLabel = "Skip",
   autoFocus = false,
-  cancel,
 }: RatingPickerProps) {
   const titleId = useId();
   const scale = useRef<HTMLButtonElement>(null);
@@ -93,18 +90,6 @@ export function RatingPicker({
         >
           {skipLabel}
         </Button>
-        {cancel && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="lg"
-            className="px-4"
-            disabled={saving}
-            onClick={cancel.onCancel}
-          >
-            {cancel.label}
-          </Button>
-        )}
       </div>
       <p aria-live="polite" className="text-sm text-destructive">
         {error}
