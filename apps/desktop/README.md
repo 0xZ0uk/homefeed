@@ -145,7 +145,7 @@ To try a built AppImage without touching your profile: `HOMEFEED_USER_DATA_DIR=/
 
 ## Releasing
 
-The app's version is `version` in this package's `package.json` (starting at 0.1.0). To release:
+The app's version is `version` in this package's `package.json` (starting at 0.1.0). To release, run `nub run release:desktop` from the repo root (`--dry-run` to only print what it would do): on a clean, up-to-date master it bumps the minor version (0.1.0 → 0.2.0), commits and pushes that, then tags and pushes `desktop-v<version>`. By hand, that is:
 
 1. Bump `version` (e.g. 0.2.0) and commit.
 2. Tag the commit `desktop-v0.2.0` and push the tag. The tag must match the version; the workflow fails otherwise.

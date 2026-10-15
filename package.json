@@ -9,6 +9,7 @@
     "lint": "turbo run lint",
     "check-types": "turbo run check-types",
     "e2e": "turbo run e2e",
+    "release:desktop": "node apps/desktop/scripts/release.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "reembed": "uv run python -m homefeed_core.enricher --reembed",
     "enrich": "uv run python -m homefeed_core.enricher",
