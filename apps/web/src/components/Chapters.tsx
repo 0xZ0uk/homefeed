@@ -30,9 +30,9 @@ export function Chapters({ chapters }: { chapters: readonly Chapter[] }) {
 
   return (
     <section aria-labelledby="chapters-heading" className="flex flex-col gap-2">
-      <h3 id="chapters-heading" className="px-1 text-base font-bold">
+      <h2 id="chapters-heading" className="px-1 text-base font-bold">
         Chapters
-      </h3>
+      </h2>
       <ol className="flex flex-col">
         {chapters.map((chapter, index) => (
           <li key={`${chapter.start_seconds}-${index}`}>

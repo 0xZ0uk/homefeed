@@ -21,7 +21,7 @@ export const Route = createFileRoute("/settings")({
 function Settings() {
   return (
     <AppShell className="flex max-w-4xl flex-col gap-6">
-      <h2 className="text-xl font-semibold">Settings</h2>
+      <h1 className="text-xl font-semibold">Settings</h1>
       <UserSettings />
       <TakeoutImport />
       <HiddenChannels />

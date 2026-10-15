@@ -30,7 +30,7 @@
   --success: oklch(0.5 0.13 150);
   --warning: oklch(0.55 0.12 70);
   --border: oklch(0 0 0 / 10%);
-  --input: oklch(0 0 0 / 16%);
+  --input: oklch(0 0 0 / 44%);
   --ring: oklch(0.55 0.18 255);
   --brand: oklch(0.6 0.25 27);
   /*
@@ -85,7 +85,7 @@
     --success: oklch(0.75 0.14 150);
     --warning: oklch(0.8 0.13 80);
     --border: oklch(1 0 0 / 14%);
-    --input: oklch(1 0 0 / 20%);
+    --input: oklch(1 0 0 / 36%);
     --ring: oklch(0.65 0.16 255);
     --chart-1: oklch(0.65 0.15 255);
     --chart-2: oklch(0.62 0.17 42);
@@ -132,6 +132,13 @@
   }
   html {
     color-scheme: light dark;
+    /* The masthead is sticky (3.5rem): scrolling a focused control or an anchor
+       into view leaves it clear of the bar, not under it. */
+    scroll-padding-top: 3.5rem;
+  }
+  /* Pages with a sticky bar of chips under the masthead (3.5rem more). */
+  html:has([data-sticky-chips]) {
+    scroll-padding-top: 7rem;
   }
   html,
   body,

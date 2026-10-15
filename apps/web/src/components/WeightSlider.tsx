@@ -5,20 +5,31 @@ import {
   formatWeight,
   weightEffect,
 } from "#/lib/tag-subscriptions";
+import { cn } from "#/lib/utils";
 
-/** The tag weight slider, from Suppress (-1) to Boost (+1), on the tag page. */
+/**
+ * The tag weight slider, from Suppress (-1) to Boost (+1), on the tag page and
+ * in the Rebalance popover.
+ */
 export function WeightSlider({
   id,
   label,
+  hideLabel,
   value,
   disabled,
+  stacked = false,
   onChange,
   onCommit,
 }: {
   id: string;
   label: string;
+  /** Name the slider for screen readers only, for a row that already shows
+   * what the slider is for, e.g. under its topic's name. */
+  hideLabel?: boolean;
   value: number;
   disabled?: boolean;
+  /** Puts the label on a line of its own, for a narrow place with several. */
+  stacked?: boolean;
   onChange: (weight: number) => void;
   /** Called with the slider's value when the user lets go of it (pointer up
    * or key up). */
@@ -29,7 +40,17 @@ export function WeightSlider({
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <span id={id} className="text-sm font-medium">
+      {/* Hidden from the reading order, the name still reaches the slider
+          through aria-labelledby, and is not read again beside it. */}
+      <span
+        id={id}
+        aria-hidden={hideLabel ? "true" : undefined}
+        className={
+          hideLabel
+            ? "sr-only"
+            : cn("text-sm font-medium", stacked && "basis-full")
+        }
+      >
         {label}
       </span>
       <span aria-hidden="true" className="text-xs text-muted-foreground">

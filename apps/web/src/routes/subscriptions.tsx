@@ -6,7 +6,7 @@ import { MutesTab } from "#/components/MutesTab";
 import { SavedSearchesTab } from "#/components/SavedSearchesTab";
 import { SourcesTab } from "#/components/SourcesTab";
 import { TagsTab } from "#/components/TagsTab";
-import { channelsQuery } from "#/server/channels";
+import { channelHealthQuery, channelsQuery } from "#/server/channels";
 import { externalSourcesQuery } from "#/server/external-sources";
 import { keywordMutesQuery } from "#/server/keyword-mutes";
 import { savedSearchesQuery } from "#/server/saved-searches";
@@ -44,7 +44,11 @@ export const Route = createFileRoute("/subscriptions")({
     } else if (deps.tab === "sources") {
       await context.queryClient.ensureQueryData(externalSourcesQuery);
     } else {
-      await Promise.all([context.queryClient.ensureQueryData(channelsQuery)]);
+      await Promise.all([
+        context.queryClient.ensureQueryData(channelsQuery),
+        // The numbers are a bonus: the tab works, without them, if they fail.
+        context.queryClient.ensureQueryData(channelHealthQuery).catch(() => {}),
+      ]);
     }
   },
   component: Subscriptions,
@@ -54,8 +58,8 @@ function Subscriptions() {
   const { tab = "channels" } = Route.useSearch();
 
   return (
-    <AppShell className="max-w-4xl">
-      <h2 className="text-2xl font-bold">Subscriptions</h2>
+    <AppShell className="max-w-5xl">
+      <h1 className="text-2xl font-bold">Subscriptions</h1>
       <nav
         aria-label="Subscriptions sections"
         className="mt-4 flex gap-2 overflow-x-auto border-b"

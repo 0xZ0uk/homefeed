@@ -18,6 +18,7 @@ from homefeed_core import (
 from homefeed_core.config import get_settings
 from homefeed_core.db import open_database
 from homefeed_core.exporter import EXPORT_FORMAT, SECTIONS, ExportSection, export_data
+from homefeed_core.feedback import LESS, set_feedback
 from homefeed_core.gateway import SearchFilters
 from homefeed_core.ratings import set_rating
 from homefeed_core.tags import (
@@ -62,6 +63,7 @@ def seed(session: Session) -> None:
     )
     set_rating(session, VIDEO, 8)
     set_rating(session, "zzzzzzzzzzz", 2)  # rated before its metadata was stored
+    set_feedback(session, VIDEO, LESS)
     curation.add_keyword_mute(session, "crypto")
     woodworking = resolve_tag(session, "Woodworking")
     assert woodworking is not None
@@ -115,6 +117,10 @@ def test_exports_every_area(sessions: sessionmaker[Session]) -> None:
     assert ratings[VIDEO]["channel_title"] == "Space Explained"
     assert ratings["zzzzzzzzzzz"]["score"] == 2
     assert ratings["zzzzzzzzzzz"]["title"] is None
+
+    [feedback] = data["feedback"]
+    assert (feedback["video_id"], feedback["signal"]) == (VIDEO, -1)
+    assert (feedback["title"], feedback["channel_title"]) == ("Black holes", "Space Explained")
 
     curation_ = data["curation"]
     [channel] = curation_["channels"]
@@ -179,6 +185,7 @@ def test_empty_database_exports_empty_sections(sessions: sessionmaker[Session]) 
         data = export_data(session)
 
     assert data["ratings"] == []
+    assert data["feedback"] == []
     assert data["tags"] == []
     assert data["feeds"] == []
     assert data["library"] == {"watch_events": [], "queue": [], "playlists": []}

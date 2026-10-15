@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from homefeed_core import channel_hides
 from homefeed_core.candidates import TAG, FoundVideo
-from homefeed_core.curation import list_tag_subscriptions
+from homefeed_core.curation import list_tag_subscriptions, muted_sql
 from homefeed_core.gateway import MAX_SEARCH_LIMIT, Gateway
 from homefeed_core.gateway.events import format_timestamp
 from homefeed_core.scheduled_search import (
@@ -153,7 +153,10 @@ class TagDiscoverySource:
                 if remaining > 0:
                     todo.append((tag, remaining))
             muted = set(
-                session.execute(text("SELECT channel_id FROM channel_prefs WHERE muted")).scalars()
+                session.execute(
+                    text(f"SELECT p.channel_id FROM channel_prefs AS p WHERE {muted_sql('p')}"),
+                    {"now": format_timestamp(now)},
+                ).scalars()
             ) | channel_hides.blocked_channel_ids(session)
             known = set(session.execute(text("SELECT id FROM videos")).scalars())
         found: list[FoundVideo] = []

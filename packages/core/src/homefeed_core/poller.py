@@ -23,6 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
 from homefeed_core import candidates
+from homefeed_core.curation import muted_sql
 from homefeed_core.db import get_session_factory
 from homefeed_core.gateway import FeedFetcher, GatewayError, create_feed_fetcher
 from homefeed_core.gateway.events import format_timestamp
@@ -141,14 +142,15 @@ def poll_due_channels(
 
 
 def due_channel_ids(session: Session, now: datetime, *, limit: int | None = None) -> list[str]:
-    """Subscribed, unmuted channels due for a poll; never-polled ones first."""
+    """Subscribed, unmuted channels due for a poll; never-polled ones first. A channel
+    muted until a time still ahead is skipped until it runs out."""
     rows = session.execute(
         text(
-            """
+            f"""
             SELECT p.channel_id
             FROM channel_prefs AS p
             LEFT JOIN channel_polls AS s ON s.channel_id = p.channel_id
-            WHERE p.muted = 0 AND (s.next_poll_at IS NULL OR s.next_poll_at <= :now)
+            WHERE NOT {muted_sql("p")} AND (s.next_poll_at IS NULL OR s.next_poll_at <= :now)
             ORDER BY s.next_poll_at IS NOT NULL, s.next_poll_at, p.subscribed_at, p.channel_id
             LIMIT :limit
             """

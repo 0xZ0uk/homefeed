@@ -32,7 +32,7 @@ function Playlists() {
 
   return (
     <AppShell className="flex max-w-4xl flex-col gap-6">
-      <h2 className="text-xl font-semibold">Playlists</h2>
+      <h1 className="text-xl font-semibold">Playlists</h1>
       <NewPlaylistForm />
       {playlists.length === 0 ? (
         <p className="rounded-xl border border-dashed p-6 text-muted-foreground">

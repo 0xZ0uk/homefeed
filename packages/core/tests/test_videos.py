@@ -70,3 +70,24 @@ def test_store_video_updates_and_keeps_known_fields(sessions: sessionmaker[Sessi
         "thumb.jpg",
     )
     assert stored.channel_title == "Woodworking"
+
+
+def test_stored_video_carries_the_channels_picture_once_it_is_known(
+    sessions: sessionmaker[Session],
+) -> None:
+    channel = make_channel("UC" + "a" * 22, title="Woodworking")
+    with sessions.begin() as session:
+        store_video(session, make_video("aaaaaaaaaaa", channel=channel))
+    with sessions() as session:
+        stored = get_stored_video(session, "aaaaaaaaaaa")
+    assert stored is not None and stored.channel_thumbnail_url is None
+
+    # A channel lookup (subscribing, its page) stores the picture; storing a video again
+    # keeps it.
+    with sessions.begin() as session:
+        session.execute(text("UPDATE channels SET thumbnail_url = 'https://example.invalid/w.jpg'"))
+        store_video(session, make_video("aaaaaaaaaaa", channel=channel, title="Planing"))
+    with sessions() as session:
+        stored = get_stored_video(session, "aaaaaaaaaaa")
+    assert stored is not None
+    assert stored.channel_thumbnail_url == "https://example.invalid/w.jpg"

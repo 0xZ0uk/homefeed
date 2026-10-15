@@ -7,7 +7,14 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from homefeed_core.db import open_database
 from homefeed_core.gateway import Video
-from homefeed_core.history import get_history_entry, resume_position, search_history
+from homefeed_core.history import (
+    HistorySummary,
+    get_history_entry,
+    history_summary,
+    resume_position,
+    search_history,
+    watched_fractions,
+)
 from homefeed_core.ratings import set_rating
 from homefeed_core.videos import store_video
 from homefeed_core.watch_events import WatchEventType, record_watch_event
@@ -160,6 +167,64 @@ def test_search_pages(sessions: sessionmaker[Session]) -> None:
     assert [e.video_id for e in first + second + last] == ids[::-1]
 
 
+def test_unrated_keeps_the_watched_videos_without_a_rating(
+    sessions: sessionmaker[Session],
+) -> None:
+    store(sessions, "aaaaaaaaaaa", "Hand plane restoration", "Wood Shop")
+    store(sessions, "bbbbbbbbbbb", "Sourdough basics", "Bread Lab")
+    store(sessions, "ccccccccccc", "Hand saw sharpening", "Wood Shop")
+    for minute, video_id in enumerate(["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc"]):
+        record(sessions, video_id, ("play", 0), minute=minute)
+    record(sessions, "ddddddddddd", ("close", 0), minute=9)  # opened, never played
+    with sessions.begin() as session:
+        set_rating(session, "bbbbbbbbbbb", 3)
+        set_rating(session, "eeeeeeeeeee", 9)  # rated elsewhere: never played here
+
+    with sessions() as session:
+
+        def unrated(query: str | None = None, **page: int) -> list[str]:
+            return [e.video_id for e in search_history(session, query, unrated=True, **page)]
+
+        assert unrated() == ["ccccccccccc", "aaaaaaaaaaa"]
+        assert unrated("wood") == ["ccccccccccc", "aaaaaaaaaaa"]  # the search still applies
+        assert unrated("saw") == ["ccccccccccc"]
+        assert unrated("bread") == []  # rated, so not in the list
+        assert unrated(limit=1) == ["ccccccccccc"]
+        assert unrated(limit=1, offset=1) == ["aaaaaaaaaaa"]
+        assert [e.video_id for e in search_history(session)] == [
+            "ccccccccccc",
+            "bbbbbbbbbbb",
+            "aaaaaaaaaaa",
+        ]
+
+
+def test_rating_a_video_takes_it_out_of_the_unrated(sessions: sessionmaker[Session]) -> None:
+    record(sessions, "aaaaaaaaaaa", ("play", 0), minute=1)
+    with sessions() as session:
+        assert [e.video_id for e in search_history(session, unrated=True)] == ["aaaaaaaaaaa"]
+
+    with sessions.begin() as session:
+        set_rating(session, "aaaaaaaaaaa", 7)
+
+    with sessions() as session:
+        assert search_history(session, unrated=True) == []
+
+
+def test_summary_counts_the_watched_and_the_unrated(sessions: sessionmaker[Session]) -> None:
+    with sessions() as session:
+        assert history_summary(session) == HistorySummary(watched=0, unrated=0)
+
+    for minute, video_id in enumerate(["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc"]):
+        record(sessions, video_id, ("play", 0), ("pause", 30), ("play", 30), minute=minute)
+    record(sessions, "ddddddddddd", ("close", 0), minute=9)  # opened, never played
+    with sessions.begin() as session:
+        set_rating(session, "aaaaaaaaaaa", 8)
+        set_rating(session, "eeeeeeeeeee", 2)  # rated but not in the history
+
+    with sessions() as session:
+        assert history_summary(session) == HistorySummary(watched=3, unrated=2)
+
+
 def test_entry_for_one_video(sessions: sessionmaker[Session]) -> None:
     store(sessions, "aaaaaaaaaaa", "Hand plane restoration", duration=None)
     record(sessions, "aaaaaaaaaaa", ("play", 0), ("seeked", 300), ("close", 310.5), minute=1)
@@ -207,3 +272,44 @@ def test_leaving_before_playback_keeps_the_resume_position(
         entry = get_history_entry(session, "aaaaaaaaaaa")
     assert entry is not None
     assert entry.resume_position is None
+
+
+def test_watched_fractions_say_how_far_each_video_got(sessions: sessionmaker[Session]) -> None:
+    record(sessions, "aaaaaaaaaaa", ("play", 0), ("pause", 150), minute=1)  # a quarter
+    record(sessions, "bbbbbbbbbbb", ("play", 0), ("ended", 600), minute=2)  # to the end
+    record(sessions, "ccccccccccc", ("play", 0), ("close", 595), minute=3)  # almost
+    record(sessions, "ddddddddddd", ("play", 0), ("close", 3), minute=4)  # barely started
+    record(sessions, "eeeeeeeeeee", ("close", 0), minute=5)  # opened, never played
+    record(sessions, "fffffffffff", ("play", 0), ("ended", 600), minute=6)
+    record(sessions, "fffffffffff", ("play", 0), ("close", 120), minute=7)  # then again, a fifth
+    record(sessions, "ggggggggggg", ("play", 0), ("close", 300), minute=8, duration=None)
+
+    with sessions() as session:
+        every = ["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc", "ddddddddddd", "eeeeeeeeeee"]
+        fractions = watched_fractions(session, [*every, "fffffffffff", "ggggggggggg", "unknown"])
+
+    assert fractions == {
+        "aaaaaaaaaaa": 0.25,
+        "bbbbbbbbbbb": 1.0,
+        "ccccccccccc": 1.0,
+        "fffffffffff": 0.2,  # the position of the latest visit, as the History page says
+    }
+
+
+def test_watched_fractions_only_cover_the_videos_asked_for(
+    sessions: sessionmaker[Session],
+) -> None:
+    record(sessions, "aaaaaaaaaaa", ("play", 0), ("pause", 300), minute=1)
+    record(sessions, "bbbbbbbbbbb", ("play", 0), ("pause", 60), minute=2)
+
+    with sessions() as session:
+        assert watched_fractions(session, ["bbbbbbbbbbb"]) == {"bbbbbbbbbbb": 0.1}
+        assert watched_fractions(session, []) == {}
+
+
+def test_watched_fractions_use_the_stored_duration(sessions: sessionmaker[Session]) -> None:
+    store(sessions, "aaaaaaaaaaa", "Long one", duration=1200)
+    record(sessions, "aaaaaaaaaaa", ("play", 0), ("pause", 300), duration=600.0)
+
+    with sessions() as session:
+        assert watched_fractions(session, ["aaaaaaaaaaa"]) == {"aaaaaaaaaaa": 0.25}

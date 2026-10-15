@@ -15,37 +15,64 @@ const INACTIVE = "opacity-0 motion-safe:scale-25 motion-safe:blur-xs";
 type QueueMessage = { ok: boolean; text: string };
 
 /**
- * Whether a video is in the watch queue, and a toggle to add or remove it.
- * `message` is the last toggle's outcome, for a status region to announce.
+ * What a toggle did: its message, whether it was adding to the queue, and the
+ * queue item it added (null when it didn't add one).
  */
-export function useQueueToggle(videoId: string) {
+export type QueueResult = QueueMessage & {
+  added: boolean;
+  itemId: number | null;
+};
+
+/**
+ * Whether a video is in the watch queue, and a toggle to add or remove it.
+ * `message` is the last toggle's outcome, for a status region to announce;
+ * `onResult` is told of each outcome as well, for a status elsewhere.
+ */
+export function useQueueToggle(
+  videoId: string,
+  onResult?: (result: QueueResult) => void,
+) {
   const queryClient = useQueryClient();
   const { data: queue } = useQuery(queueQuery);
   const queued = queue?.find((item) => item.video_id === videoId);
   const [message, setMessage] = useState<QueueMessage | null>(null);
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: queueQuery.queryKey });
+  const report = (
+    next: QueueMessage,
+    added: boolean,
+    itemId: number | null = null,
+  ) => {
+    setMessage(next);
+    onResult?.({ ...next, added, itemId });
+  };
 
   const add = useMutation({
     mutationFn: () => enqueueVideo({ data: { videoId } }),
     onSuccess: (result) =>
-      setMessage(
+      report(
         result.ok
           ? { ok: true, text: "Added to your queue." }
           : { ok: false, text: result.message },
+        true,
+        result.ok ? result.item.id : null,
       ),
     onError: () =>
-      setMessage({ ok: false, text: "Couldn't queue that. Try again later." }),
+      report(
+        { ok: false, text: "Couldn't queue that. Try again later." },
+        true,
+      ),
     onSettled: invalidate,
   });
   const remove = useMutation({
     mutationFn: (id: number) => dequeue({ data: { id } }),
-    onSuccess: () => setMessage({ ok: true, text: "Removed from your queue." }),
+    onSuccess: () =>
+      report({ ok: true, text: "Removed from your queue." }, false),
     onError: () =>
-      setMessage({
-        ok: false,
-        text: "Couldn't remove that from the queue. Try again.",
-      }),
+      report(
+        { ok: false, text: "Couldn't remove that from the queue. Try again." },
+        false,
+      ),
     onSettled: invalidate,
   });
 

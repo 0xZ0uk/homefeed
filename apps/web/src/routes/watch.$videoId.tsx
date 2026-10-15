@@ -12,15 +12,16 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 
 import { AppShell } from "#/components/AppShell";
+import { ChannelAvatar } from "#/components/ChannelAvatar";
 import { Chapters } from "#/components/Chapters";
 import { PlayerMediaProvider } from "#/components/PlayerMedia";
 import { SaveToPlaylist } from "#/components/SaveToPlaylist";
+import { SimilarVideos } from "#/components/SimilarVideos";
 import { SubscribeChannel } from "#/components/SubscribeChannel";
 import { VideoTags } from "#/components/VideoTags";
 import { WatchAndRate } from "#/components/WatchAndRate";
 import { NextInQueue } from "#/components/NextInQueue";
 import { QueueButton } from "#/components/QueueButton";
-import { channelColor } from "#/lib/feed-grid";
 import { formatDuration, formatFeedDate } from "#/lib/format";
 import { cn } from "#/lib/utils";
 import { isVideoId } from "#/lib/ids";
@@ -29,11 +30,12 @@ import { ratingQuery } from "#/server/ratings";
 import { videoQuery } from "#/server/videos";
 
 /**
- * The watch page: the player and the rating (prompted when the video ends or
- * when leaving, editable any time), then title, tags, channel, description,
- * chapters. SponsorBlock segments are marked on the progress bar and skipped.
- * It never autoplays and suggests nothing when the video ends. It picks up
- * where the last visit stopped (see `fetchResumePosition`).
+ * The watch page: the player and the rating (prompted when the video ends,
+ * editable any time), then title, tags, channel, description and a "More like
+ * this" button, with chapters and the queue beside them. SponsorBlock segments
+ * are marked on the progress bar and skipped. It never autoplays and suggests
+ * nothing when the video ends: similar videos show only when asked for. It
+ * picks up where the last visit stopped (see `fetchResumePosition`).
  */
 export const Route = createFileRoute("/watch/$videoId")({
   loader: async ({ params, context: { queryClient } }) => {
@@ -63,9 +65,12 @@ export const Route = createFileRoute("/watch/$videoId")({
   errorComponent: WatchError,
   notFoundComponent: () => (
     <WatchShell>
-      <p>
-        This video doesn't exist or can't be watched. <BackToFeed />
-      </p>
+      <div className="flex flex-col items-start gap-3">
+        <h1 className="text-xl font-bold">Video not found</h1>
+        <p>
+          This video doesn't exist or can't be watched. <BackToFeed />
+        </p>
+      </div>
     </WatchShell>
   ),
 });
@@ -96,18 +101,15 @@ function Watch() {
         }
       >
         <div className="flex flex-col gap-2">
-          <h2 className="text-xl leading-tight font-bold">{video.title}</h2>
+          <h1 className="text-xl leading-tight font-bold">{video.title}</h1>
           <VideoTags videoId={video.id} tags={video.tags} />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
           <div className="flex min-w-0 items-center gap-3">
-            <span
-              aria-hidden="true"
-              className="flex size-10 shrink-0 items-center justify-center rounded-full font-medium text-white"
-              style={{ backgroundColor: channelColor(video.channel_id) }}
-            >
-              {video.channel_title.trim().charAt(0).toUpperCase()}
-            </span>
+            <ChannelAvatar
+              url={video.channel_thumbnail_url}
+              title={video.channel_title}
+            />
             <p className="flex min-w-0 flex-col">
               <Link
                 to="/channels/$channelId"
@@ -136,6 +138,7 @@ function Watch() {
           stale={video.is_stale}
           text={video.description}
         />
+        <SimilarVideos key={video.id} videoId={video.id} />
       </WatchAndRate>
     </WatchShell>
   );
@@ -229,10 +232,8 @@ function WatchError({ error }: ErrorComponentProps) {
   return (
     <WatchShell>
       <div role="alert" className="flex flex-col items-start gap-3">
-        <p>
-          Couldn't load this video
-          {error instanceof Error && error.message ? `: ${error.message}` : ""}.
-        </p>
+        <h1 className="text-xl font-bold">Couldn't load this video</h1>
+        {error instanceof Error && error.message && <p>{error.message}.</p>}
         <button
           type="button"
           onClick={() => void router.invalidate()}

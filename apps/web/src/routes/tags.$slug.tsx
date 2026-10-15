@@ -85,12 +85,13 @@ function TagPage() {
   return (
     <Shell>
       <div className="flex flex-col gap-1 pt-2">
-        <h2 className="text-xl font-bold break-words">{tag.label}</h2>
+        <h1 className="text-xl font-bold break-words">{tag.label}</h1>
         <p className="text-sm text-muted-foreground">
           {describeVideoCount(tag.video_count)}
         </p>
         <SubscribeTag detail={detail} />
       </div>
+      <h2 className="sr-only">Videos</h2>
       {videos.length === 0 ? (
         <p className="py-16 text-center text-muted-foreground">
           {page > 1

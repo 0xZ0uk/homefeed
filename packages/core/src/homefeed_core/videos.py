@@ -21,6 +21,7 @@ class StoredVideo:
     channel_id: str
     channel_title: str
     channel_handle: str | None
+    channel_thumbnail_url: str | None  # the channel's picture, once the channel was looked up
     description: str | None
     duration_seconds: int | None
     published_at: str | None  # ISO 8601 UTC
@@ -80,8 +81,9 @@ def get_stored_video(session: Session, video_id: str) -> StoredVideo | None:
     row = session.execute(
         text(
             """
-            SELECT v.id, v.title, v.channel_id, c.title, c.handle, v.description,
-                   v.duration_seconds, v.published_at, v.thumbnail_url, v.live_status
+            SELECT v.id, v.title, v.channel_id, c.title, c.handle, c.thumbnail_url,
+                   v.description, v.duration_seconds, v.published_at, v.thumbnail_url,
+                   v.live_status
             FROM videos AS v JOIN channels AS c ON c.id = v.channel_id
             WHERE v.id = :id
             """

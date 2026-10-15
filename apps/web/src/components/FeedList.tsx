@@ -1,81 +1,82 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowDownUp,
-  CircleCheck,
-  Compass,
-  EllipsisVertical,
-  EyeOff,
-  ListMinus,
-  ListPlus,
-  Pin,
-  type LucideIcon,
-} from "lucide-react";
-import { useRef, useState, type RefObject } from "react";
+import { ArrowDownUp } from "lucide-react";
+import { useId, useState, type ReactNode } from "react";
 
-import { QueueStatus, useQueueToggle } from "#/components/QueueButton";
-import { VideoCard } from "#/components/VideoCard";
-import { WhyThisPopover } from "#/components/WhyThisPopover";
+import { ActionStatusLine, useActionStatus } from "#/components/ActionStatus";
+import { FeedCard } from "#/components/FeedCard";
+import { FeedEnd } from "#/components/FeedEnd";
+import { useFeedActions } from "#/components/use-feed-actions";
 import { Button } from "#/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "#/components/ui/dropdown-menu";
+import { undismissedItems } from "#/lib/dismiss";
 import {
-  DISMISS_REASONS,
-  undismissedItems,
-  withItemDismissal,
-} from "#/lib/dismiss";
-import {
+  FEED_FILTERS,
   FEED_SORTS,
-  LENGTH_FILTERS,
   isFeedSort,
-  matchesLength,
+  matchesFilter,
   sortFeedItems,
+  type FeedFilter,
   type FeedSort,
-  type LengthFilter,
 } from "#/lib/feed-grid";
-import { cn } from "#/lib/utils";
 import {
-  dismissItem,
+  LANES,
+  emptyReason,
+  laneEmptyMessage,
+  splitLanes,
+} from "#/lib/feed-lanes";
+import { cn } from "#/lib/utils";
+import { discoveryVideosQuery } from "#/server/discover";
+import {
   feedQuery,
   loadMoreFeed,
   todayFeedQuery,
   type Feed,
-  type FeedItem,
 } from "#/server/feeds";
 
 /**
- * A feed as a fixed, ordered grid of video cards, YouTube-style, with chips
- * to narrow it by length and a menu to sort it (ranked, the feed's own order,
- * by default). Every card links to its watch page and has an info button on
- * its thumbnail saying why it's there, with its score breakdown; videos
- * already watched are greyed out. There is deliberately no infinite scroll: today's feed ends in a
- * "Show more" button that appends the next page of picks when pressed.
+ * A feed as a fixed, ordered grid of video cards in two lanes, "New to you"
+ * (from channels I don't follow) and "From your channels", with chips to narrow
+ * it by what I'm in the mood for (new to me, quick, medium, deep dives) and a
+ * menu to sort it (ranked, the feed's own order, by default). The chips and
+ * the sort apply to both lanes, and a lane with nothing to show says why.
+ * Every card links to its watch page, says why it's there (with its score
+ * breakdown under "Details"), and has quick actions that steer the feed:
+ * "More like this", "Less like this" and "Later"; a watched card can be rated
+ * on the spot. What an action did is said in a status line hanging under the
+ * chips, with an Undo. There is deliberately no infinite scroll: today's feed
+ * ends in a "Show more" button that appends the next page of picks when
+ * pressed, and once that has nothing more, in a closing block (see `FeedEnd`).
  *
  * With `dismissible` (today's feed), each card's menu can dismiss it (with an
- * optional reason) and dismissed items are hidden, and "Show more" is offered;
- * otherwise items are shown, marked dismissed, and the feed is fixed.
+ * optional reason, under "Not for me"; the status line offers to restore it)
+ * and dismissed items are hidden, and "Show more" is offered; otherwise items
+ * are shown, marked dismissed, and the feed is fixed. A `shelf` is shown at
+ * the top of the "New to you" lane, e.g. the Discovery carousel, which is a
+ * shelf of picks of its own: the chips and the sort don't touch it.
  */
 export function FeedList({
   feed,
   dismissible = false,
+  shelf,
 }: {
   feed: Feed;
   dismissible?: boolean;
+  shelf?: ReactNode;
 }) {
   // One "now" per render pass keeps every item's age consistent.
   const [now] = useState(() => new Date());
-  const [filter, setFilter] = useState<LengthFilter>("all");
+  const [filter, setFilter] = useState<FeedFilter>("all");
   const [sort, setSort] = useState<FeedSort>("ranked");
-  const statusRef = useRef<HTMLParagraphElement>(null);
-  const { status, dismiss } = useDismiss(feed, statusRef);
+  const { status, announce, ref: statusRef } = useActionStatus();
+  const actions = useFeedActions(feed, announce);
   const more = useShowMore(feed);
 
   if (feed.items.length === 0) {
@@ -86,20 +87,31 @@ export function FeedList({
       </p>
     );
   }
-  const shown = dismissible ? undismissedItems(feed.items) : feed.items;
-  const items = sortFeedItems(
-    shown.filter((item) => matchesLength(item.duration_seconds, filter)),
-    sort,
+  const kept = dismissible ? undismissedItems(feed.items) : feed.items;
+  // Each lane as the feed has it, without its dismissed videos and as shown.
+  const inFeed = splitLanes(feed.items);
+  const undismissed = splitLanes(kept);
+  const shown = splitLanes(
+    sortFeedItems(
+      kept.filter((item) => matchesFilter(item, filter)),
+      sort,
+    ),
   );
+  const filterLabel =
+    FEED_FILTERS.find(({ value }) => value === filter)?.label ?? "";
+
   return (
     <div className="flex flex-col gap-3">
-      <div className="sticky top-14 z-30 -mx-1 flex items-center gap-3 bg-background px-1 py-3">
+      <div
+        data-sticky-chips
+        className="sticky top-14 z-30 -mx-1 flex items-center gap-3 bg-background px-1 py-3"
+      >
         <div
           role="group"
-          aria-label="Filter by length"
+          aria-label="Filter by intent"
           className="flex min-w-0 flex-1 gap-3 overflow-x-auto"
         >
-          {LENGTH_FILTERS.map(({ value, label }) => (
+          {FEED_FILTERS.map(({ value, label }) => (
             <Button
               key={value}
               type="button"
@@ -113,53 +125,104 @@ export function FeedList({
           ))}
         </div>
         <SortMenu sort={sort} onSort={setSort} />
+        {/* Hangs under the bar, so it's in view wherever the page is scrolled to.
+            Focus moves here when a card's control is gone, e.g. a dismissed card. */}
+        <ActionStatusLine
+          status={status}
+          statusRef={statusRef}
+          className="absolute top-full left-1 mt-1 max-w-[calc(100%-0.5rem)]"
+        />
       </div>
-      {/* Focus moves here when a dismissed card disappears from the grid. */}
-      <p
-        ref={statusRef}
-        role="status"
-        tabIndex={-1}
-        className="-mt-2 text-sm focus:outline-none empty:hidden"
-      >
-        {status && (
-          <span
-            className={status.ok ? "text-muted-foreground" : "text-destructive"}
+      {LANES.map(({ id, title }) => {
+        const reason = emptyReason(
+          inFeed[id].length,
+          undismissed[id].length,
+          shown[id].length,
+        );
+        return (
+          <Lane
+            key={id}
+            title={title}
+            count={shown[id].length}
+            shelf={id === "fresh" ? shelf : undefined}
+            empty={reason && laneEmptyMessage(id, reason, filterLabel)}
           >
-            {status.message}
-          </span>
-        )}
-      </p>
-      {items.length === 0 ? (
-        <p className="py-16 text-center text-muted-foreground">
-          {shown.length === 0
-            ? "You've dismissed everything in this feed. Refresh it for new picks; dismissed videos won't come back."
-            : "Nothing of that length in this feed."}
-        </p>
-      ) : (
-        <ol
-          aria-label="Feed"
-          className="grid grid-cols-1 gap-x-4 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
-        >
-          {items.map((item) => (
-            <FeedCard
-              key={item.id}
-              item={item}
-              now={now}
-              onDismiss={
-                dismissible ? (reason) => dismiss(item, reason) : undefined
-              }
-            />
-          ))}
-        </ol>
-      )}
+            {shown[id].map((item) => (
+              <FeedCard
+                key={item.id}
+                item={item}
+                now={now}
+                actions={actions}
+                announce={announce}
+                dismissible={dismissible}
+              />
+            ))}
+          </Lane>
+        );
+      })}
       {dismissible && <ShowMore more={more} />}
+      {dismissible && more.exhausted && (
+        <FeedEnd now={now} announce={announce} />
+      )}
     </div>
   );
 }
 
 /**
+ * One lane of the feed: its heading with how many videos it shows, an optional
+ * `shelf` of extra picks, and the videos as an ordered grid, or `empty` (what
+ * to say when there are none).
+ */
+function Lane({
+  title,
+  count,
+  shelf,
+  empty,
+  children,
+}: {
+  title: string;
+  count: number;
+  shelf?: ReactNode;
+  empty: string | null;
+  children: ReactNode;
+}) {
+  const headingId = useId();
+  return (
+    <section aria-labelledby={headingId} className="flex flex-col gap-4 pt-2">
+      <h2 id={headingId} className="text-xl font-bold">
+        {title}
+        {/* Inline, not flex items: a screen reader reads "New to you, 12
+            videos" without a gap before the comma. */}
+        <span
+          aria-hidden="true"
+          className="ml-2.5 text-base font-normal text-muted-foreground tabular-nums"
+        >
+          {count}
+        </span>
+        <span className="sr-only">
+          , {count} {count === 1 ? "video" : "videos"}
+        </span>
+      </h2>
+      {shelf}
+      {empty ? (
+        <p className="py-6 text-muted-foreground">{empty}</p>
+      ) : (
+        <ol
+          aria-label={title}
+          className="grid grid-cols-1 gap-x-4 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
+        >
+          {children}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+/**
  * Appending the next page of picks to a stored feed. `exhausted` is set when
- * a press added nothing, and lasts until the feed itself is replaced.
+ * a press added nothing, and lasts until the feed itself is replaced. What
+ * Discovery shows leaves out what the feed holds, so it's loaded again once
+ * the feed has grown.
  */
 function useShowMore(feed: Feed) {
   const queryClient = useQueryClient();
@@ -174,6 +237,11 @@ function useShowMore(feed: Feed) {
       setExhaustedFeedId(count > 0 ? null : feed.id);
       queryClient.setQueryData(todayFeedQuery.queryKey, next);
       queryClient.setQueryData(feedQuery(feed.date).queryKey, next);
+      if (count > 0) {
+        void queryClient.invalidateQueries({
+          queryKey: discoveryVideosQuery.queryKey,
+        });
+      }
     },
   });
 
@@ -186,14 +254,24 @@ function useShowMore(feed: Feed) {
   };
 }
 
-/** The "Show more" button under the grid, with its outcome announced. */
+/**
+ * The "Show more" button under the lanes, with its outcome announced. Once
+ * there is nothing more the button goes and the closing block takes over; the
+ * status line then only says so for those who can't see it.
+ */
 function ShowMore({ more }: { more: ReturnType<typeof useShowMore> }) {
   return (
-    <div className="flex flex-col items-center gap-3 pb-6">
+    <div
+      className={cn(
+        "flex flex-col items-center gap-3",
+        !more.exhausted && "pb-6",
+      )}
+    >
       <p
         role="status"
         className={cn(
-          "text-sm empty:hidden",
+          "text-sm empty:sr-only",
+          more.exhausted && "sr-only",
           more.failed ? "text-destructive" : "text-muted-foreground",
         )}
       >
@@ -258,194 +336,6 @@ function SortMenu({
             ))}
           </DropdownMenuRadioGroup>
         </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-type DismissStatus = { ok: boolean; message: string };
-
-/**
- * Dismissing an item: it's hidden at once and restored if the API call fails.
- * Both outcomes are announced in a status message that takes focus, since the
- * item (and the focused menu in it) is gone.
- */
-function useDismiss(
-  feed: Feed,
-  statusRef: RefObject<HTMLParagraphElement | null>,
-) {
-  const queryClient = useQueryClient();
-  const [status, setStatus] = useState<DismissStatus | null>(null);
-
-  function update(
-    itemId: number,
-    dismissal: Pick<FeedItem, "dismissed_at" | "dismiss_reason">,
-  ) {
-    const apply = (old: Feed | null | undefined) =>
-      old ? withItemDismissal(old, itemId, dismissal) : old;
-    queryClient.setQueryData(todayFeedQuery.queryKey, apply);
-    queryClient.setQueryData(feedQuery(feed.date).queryKey, apply);
-  }
-
-  function announce(next: DismissStatus) {
-    setStatus(next);
-    statusRef.current?.focus();
-  }
-
-  const mutation = useMutation({
-    mutationFn: ({ item, reason }: { item: FeedItem; reason: string | null }) =>
-      dismissItem({ data: { id: item.id, reason } }),
-    onMutate: ({ item, reason }) => {
-      update(item.id, {
-        dismissed_at: new Date().toISOString(),
-        dismiss_reason: reason,
-      });
-      announce({ ok: true, message: `Dismissed “${item.title}”.` });
-    },
-    onSuccess: (saved) => update(saved.id, saved),
-    onError: (_error, { item }) => {
-      update(item.id, item);
-      announce({
-        ok: false,
-        message: `Couldn't dismiss “${item.title}”. Try again later.`,
-      });
-    },
-  });
-
-  const dismiss = (item: FeedItem, reason: string | null) =>
-    mutation.mutate({ item, reason });
-  return { status, dismiss };
-}
-
-/**
- * One feed item as a card: its status icons and an info button (why it's
- * here, with its score) over the thumbnail, and a menu of actions beside the
- * title (see `VideoCard`).
- */
-function FeedCard({
-  item,
-  now,
-  onDismiss,
-}: {
-  item: FeedItem;
-  now: Date;
-  onDismiss?: (reason: string | null) => void;
-}) {
-  const queue = useQueueToggle(item.video_id);
-
-  return (
-    <VideoCard
-      video={item}
-      now={now}
-      faded={Boolean(item.dismissed_at)}
-      top={
-        <QueueStatus
-          message={queue.message}
-          className="mt-1 text-xs empty:hidden"
-        />
-      }
-      overlay={
-        <>
-          <StatusIcons item={item} />
-          <WhyThisPopover
-            explanation={item.explanation}
-            breakdown={item.breakdown}
-          />
-        </>
-      }
-      menu={<CardMenu item={item} queue={queue} onDismiss={onDismiss} />}
-    />
-  );
-}
-
-/**
- * A card's states as small icons in a dark pill at the thumbnail's top-left,
- * each named for screen readers and in a tooltip: pinned, exploring (a
- * channel you don't follow yet), watched, dismissed.
- */
-function StatusIcons({ item }: { item: FeedItem }) {
-  const statuses: { icon: LucideIcon; label: string }[] = [];
-  if (item.is_pinned) statuses.push({ icon: Pin, label: "Pinned" });
-  if (item.is_exploration) statuses.push({ icon: Compass, label: "Exploring" });
-  if (item.watched) statuses.push({ icon: CircleCheck, label: "Watched" });
-  if (item.dismissed_at) {
-    statuses.push({
-      icon: EyeOff,
-      label: item.dismiss_reason
-        ? `Dismissed: ${item.dismiss_reason}`
-        : "Dismissed",
-    });
-  }
-  if (statuses.length === 0) return null;
-  return (
-    <ul className="absolute top-1.5 left-1.5 flex items-center gap-1.5 rounded bg-black/70 px-1.5 py-1 text-white">
-      {statuses.map(({ icon: Icon, label }) => (
-        <li key={label} title={label}>
-          <Icon aria-hidden="true" className="size-3.5" />
-          <span className="sr-only">{label}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** A card's "more actions" menu: queue it, and (when allowed) dismiss it. */
-function CardMenu({
-  item,
-  queue,
-  onDismiss,
-}: {
-  item: FeedItem;
-  queue: ReturnType<typeof useQueueToggle>;
-  onDismiss?: (reason: string | null) => void;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative z-10 -mt-1 -mr-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/card:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100 [@media(hover:hover)]:data-popup-open:opacity-100"
-          />
-        }
-        aria-label={`More actions for ${item.title}`}
-      >
-        <EllipsisVertical className="size-5" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56 py-2">
-        <DropdownMenuItem
-          disabled={!queue.ready}
-          onClick={queue.toggle}
-          className="px-3 py-2"
-        >
-          {queue.queued ? <ListMinus /> : <ListPlus />}
-          {queue.queued ? "Remove from queue" : "Add to queue"}
-        </DropdownMenuItem>
-        {onDismiss && (
-          <>
-            <DropdownMenuSeparator className="my-2" />
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="px-3">Dismiss</DropdownMenuLabel>
-              {DISMISS_REASONS.map((reason) => (
-                <DropdownMenuItem
-                  key={reason}
-                  onClick={() => onDismiss(reason)}
-                  className="px-3 py-2"
-                >
-                  <EyeOff />
-                  {reason}
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuItem
-                onClick={() => onDismiss(null)}
-                className="px-3 py-2 pl-9.5 text-muted-foreground"
-              >
-                No reason
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-          </>
-        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

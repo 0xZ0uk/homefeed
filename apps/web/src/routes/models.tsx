@@ -26,7 +26,7 @@ function Models() {
   return (
     <AppShell className="flex max-w-4xl flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <h2 className="text-xl font-semibold">Ranking models</h2>
+        <h1 className="text-xl font-semibold">Ranking models</h1>
         <p className="text-muted-foreground">
           A new model is trained each night on your ratings and becomes active
           only if it ranks the newest ratings about as well as the current one.
@@ -67,7 +67,7 @@ function ModelRow({ version }: { version: ModelVersion }) {
   return (
     <li className="flex flex-col gap-2 py-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-        <h3 className="flex items-baseline gap-2 font-medium">
+        <h2 className="flex items-baseline gap-2 font-medium">
           Version {version.id}
           <span className="text-sm font-normal text-muted-foreground">
             {formatKind(version.kind)}
@@ -77,7 +77,7 @@ function ModelRow({ version }: { version: ModelVersion }) {
               Active
             </span>
           )}
-        </h3>
+        </h2>
         {!version.active &&
           (version.compatible ? (
             <Button

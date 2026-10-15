@@ -12,8 +12,12 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+from homefeed_core import channel_hides
 from homefeed_core.config import Settings, get_settings
+from homefeed_core.curation import list_channels, upsert_channel
 from homefeed_core.db import get_session_factory
+from homefeed_core.gateway.fake import make_channel
+from homefeed_core.trials import start_trial
 from homefeed_core.user_settings import UserSettings, default_user_settings, update_user_settings
 from homefeed_worker import scheduler
 from homefeed_worker.scheduler import (
@@ -26,6 +30,7 @@ from homefeed_worker.scheduler import (
     poll_subscriptions,
     register_jobs,
     run_gateway_smoke_test,
+    settle_channel_trials,
     train_model,
 )
 
@@ -91,6 +96,45 @@ def test_training_runs_the_nightly_trainer(monkeypatch: pytest.MonkeyPatch) -> N
     assert calls == ["train"]
 
 
+def test_build_scheduler_registers_trial_settling_shortly_before_the_feed() -> None:
+    job = jobs_by_id(user=user(feed_refresh_time=time(7, 30)))["settle_trials"]
+
+    assert job.func is settle_channel_trials
+    assert isinstance(job.trigger, CronTrigger)
+    fields = {field.name: str(field) for field in job.trigger.fields}
+    assert (fields["hour"], fields["minute"]) == ("7", "25")
+    assert job.max_instances == 1
+    assert job.coalesce is True
+    assert job.next_run_time is not None  # also settles right away on startup
+
+
+def test_trial_settling_stays_before_the_feed_across_midnight() -> None:
+    job = jobs_by_id(user=user(feed_refresh_time=time(0, 3)))["settle_trials"]
+
+    fields = {field.name: str(field) for field in job.trigger.fields}
+    assert (fields["hour"], fields["minute"]) == ("23", "58")
+
+
+def test_trial_job_keeps_what_earned_it_and_ends_the_rest() -> None:
+    old_trial = datetime.now(UTC) - timedelta(days=30)
+    running = datetime.now(UTC) - timedelta(days=2)
+    stale, current = (
+        make_channel("UC" + "s" * 22, title="Stale"),
+        make_channel("UC" + "c" * 22, title="Current"),
+    )
+    with get_session_factory().begin() as session:
+        for channel, started in ((stale, old_trial), (current, running)):
+            upsert_channel(session, channel)
+            start_trial(session, channel.id, now=started)
+
+    settle_channel_trials()
+
+    with get_session_factory()() as session:
+        assert [c.channel_id for c in list_channels(session)] == [current.id]
+        hide = channel_hides.get_hide(session, stale.id)
+        assert hide is not None and hide.kind == "dismissed"
+
+
 def test_daily_feed_waits_for_refresh_time_unless_asked_to_build_now() -> None:
     later = jobs_by_id(user=user(feed_refresh_time=time(6, 0)))["daily_feed"]
     now = jobs_by_id(user=user(feed_refresh_time=time(6, 0)), build_feed_now=True)["daily_feed"]
@@ -107,14 +151,16 @@ def test_jobs_run_the_given_functions() -> None:
         enrich=lambda: calls.append("enrich"),
         build_feed=lambda: calls.append("feed"),
         train=lambda: calls.append("train"),
+        settle=lambda: calls.append("settle"),
     )
 
     jobs["poll_subscriptions"].func()
     jobs["enrich_candidates"].func()
     jobs["daily_feed"].func()
     jobs["train_model"].func()
+    jobs["settle_trials"].func()
 
-    assert calls == ["poll", "enrich", "feed", "train"]
+    assert calls == ["poll", "enrich", "feed", "train", "settle"]
 
 
 def test_daily_feed_gathers_and_enriches_before_ranking(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -312,6 +358,7 @@ def test_start_background_scheduler_starts_with_catch_up(
             enrich=lambda: calls.append("enrich"),
             build_feed=lambda: calls.append("feed"),
             train=lambda: calls.append("train"),
+            settle=lambda: calls.append("settle"),
             **kwargs,
         )
 
@@ -351,6 +398,7 @@ def test_daily_jobs_follow_the_stored_user_settings() -> None:
     jobs = jobs_by_id()
 
     assert cron_at(jobs["daily_feed"]) == ("8", "15", "Asia/Tokyo")
+    assert cron_at(jobs["settle_trials"]) == ("8", "10", "Asia/Tokyo")
     assert cron_at(jobs["train_model"]) == ("1", "5", "Asia/Tokyo")
 
 
@@ -385,6 +433,9 @@ def test_settings_check_reschedules_changed_times_and_time_zone() -> None:
         feed = background.get_job("daily_feed")
         assert feed is not None
         assert cron_at(feed) == ("9", "45", "Europe/Lisbon")
+        settling = background.get_job("settle_trials")
+        assert settling is not None
+        assert cron_at(settling) == ("9", "40", "Europe/Lisbon")  # follows the feed time
         local = feed.next_run_time.astimezone(ZoneInfo("Europe/Lisbon"))
         assert (local.hour, local.minute) == (9, 45)
         training = background.get_job("train_model")

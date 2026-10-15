@@ -1,26 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
 import {
   Link,
+  useLocation,
   useMatch,
   useNavigate,
-  type LinkProps,
 } from "@tanstack/react-router";
-import {
-  Activity,
-  ChartLine,
-  Compass,
-  Cpu,
-  EyeOff,
-  History,
-  House,
-  Menu,
-  Search,
-  Settings,
-  SlidersHorizontal,
-  SquarePlay,
-  Tag,
-  type LucideIcon,
-} from "lucide-react";
+import { Menu, Search } from "lucide-react";
 import {
   useState,
   useSyncExternalStore,
@@ -28,47 +12,24 @@ import {
   type ReactNode,
 } from "react";
 
-import { LogoutButton } from "#/components/LogoutButton";
-import { QueueDock } from "#/components/QueueDock";
+import { AccountMenu } from "#/components/AccountMenu";
+import { QueueSheet, openQueue } from "#/components/QueueSheet";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
-import { Separator } from "#/components/ui/separator";
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetTitle,
 } from "#/components/ui/sheet";
-import { mutedTags, subscribedTags } from "#/lib/tag-subscriptions";
+import {
+  DESTINATIONS,
+  locateNav,
+  type NavDestination,
+  type NavPage,
+  type NavSpot,
+} from "#/lib/nav";
 import { cn } from "#/lib/utils";
-import { tagSubscriptionsQuery } from "#/server/tag-subscriptions";
-
-type NavItem = {
-  to: LinkProps["to"];
-  label: string;
-  icon: LucideIcon;
-  exact?: boolean;
-};
-
-/** The guide's sections, YouTube-style: your stuff, then finding more, then
- * the app itself. */
-const NAV: NavItem[][] = [
-  [
-    { to: "/", label: "Today", icon: House, exact: true },
-    { to: "/history", label: "History", icon: History },
-    { to: "/playlists", label: "Playlists", icon: SquarePlay },
-  ],
-  [
-    { to: "/discover", label: "Discover", icon: Compass },
-    { to: "/subscriptions", label: "Subscriptions", icon: SlidersHorizontal },
-    { to: "/insights", label: "Insights", icon: ChartLine },
-    { to: "/models", label: "Models", icon: Cpu },
-  ],
-  [
-    { to: "/settings", label: "Settings", icon: Settings },
-    { to: "/status", label: "Status", icon: Activity },
-  ],
-];
 
 // Whether the docked guide is full width or the mini rail. Every page renders
 // its own shell, so this lives outside React to survive navigation.
@@ -87,12 +48,16 @@ const guideStore = {
 };
 
 /**
- * Every signed-in page's frame, after YouTube's: a masthead with the menu
- * button, logo, search box, the page's own `actions` and log out, the guide
- * (the main navigation) down the left, and the queue docked at the bottom
- * right. On wide screens the guide is docked and the menu button
- * switches it between full width and a mini rail; on narrow screens, or with
+ * Every signed-in page's frame: a masthead with the menu button, logo, search
+ * box, the page's own `actions`, the queue and the account menu; the guide (the
+ * main navigation, four destinations) down the left; and the page itself in
+ * `<main>`. On wide screens the guide is docked and the menu button switches it
+ * between full width and a mini rail; on narrow screens, or with
  * `guide="drawer"` (the watch page), it opens as a drawer instead.
+ *
+ * The first stop for Tab is "Skip to content", and `<main>` takes focus when
+ * you navigate to another page (see `NavigationFocus`). The page puts its title
+ * in an `<h1>`.
  */
 export function AppShell({
   children,
@@ -101,7 +66,7 @@ export function AppShell({
   guide = "docked",
 }: {
   children: ReactNode;
-  /** Page-specific controls for the masthead, shown before log out. */
+  /** Page-specific controls for the masthead, shown before the queue. */
   actions?: ReactNode;
   /** Classes for the `<main>` element, e.g. its max width. */
   className?: string;
@@ -125,7 +90,7 @@ export function AppShell({
 
   return (
     <div className="min-h-svh">
-      <h1 className="sr-only">Homefeed</h1>
+      <SkipLink />
       {/* Equal outer columns keep the search box centred on the screen, not
           in whatever space the logo and the page's actions leave. */}
       <header className="sticky top-0 z-40 grid h-14 grid-cols-[1fr_auto] items-center gap-4 bg-background px-2 sm:grid-cols-[1fr_minmax(0,36rem)_1fr] sm:px-4">
@@ -154,7 +119,8 @@ export function AppShell({
             <Search className="size-5" />
           </Button>
           {actions}
-          <LogoutButton />
+          <QueueSheet />
+          <AccountMenu />
         </div>
       </header>
 
@@ -195,16 +161,37 @@ export function AppShell({
           </aside>
         )}
         <main
+          id="main"
+          tabIndex={-1}
           className={cn(
-            "mx-auto w-full min-w-0 flex-1 px-4 pt-2 pb-24 sm:px-6",
+            "mx-auto w-full min-w-0 flex-1 px-4 pt-2 pb-16 outline-none sm:px-6",
             className,
           )}
         >
           {children}
         </main>
       </div>
-      <QueueDock />
     </div>
+  );
+}
+
+/**
+ * "Skip to content": the first stop for Tab. It waits just above the viewport
+ * and slides into view when it has focus. It moves focus to `<main>` without
+ * adding `#main` to the address.
+ */
+function SkipLink() {
+  return (
+    <a
+      href="#main"
+      onClick={(event) => {
+        event.preventDefault();
+        document.getElementById("main")?.focus();
+      }}
+      className="fixed top-2 left-2 z-50 -translate-y-[calc(100%+1rem)] rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground outline-none focus:translate-y-0 focus-visible:ring-3 focus-visible:ring-ring/50"
+    >
+      Skip to content
+    </a>
   );
 }
 
@@ -220,7 +207,10 @@ function Logo() {
       >
         <span className="ml-0.5 size-0 border-y-[0.3rem] border-l-[0.5rem] border-y-transparent border-l-white" />
       </span>
-      <span className="text-lg font-semibold tracking-tighter">Homefeed</span>
+      {/* The name stays for screen readers where the masthead has no room. */}
+      <span className="text-lg font-semibold tracking-tighter max-[24rem]:sr-only">
+        Homefeed
+      </span>
     </Link>
   );
 }
@@ -272,93 +262,128 @@ function MastheadSearchForm({ query }: { query: string }) {
   );
 }
 
-/** The full-width guide: each section's links with icon and label, then the
- * tags you subscribe to and, below them, the ones you muted. */
+/** What `aria-current` says about a destination: "page" on its own page (the
+ * hub, or Today's feed), "true" when you're on one of its pages. */
+function currentOf(
+  destination: NavDestination,
+  spot: NavSpot | null,
+): "page" | "true" | undefined {
+  if (spot?.destination !== destination) return undefined;
+  return spot.atDestination ? "page" : "true";
+}
+
+/** The full-width guide: the four destinations, and under the one you're in,
+ * the pages that belong to it. */
 function Guide({ onNavigate }: { onNavigate?: () => void }) {
-  const { data: subscriptions } = useQuery(tagSubscriptionsQuery);
-  const tags = subscribedTags(subscriptions ?? []);
-  const muted = mutedTags(subscriptions ?? []);
+  const { pathname, search } = useLocation();
+  const spot = locateNav(pathname, search);
 
   return (
-    <nav aria-label="Main" className="flex flex-col px-3 pb-6">
-      {NAV.map((section, index) => (
-        <div key={index} className="flex flex-col">
-          {index > 0 && <Separator className="my-3" />}
-          {section.map(({ to, label, icon: Icon, exact }) => (
-            <Link
-              key={label}
-              to={to}
-              activeOptions={{ exact }}
-              onClick={onNavigate}
-              className="group flex h-10 items-center gap-6 rounded-lg px-3 text-sm outline-none hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/50 aria-[current=page]:bg-secondary aria-[current=page]:font-medium"
-            >
-              <Icon className="size-5 shrink-0 group-aria-[current=page]:stroke-[2.5]" />
-              {label}
-            </Link>
-          ))}
-        </div>
-      ))}
-      {tags.length > 0 && (
-        <div className="flex flex-col">
-          <Separator className="my-3" />
-          <h2 className="px-3 py-1.5 text-base font-medium">Tags</h2>
-          <ul aria-label="Subscribed tags" className="flex flex-col">
-            {tags.map(({ slug, label }) => (
-              <li key={slug}>
-                <Link
-                  to="/tags/$slug"
-                  params={{ slug }}
-                  onClick={onNavigate}
-                  className="group flex h-10 items-center gap-6 rounded-lg px-3 text-sm outline-none hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/50 aria-[current=page]:bg-secondary aria-[current=page]:font-medium"
-                >
-                  <Tag className="size-5 shrink-0 group-aria-[current=page]:stroke-[2.5]" />
-                  <span className="min-w-0 truncate">{label}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {muted.length > 0 && (
-        <div className="flex flex-col">
-          <Separator className="my-3" />
-          <h2 className="px-3 py-1.5 text-base font-medium">Muted tags</h2>
-          <ul aria-label="Muted tags" className="flex flex-col">
-            {muted.map(({ slug, label }) => (
-              <li key={slug}>
-                <Link
-                  to="/tags/$slug"
-                  params={{ slug }}
-                  onClick={onNavigate}
-                  className="group flex h-10 items-center gap-6 rounded-lg px-3 text-sm text-muted-foreground outline-none hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/50 aria-[current=page]:bg-secondary aria-[current=page]:font-medium"
-                >
-                  <EyeOff className="size-5 shrink-0 group-aria-[current=page]:stroke-[2.5]" />
-                  <span className="min-w-0 truncate">{label}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+    <nav aria-label="Main" className="px-3 pb-6">
+      <ul className="flex flex-col">
+        {DESTINATIONS.map((destination) => {
+          const { label, to, icon: Icon, pages } = destination;
+          const current = currentOf(destination, spot);
+          return (
+            <li key={to}>
+              <Link
+                to={to}
+                activeOptions={{ exact: true }}
+                aria-current={current}
+                onClick={onNavigate}
+                className="group flex h-10 items-center gap-6 rounded-lg px-3 text-sm outline-none hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/50 aria-[current=page]:bg-secondary aria-[current]:font-medium"
+              >
+                <Icon className="size-5 shrink-0 group-aria-[current]:stroke-[2.5]" />
+                {label}
+              </Link>
+              {current && pages.length > 0 && (
+                <ul aria-label={`In ${label}`} className="flex flex-col">
+                  {pages.map((page) => (
+                    <li key={page.label}>
+                      <PageLink
+                        page={page}
+                        current={spot?.page === page}
+                        onNavigate={onNavigate}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </nav>
   );
 }
 
-/** The collapsed guide: every link as an icon over a tiny label. */
-function MiniGuide() {
+/** One of a destination's pages in the guide, indented under its label. The
+ * queue isn't a page: its entry opens the queue sheet. */
+function PageLink({
+  page,
+  current,
+  onNavigate,
+}: {
+  page: NavPage;
+  current: boolean;
+  onNavigate?: () => void;
+}) {
+  const className =
+    "flex h-9 w-full items-center rounded-lg pr-3 pl-14 text-left text-sm text-muted-foreground outline-none hover:bg-secondary hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 aria-[current=page]:bg-secondary aria-[current=page]:font-medium aria-[current=page]:text-foreground";
+
+  if ("opens" in page) {
+    return (
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        onClick={() => {
+          onNavigate?.();
+          openQueue();
+        }}
+        className={className}
+      >
+        {page.label}
+      </button>
+    );
+  }
   return (
-    <nav aria-label="Main" className="flex flex-col gap-1 px-1 pt-1">
-      {NAV.flat().map(({ to, label, icon: Icon, exact }) => (
-        <Link
-          key={label}
-          to={to}
-          activeOptions={{ exact }}
-          className="group flex flex-col items-center gap-1.5 rounded-lg py-3 text-[0.625rem] outline-none hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/50 aria-[current=page]:font-medium"
-        >
-          <Icon className="size-5 group-aria-[current=page]:stroke-[2.5]" />
-          {label}
-        </Link>
-      ))}
+    <Link
+      to={page.to}
+      search={page.search}
+      aria-current={current ? "page" : undefined}
+      onClick={onNavigate}
+      className={className}
+    >
+      {page.label}
+    </Link>
+  );
+}
+
+/** The collapsed guide: the four destinations as an icon over a small label. */
+function MiniGuide() {
+  const { pathname, search } = useLocation();
+  const spot = locateNav(pathname, search);
+
+  return (
+    <nav aria-label="Main" className="px-1 pt-1">
+      <ul className="flex flex-col gap-1">
+        {DESTINATIONS.map((destination) => {
+          const { label, to, icon: Icon } = destination;
+          return (
+            <li key={to}>
+              <Link
+                to={to}
+                activeOptions={{ exact: true }}
+                aria-current={currentOf(destination, spot)}
+                className="group flex flex-col items-center gap-1.5 rounded-lg py-3 text-xs outline-none hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/50 aria-[current]:bg-secondary aria-[current]:font-medium"
+              >
+                <Icon className="size-5 group-aria-[current]:stroke-[2.5]" />
+                {label}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
     </nav>
   );
 }

@@ -1,37 +1,69 @@
 /**
- * The pure parts of the feed grid: filtering by length (the chips above it),
+ * The pure parts of the feed grid: filtering by intent (the chips above it),
  * sorting, and giving each channel a colour for its avatar and placeholder
  * thumbnails.
  */
 
-export type LengthFilter = "all" | "short" | "medium" | "long";
+import { DEEP_DIVE_DEPTH } from "#/lib/card";
 
-export const LENGTH_FILTERS: { value: LengthFilter; label: string }[] = [
+/**
+ * What I might be in the mood for: everything, something from a channel I
+ * don't follow, a short watch, a medium one or something that rewards time.
+ */
+export type FeedFilter = "all" | "new" | "quick" | "medium" | "deep";
+
+export const FEED_FILTERS: { value: FeedFilter; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "short", label: "Under 10 min" },
+  { value: "new", label: "New to me" },
+  { value: "quick", label: "Quick" },
   { value: "medium", label: "10–30 min" },
-  { value: "long", label: "Over 30 min" },
+  { value: "deep", label: "Deep dives" },
 ];
 
 const TEN_MINUTES = 600;
 const THIRTY_MINUTES = 1800;
 
-/** Whether a video of `seconds` belongs under `filter`. Unknown lengths only
- * show under "all". */
-export function matchesLength(
-  seconds: number | null | undefined,
-  filter: LengthFilter,
-): boolean {
-  if (filter === "all") return true;
-  if (seconds == null || seconds < 0) return false;
-  if (filter === "short") return seconds < TEN_MINUTES;
-  if (filter === "medium")
-    return seconds < THIRTY_MINUTES && seconds >= TEN_MINUTES;
-  return seconds >= THIRTY_MINUTES;
+/** What the filters read from a feed item. */
+export interface FilterableItem {
+  channel_subscribed?: boolean;
+  duration_seconds?: number | null;
+  llm?: { depth: number } | null;
 }
 
-export function isLengthFilter(value: unknown): value is LengthFilter {
-  return LENGTH_FILTERS.some((filter) => filter.value === value);
+/**
+ * Whether `item` belongs under `filter`.
+ *
+ * - "New to me": its channel isn't one I subscribe to.
+ * - "Quick": under 10 minutes. "10–30 min": from 10 up to 30 minutes. Both
+ *   leave out a video whose length is unknown.
+ * - "Deep dives": the ones a card flags as such, deep by the LLM's score
+ *   (see `DEEP_DIVE_DEPTH`) or, while it hasn't scored the video yet, over 30
+ *   minutes.
+ */
+export function matchesFilter(
+  item: FilterableItem,
+  filter: FeedFilter,
+): boolean {
+  const seconds = item.duration_seconds;
+  const known = seconds != null && seconds >= 0;
+  switch (filter) {
+    case "all":
+      return true;
+    case "new":
+      return item.channel_subscribed === false;
+    case "quick":
+      return known && seconds < TEN_MINUTES;
+    case "medium":
+      return known && seconds >= TEN_MINUTES && seconds < THIRTY_MINUTES;
+    case "deep":
+      return item.llm
+        ? item.llm.depth >= DEEP_DIVE_DEPTH
+        : known && seconds >= THIRTY_MINUTES;
+  }
+}
+
+export function isFeedFilter(value: unknown): value is FeedFilter {
+  return FEED_FILTERS.some((filter) => filter.value === value);
 }
 
 export type FeedSort =

@@ -1,5 +1,9 @@
 import {
+  endChannelTrial,
+  keepChannelTrial,
+  listChannelHealth,
   listChannels,
+  startChannelTrial,
   subscribeChannel,
   unsubscribeChannel,
   updateChannel,
@@ -9,17 +13,12 @@ import {
 import { queryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 
+import { PICKS_WINDOW_DAYS } from "#/lib/channel-health";
+import { PRIORS } from "#/lib/channels";
+import { isChannelId } from "#/lib/discover";
 import { apiClient, apiErrorMessage } from "#/server/api";
 
 /** Server functions for the Subscriptions page's channels tab. */
-
-export type Prior = SubscribedChannel["prior"];
-export const PRIORS: readonly Prior[] = [
-  "love",
-  "like",
-  "neutral",
-  "skeptical",
-];
 
 export type SubscribeResult =
   | { ok: true; channel: SubscribedChannel; created: boolean }
@@ -40,6 +39,25 @@ const getChannels = createServerFn({ method: "GET" }).handler(async () => {
 export const channelsQuery = queryOptions({
   queryKey: ["channels"],
   queryFn: () => getChannels(),
+});
+
+const getChannelHealth = createServerFn({ method: "GET" }).handler(async () => {
+  const { data } = await listChannelHealth({
+    client: apiClient(),
+    query: { days: PICKS_WINDOW_DAYS },
+    throwOnError: true,
+  });
+  return data;
+});
+
+/**
+ * Per channel: picks lately, how many were watched, ratings and when it was
+ * last watched. Under the channels' key, so whatever refreshes the channels
+ * refreshes these too.
+ */
+export const channelHealthQuery = queryOptions({
+  queryKey: ["channels", "health"],
+  queryFn: () => getChannelHealth(),
 });
 
 export const subscribe = createServerFn({ method: "POST" })
@@ -78,11 +96,18 @@ export const updatePrefs = createServerFn({ method: "POST" })
     if (data.prior != null && !PRIORS.includes(data.prior)) {
       throw new Error(`Unknown prior ${String(data.prior)}`);
     }
+    if (
+      data.mute_days != null &&
+      (!Number.isInteger(data.mute_days) || data.mute_days < 1)
+    ) {
+      throw new Error("mute_days must be a whole number of days");
+    }
     return {
       channelId: data.channelId,
       prior: data.prior ?? undefined,
       pinned: typeof data.pinned === "boolean" ? data.pinned : undefined,
       muted: typeof data.muted === "boolean" ? data.muted : undefined,
+      mute_days: data.mute_days ?? undefined,
     };
   })
   .handler(async ({ data: { channelId, ...body } }) => {
@@ -104,6 +129,51 @@ export const unsubscribe = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }) => {
     await unsubscribeChannel({
+      client: apiClient(),
+      path: { channel_id: data.channelId },
+      throwOnError: true,
+    });
+  });
+
+function channelIdOf(data: { channelId: string }): { channelId: string } {
+  if (typeof data.channelId !== "string" || !isChannelId(data.channelId)) {
+    throw new Error("channelId must be a YouTube channel id");
+  }
+  return { channelId: data.channelId };
+}
+
+/**
+ * Subscribe to a channel you already know of (a suggestion) on a trial of two
+ * weeks. `created` is false if you were subscribed already, trial or not.
+ */
+export const startTrial = createServerFn({ method: "POST" })
+  .inputValidator(channelIdOf)
+  .handler(async ({ data }) => {
+    const { data: channel, response } = await startChannelTrial({
+      client: apiClient(),
+      path: { channel_id: data.channelId },
+      throwOnError: true,
+    });
+    return { channel, created: response.status === 201 };
+  });
+
+/** Make a trial a plain subscription. */
+export const keepTrial = createServerFn({ method: "POST" })
+  .inputValidator(channelIdOf)
+  .handler(async ({ data }) => {
+    const { data: channel } = await keepChannelTrial({
+      client: apiClient(),
+      path: { channel_id: data.channelId },
+      throwOnError: true,
+    });
+    return channel;
+  });
+
+/** End a trial now: unsubscribe, and don't suggest the channel again. */
+export const endTrial = createServerFn({ method: "POST" })
+  .inputValidator(channelIdOf)
+  .handler(async ({ data }) => {
+    await endChannelTrial({
       client: apiClient(),
       path: { channel_id: data.channelId },
       throwOnError: true,

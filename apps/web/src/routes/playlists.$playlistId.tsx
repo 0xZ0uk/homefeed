@@ -228,7 +228,7 @@ function PlaylistHeading({ playlist }: { playlist: Playlist }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <h2 className="text-xl font-semibold break-words">{playlist.name}</h2>
+        <h1 className="text-xl font-semibold break-words">{playlist.name}</h1>
         <div className="flex items-center gap-2">
           <Button
             ref={editRef}
@@ -492,7 +492,7 @@ function ItemRow({
         {item.position + 1}
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <h3 className="font-medium break-words">
+        <h2 className="font-medium break-words">
           <Link
             id={itemTitleId(item.video_id)}
             to="/watch/$videoId"
@@ -501,7 +501,7 @@ function ItemRow({
           >
             {title}
           </Link>
-        </h3>
+        </h2>
         {(item.channel_title || duration) && (
           <p className="flex flex-wrap gap-x-2 text-sm text-muted-foreground">
             {item.channel_title && <span>{item.channel_title}</span>}

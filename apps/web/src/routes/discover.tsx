@@ -18,6 +18,7 @@ export const Route = createFileRoute("/discover")({
 function Discover() {
   return (
     <AppShell className="flex max-w-4xl flex-col gap-6">
+      <h1 className="text-2xl font-bold">Discover</h1>
       <SuggestedChannels />
     </AppShell>
   );
@@ -33,6 +34,7 @@ function DiscoverError() {
 
   return (
     <AppShell className="flex max-w-4xl flex-col gap-6">
+      <h1 className="text-2xl font-bold">Discover</h1>
       <div role="alert" className="flex flex-col items-start gap-3">
         <p>Couldn't load suggestions. The API may be down.</p>
         <button

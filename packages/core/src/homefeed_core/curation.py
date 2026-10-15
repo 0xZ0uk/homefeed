@@ -5,6 +5,11 @@ A channel is subscribed while it has a row in `channel_prefs`. Subscribing resol
 pasted URL through the Gateway and upserts the channel into `channels`; unsubscribing
 removes the preferences but keeps the channel (its videos and ratings still refer to it).
 
+A channel is muted for good (`muted`) or until a time (`muted_until`, "Mute for a month":
+it comes back by itself, with nothing to undo); the ranker, the poller, tag discovery and
+the channel graph treat both as muted (`muted_sql`). A channel can also be on trial
+(`trial_until`, see homefeed_core.trials).
+
 A keyword mute drops every video whose title or description contains the keyword (see
 `ranker.KeywordMutes` for the matching). Keywords are unique ignoring case.
 
@@ -24,7 +29,7 @@ migration 0025 for what carried over.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal, get_args
 
 from sqlalchemy import text
@@ -48,6 +53,9 @@ PRIOR_VALUES: dict[Prior, float] = {"love": 0.8, "like": 0.4, "neutral": 0.0, "s
 
 # Longest keyword mute, in characters.
 KEYWORD_MAX_LENGTH = 100
+
+# The longest a channel can be muted for (`update_channel(mute_days=...)`), in days.
+MAX_MUTE_DAYS = 365
 
 # The weight of a tag subscription made by subscribing.
 SUBSCRIBE_WEIGHT = 0.5
@@ -74,16 +82,29 @@ class SubscribedChannel:
     thumbnail_url: str | None
     prior: Prior
     pinned: bool
-    muted: bool
+    muted: bool  # muted for good; `muted_until` is a mute that ends
+    muted_until: str | None  # ISO 8601 UTC; set only while it is still ahead
+    trial_until: str | None  # ISO 8601 UTC; on trial until then (see homefeed_core.trials)
     subscribed_at: str  # ISO 8601 UTC
     updated_at: str  # ISO 8601 UTC; when the preferences last changed
 
 
 _SELECT = """
     SELECT c.id, c.title, c.handle, c.url, c.thumbnail_url,
-           p.prior, p.pinned, p.muted, p.subscribed_at, p.updated_at
+           p.prior, p.pinned, p.muted, p.muted_until, p.trial_until,
+           p.subscribed_at, p.updated_at
     FROM channel_prefs AS p JOIN channels AS c ON c.id = p.channel_id
 """
+
+
+def muted_sql(alias: str = "p") -> str:
+    """The SQL condition for a `channel_prefs` row, aliased `alias`, being muted right now:
+    muted for good, or until a time that is still ahead. It needs a `:now` bind parameter
+    (ISO 8601 UTC, see `format_timestamp`). This is the one place the two kinds of mute
+    meet, so everything that skips muted channels asks it."""
+    return (
+        f"({alias}.muted = 1 OR ({alias}.muted_until IS NOT NULL AND {alias}.muted_until > :now))"
+    )
 
 
 def subscribe(session: Session, gateway: Gateway, url: str) -> tuple[SubscribedChannel, bool]:
@@ -113,17 +134,22 @@ def subscribe(session: Session, gateway: Gateway, url: str) -> tuple[SubscribedC
     return subscription, inserted is not None
 
 
-def list_channels(session: Session) -> list[SubscribedChannel]:
-    """All subscriptions, pinned first, then by title."""
+def list_channels(session: Session, *, now: datetime | None = None) -> list[SubscribedChannel]:
+    """All subscriptions, pinned first, then by title. `now` (default: the current time)
+    decides whether a timed mute is still on."""
+    at = format_timestamp(now or datetime.now(UTC))
     rows = session.execute(text(f"{_SELECT} ORDER BY p.pinned DESC, c.title COLLATE NOCASE, c.id"))
-    return [_from_row(row) for row in rows]
+    return [_from_row(row, at) for row in rows]
 
 
-def get_channel(session: Session, channel_id: str) -> SubscribedChannel | None:
+def get_channel(
+    session: Session, channel_id: str, *, now: datetime | None = None
+) -> SubscribedChannel | None:
+    at = format_timestamp(now or datetime.now(UTC))
     row = session.execute(
         text(f"{_SELECT} WHERE p.channel_id = :id"), {"id": channel_id}
     ).one_or_none()
-    return None if row is None else _from_row(row)
+    return None if row is None else _from_row(row, at)
 
 
 def subscribed_channel_ids(session: Session) -> list[str]:
@@ -138,16 +164,33 @@ def update_channel(
     prior: Prior | None = None,
     pinned: bool | None = None,
     muted: bool | None = None,
+    mute_days: int | None = None,
+    now: datetime | None = None,
 ) -> SubscribedChannel | None:
     """Change the given preferences (`None` leaves one as is). Returns `None` if the
-    channel isn't subscribed."""
+    channel isn't subscribed.
+
+    A channel is either not muted, muted for good (`muted`) or muted for `mute_days`
+    days (`muted_until`; it comes back by itself). Setting `muted` either way replaces a
+    timed mute, and `mute_days` replaces a mute for good, so only one kind is ever set.
+    Giving both, or `mute_days` outside 1 to `MAX_MUTE_DAYS`, raises `ValueError`.
+    """
     if prior is not None and prior not in PRIORS:
         raise ValueError(f"Unknown prior {prior!r}")
-    changes = {
+    if muted is not None and mute_days is not None:
+        raise ValueError("Give either muted or mute_days, not both")
+    if mute_days is not None and not 1 <= mute_days <= MAX_MUTE_DAYS:
+        raise ValueError(f"mute_days must be between 1 and {MAX_MUTE_DAYS}")
+    changes: dict[str, Any] = {
         name: value
         for name, value in (("prior", prior), ("pinned", pinned), ("muted", muted))
         if value is not None
     }
+    if muted is not None:
+        changes["muted_until"] = None
+    if mute_days is not None:
+        until = (now or datetime.now(UTC)) + timedelta(days=mute_days)
+        changes.update(muted=False, muted_until=format_timestamp(until))
     if changes:
         assignments = ", ".join(f"{name} = :{name}" for name in changes)
         session.execute(
@@ -157,7 +200,7 @@ def update_channel(
             ),
             {"id": channel_id, **changes},
         )
-    return get_channel(session, channel_id)
+    return get_channel(session, channel_id, now=now)
 
 
 def unsubscribe(session: Session, channel_id: str) -> bool:
@@ -450,8 +493,21 @@ def upsert_channel(session: Session, channel: Channel) -> None:
     )
 
 
-def _from_row(row: Sequence[Any]) -> SubscribedChannel:
-    (channel_id, title, handle, url, thumbnail_url, prior, pinned, muted, subscribed, updated) = row
+def _from_row(row: Sequence[Any], now: str) -> SubscribedChannel:
+    (
+        channel_id,
+        title,
+        handle,
+        url,
+        thumbnail_url,
+        prior,
+        pinned,
+        muted,
+        muted_until,
+        trial_until,
+        subscribed,
+        updated,
+    ) = row
     return SubscribedChannel(
         channel_id=channel_id,
         title=title,
@@ -461,6 +517,9 @@ def _from_row(row: Sequence[Any]) -> SubscribedChannel:
         prior=prior,
         pinned=bool(pinned),
         muted=bool(muted),
+        # A mute that has run out is no mute at all, so it isn't reported.
+        muted_until=muted_until if muted_until is not None and muted_until > now else None,
+        trial_until=trial_until,
         subscribed_at=subscribed,
         updated_at=updated,
     )

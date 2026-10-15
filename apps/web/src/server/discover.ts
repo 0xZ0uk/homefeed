@@ -1,11 +1,13 @@
 import {
   getChannelProfile,
+  getChannelUploads,
   getDiscoveryVideos,
   getSuggestedChannels,
   refreshSuggestedChannels,
   type ChannelProfileOut,
   type DiscoveryItemOut,
   type SuggestedChannel,
+  type UploadOut,
 } from "@homefeed/api-client";
 import { queryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
@@ -18,7 +20,7 @@ import { apiClient, apiErrorMessage } from "#/server/api";
  * carousel. Subscribing uses `channels.subscribe`.
  */
 
-export type { ChannelProfileOut, SuggestedChannel };
+export type { ChannelProfileOut, SuggestedChannel, UploadOut };
 export type DiscoveryVideo = DiscoveryItemOut;
 
 /** How many videos the home page's Discovery carousel shows. */
@@ -28,6 +30,8 @@ export const DISCOVERY_LIMIT = 10;
 export const SUGGESTIONS_LIMIT = 20;
 /** How many uploads a channel page lists. */
 export const PROFILE_UPLOADS = 12;
+/** How many of a channel's latest uploads a suggestion's preview shows. */
+export const PREVIEW_UPLOADS = 3;
 
 const fetchSuggestedChannels = createServerFn({ method: "GET" }).handler(
   async (): Promise<SuggestedChannel[]> => {
@@ -112,4 +116,35 @@ export const channelProfileQuery = (channelId: string) =>
     queryKey: ["channels", channelId, "profile"],
     queryFn: () => fetchChannelProfile({ data: { channelId } }),
     staleTime: 5 * 60 * 1000,
+  });
+
+/** A channel's latest few uploads, newest first, for sampling it before subscribing. */
+const fetchChannelPreview = createServerFn({ method: "GET" })
+  .inputValidator((data: { channelId: string }) => {
+    if (typeof data.channelId !== "string" || !isChannelId(data.channelId)) {
+      throw new Error("channelId must be a YouTube channel id");
+    }
+    return { channelId: data.channelId };
+  })
+  .handler(async ({ data }): Promise<UploadOut[]> => {
+    const { data: uploads } = await getChannelUploads({
+      client: apiClient(),
+      path: { channel_id: data.channelId },
+      query: { limit: PREVIEW_UPLOADS },
+      throwOnError: true,
+    });
+    return uploads.videos;
+  });
+
+/**
+ * Loaded when a suggestion's preview is opened, then kept for a few minutes.
+ * Asking YouTube is slow, so a failure is retried once and then shown, with a
+ * button to try again.
+ */
+export const channelPreviewQuery = (channelId: string) =>
+  queryOptions({
+    queryKey: ["channels", channelId, "preview"],
+    queryFn: () => fetchChannelPreview({ data: { channelId } }),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
   });

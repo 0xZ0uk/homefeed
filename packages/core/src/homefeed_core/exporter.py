@@ -4,6 +4,8 @@ The export is one JSON object: a header (`format`, `version`, `schema_version`,
 `exported_at`) followed by the data, grouped by area:
 
 - `ratings`: every 1 to 10 rating, with the video's title and channel when known.
+- `feedback`: every "more like this" (1) or "less like this" (-1) given to a video, with
+  its title and channel.
 - `curation`: subscribed channels with their prefs, tag subscriptions (and mutes),
   keyword mutes, saved searches and external sources.
 - `feeds`: every feed built, with its items (score breakdown, explanation, dismissals).
@@ -152,6 +154,19 @@ SECTIONS: list[ExportSection] = [
             LEFT JOIN videos AS v ON v.id = r.video_id
             LEFT JOIN channels AS c ON c.id = v.channel_id
             ORDER BY r.rated_at, r.video_id
+            """
+        ),
+    ),
+    ExportSection(
+        ("feedback",),
+        _rows(
+            """
+            SELECT f.video_id, f.signal, f.created_at, f.updated_at,
+                   v.title, v.channel_id, c.title AS channel_title
+            FROM video_feedback AS f
+            JOIN videos AS v ON v.id = f.video_id
+            JOIN channels AS c ON c.id = v.channel_id
+            ORDER BY f.created_at, f.video_id
             """
         ),
     ),

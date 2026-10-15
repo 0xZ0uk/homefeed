@@ -13,6 +13,7 @@ from homefeed_core.candidates import list_candidates as pool
 from homefeed_core.curation import subscribe_tag
 from homefeed_core.db import open_database
 from homefeed_core.gateway import RateLimitedError
+from homefeed_core.gateway.events import format_timestamp
 from homefeed_core.gateway.fake import FakeGateway, make_channel, make_video
 from homefeed_core.ratings import set_rating
 from homefeed_core.tag_discovery import (
@@ -223,6 +224,28 @@ def test_videos_of_muted_channels_are_skipped(sessions: sessionmaker[Session]) -
     new = discover(sessions, gateway, per_day=3)
 
     assert new[TAG] == ["w0000000000", "w0000000001"]
+
+
+def test_videos_of_channels_muted_for_a_time_are_skipped_until_it_runs_out(
+    sessions: sessionmaker[Session],
+) -> None:
+    subscribe(sessions, "Woodworking")
+    with sessions.begin() as session:
+        session.execute(
+            text("INSERT INTO channels (id, title) VALUES (:id, 'Metal')"), METAL.__dict__ | {}
+        )
+        session.execute(
+            text("INSERT INTO channel_prefs (channel_id, muted_until) VALUES (:id, :until)"),
+            {"id": METAL.id, "until": format_timestamp(T0 + timedelta(days=1))},
+        )
+    gateway = FakeGateway()
+    gateway.add_search("Woodworking", [*videos("m", 2, METAL), *videos("w", 2)])
+
+    new = discover(sessions, gateway, per_day=3)
+    assert new[TAG] == ["w0000000000", "w0000000001"]
+
+    later = discover(sessions, gateway, per_day=3, at=T0 + timedelta(days=1, hours=1))
+    assert later[TAG] == ["m0000000000", "m0000000001"]  # muted no more
 
 
 def test_a_video_found_by_two_tags_is_recorded_for_the_first(

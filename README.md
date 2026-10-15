@@ -28,7 +28,7 @@ nub run tag            # tag only (same videos as the worker); add --all for eve
 
 ## End-to-end tests
 
-Playwright flows in `apps/e2e` (view the feed, watch and rate, dismiss, edit a channel prior) run the real web app (`vite dev`) and API against a fake Gateway with a throwaway data dir, so they never touch YouTube or your `data/`. The API side is `apps/e2e/fake_api.py`, which seeds two channels and today's feed; tests reset it before each run.
+Playwright flows in `apps/e2e` (view the feed, watch and rate, dismiss, edit a channel prior, try a suggested channel) run the real web app (`vite dev`) and API against a fake Gateway with a throwaway data dir, so they never touch YouTube or your `data/`. The API side is `apps/e2e/fake_api.py`, which seeds two channels and today's feed (plus a channel for Discover to suggest); tests reset it before each run.
 
 ```sh
 nub run --filter @homefeed/e2e e2e:install   # once: download Chromium for Playwright
@@ -96,11 +96,11 @@ Installers (Windows NSIS, Linux AppImage) are built by `.github/workflows/deskto
 
 ## Settings
 
-The feed size and discovery slots, video length bounds, the daily feed and training times, the time zone, LLM tagging (provider, model, OpenRouter API key, videos per run), tag discovery per day and the SponsorBlock categories to skip are edited on the Settings page (API: `GET`/`PATCH /settings`) and stored in the database's `settings` table (`homefeed_core.user_settings`). Until changed there, each follows its `.env` variable (marked `[Settings]` in `.env.example`) or built-in default, so an install configured through `.env` keeps working; "Reset to default" goes back to it. The time zone defaults to the system's (`TZ`) and decides what "today" is and when the daily jobs run. Schedule changes reach the worker (or the API's in-process scheduler) within a minute, without a restart. The OpenRouter API key is kept in plain text in the local SQLite file, like the rest of your data, and the API only ever returns its last four characters. Everything else (paths, URLs, timeouts, embeddings, calibration) stays in `.env`.
+The feed size, discovery slots and the most of a feed one topic may take, video length bounds, the daily feed and training times, the time zone, LLM tagging (provider, model, OpenRouter API key, videos per run), tag discovery per day and the SponsorBlock categories to skip are edited on the Settings page (API: `GET`/`PATCH /settings`) and stored in the database's `settings` table (`homefeed_core.user_settings`). Until changed there, each follows its `.env` variable (marked `[Settings]` in `.env.example`) or built-in default, so an install configured through `.env` keeps working; "Reset to default" goes back to it. The time zone defaults to the system's (`TZ`) and decides what "today" is and when the daily jobs run. Schedule changes reach the worker (or the API's in-process scheduler) within a minute, without a restart. The OpenRouter API key is kept in plain text in the local SQLite file, like the rest of your data, and the API only ever returns its last four characters. Everything else (paths, URLs, timeouts, embeddings, calibration) stays in `.env`.
 
 ## Running the worker inside the API
 
-By default the scheduled jobs (polling, enrichment, the daily feed, nightly training) run in the separate `worker` process, which is what Docker Compose does. Set `RUN_WORKER_IN_API=true` to run them on a background thread of the API process instead (one process, e.g. for a desktop app), and don't start a worker then. Either way, a process that starts after the daily feed or training time (see Settings; a laptop that was asleep or off) builds today's feed and trains the model right away if they're missing or overdue.
+By default the scheduled jobs (polling, enrichment, the daily feed, nightly training, and ending channel trials that ran out) run in the separate `worker` process, which is what Docker Compose does. Set `RUN_WORKER_IN_API=true` to run them on a background thread of the API process instead (one process, e.g. for a desktop app), and don't start a worker then. Either way, a process that starts after the daily feed or training time (see Settings; a laptop that was asleep or off) builds today's feed and trains the model right away if they're missing or overdue.
 
 ## Extractor status and live smoke test
 

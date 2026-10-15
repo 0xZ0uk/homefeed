@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     feed_size: int = 20
     # Feed slots reserved for exploring under-rated channels (Thompson sampling).
     feed_exploration_slots: int = 3
+    # The most of a feed one followed topic (a subscribed tag) may take, as a share of
+    # its size: 0.4 of 20 videos is 8. 1 is no limit. See homefeed_core.composer.
+    feed_max_topic_share: float = Field(default=0.4, ge=0.1, le=1.0)
     # Local time (the user's time zone, by default the process's TZ) when the worker
     # builds the day's feed.
     feed_refresh_time: time = time(6, 0)

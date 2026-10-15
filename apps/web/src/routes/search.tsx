@@ -15,8 +15,8 @@ import {
 import { useState, type FormEvent } from "react";
 
 import { AppShell } from "#/components/AppShell";
+import { ChannelAvatar } from "#/components/ChannelAvatar";
 import { QueueStatus, useQueueToggle } from "#/components/QueueButton";
-import { Avatar, AvatarFallback } from "#/components/ui/avatar";
 import { Button } from "#/components/ui/button";
 import {
   DropdownMenu,
@@ -74,13 +74,13 @@ function Search() {
       <MobileSearchForm key={params.q} query={params.q ?? ""} />
       {params.q ? (
         <>
-          <h2 className="sr-only">Results for “{params.q}”</h2>
+          <h1 className="sr-only">Results for “{params.q}”</h1>
           <Toolbar params={params} />
           <Results params={params} />
         </>
       ) : (
         <div className="flex flex-col gap-2 py-16 text-center">
-          <h2 className="text-xl font-semibold">Search YouTube</h2>
+          <h1 className="text-xl font-semibold">Search YouTube</h1>
           <p className="mx-auto max-w-prose text-pretty text-muted-foreground">
             Find videos on YouTube. Save a search to have its newest videos
             considered for your daily feed.
@@ -143,7 +143,10 @@ function Toolbar({ params }: { params: SearchParams }) {
 
   return (
     <>
-      <div className="sticky top-14 z-30 -mx-1 flex items-center gap-3 bg-background px-1 py-3">
+      <div
+        data-sticky-chips
+        className="sticky top-14 z-30 -mx-1 flex items-center gap-3 bg-background px-1 py-3"
+      >
         <div
           role="group"
           aria-label="Filter by length"
@@ -428,7 +431,7 @@ function ResultRow({ result }: { result: SearchResult }) {
       </div>
       <div className="flex min-w-0 flex-1 gap-2">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <h3 className="line-clamp-2 text-lg leading-snug break-words">
+          <h2 className="line-clamp-2 text-lg leading-snug break-words">
             <Link
               to="/watch/$videoId"
               params={{ videoId: result.id }}
@@ -436,21 +439,18 @@ function ResultRow({ result }: { result: SearchResult }) {
             >
               {result.title}
             </Link>
-          </h3>
+          </h2>
           {(views || upcoming) && (
             <p className="text-xs text-muted-foreground tabular-nums">
               {[views, upcoming && "Upcoming"].filter(Boolean).join(" • ")}
             </p>
           )}
           <p className="flex min-w-0 items-center gap-2 py-2 text-xs text-muted-foreground">
-            <Avatar aria-hidden="true" className="size-6">
-              <AvatarFallback
-                className="text-[0.625rem] font-medium text-white"
-                style={{ backgroundColor: color }}
-              >
-                {result.channel_title.trim().charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+            <ChannelAvatar
+              url={null}
+              title={result.channel_title}
+              className="size-6"
+            />
             <span className="truncate">{result.channel_title}</span>
           </p>
           {result.description && (

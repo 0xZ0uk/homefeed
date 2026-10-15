@@ -126,6 +126,27 @@ def test_stored_values_apply_over_any_environment(sessions: sessionmaker[Session
     assert effective(sessions, Settings(llm_provider="openrouter")).llm_provider == "none"
 
 
+def test_the_share_of_a_feed_one_topic_may_take(sessions: sessionmaker[Session]) -> None:
+    with sessions() as session:
+        built_in = describe_user_settings(session, Settings())
+        from_env = describe_user_settings(session, Settings(feed_max_topic_share=0.25))
+
+    assert built_in.values.feed_max_topic_share == 0.4
+    assert built_in.sources["feed_max_topic_share"] == "default"
+    assert from_env.values.feed_max_topic_share == 0.25
+    assert from_env.sources["feed_max_topic_share"] == "env"
+
+    values = update(sessions, {"feed_max_topic_share": 0.6})
+
+    assert values.feed_max_topic_share == 0.6
+    assert stored(sessions) == {"feed_max_topic_share": 0.6}
+    # The ends of the range are fine.
+    assert update(sessions, {"feed_max_topic_share": 0.1}).feed_max_topic_share == 0.1
+    assert update(sessions, {"feed_max_topic_share": 1.0}).feed_max_topic_share == 1.0
+    assert update(sessions, reset=["feed_max_topic_share"]).feed_max_topic_share == 0.4
+    assert stored(sessions) == {}
+
+
 def test_a_value_like_the_default_is_still_stored(sessions: sessionmaker[Session]) -> None:
     update(sessions, {"feed_size": 12})
 
@@ -138,6 +159,8 @@ def test_a_value_like_the_default_is_still_stored(sessions: sessionmaker[Session
         ({"feed_size": 0}, "feed_size"),
         ({"feed_size": 1_000}, "feed_size"),
         ({"feed_exploration_slots": -1}, "feed_exploration_slots"),
+        ({"feed_max_topic_share": 0.05}, "feed_max_topic_share"),
+        ({"feed_max_topic_share": 1.5}, "feed_max_topic_share"),
         ({"feed_min_duration_seconds": -5}, "feed_min_duration_seconds"),
         ({"feed_refresh_time": "25:00"}, "feed_refresh_time"),
         ({"model_training_time": "soon"}, "model_training_time"),

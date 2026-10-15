@@ -342,6 +342,48 @@ def test_rank_uses_similarity_to_rated_tiers() -> None:
         assert item.score == pytest.approx(b.channel + b.similarity)
 
 
+def test_a_candidate_is_not_compared_with_itself_in_the_top_tier() -> None:
+    tiers = RatedTiers(top={"v1": axis(0), "other": mix(1, 1, 0, 0)}, bottom={})
+    alone = RatedTiers(top={"v1": axis(0)}, bottom={})
+
+    [scored] = rank(
+        [candidate()],
+        curation={},
+        history=NO_HISTORY,
+        embeddings={"v1": axis(0)},
+        rated_tiers=tiers,
+    )
+    [by_itself] = rank(
+        [candidate()],
+        curation={},
+        history=NO_HISTORY,
+        embeddings={"v1": axis(0)},
+        rated_tiers=alone,
+    )
+
+    features = scored.breakdown.similarity_features
+    assert features is not None and features.top_tier is not None
+    assert features.top_tier.nearest_video_id == "other"
+    assert features.top_tier.max == pytest.approx(math.sqrt(0.5))
+    # With nothing else in the tier there is nothing to be like.
+    assert by_itself.breakdown.similarity_features == SimilarityFeatures(None, None)
+    assert by_itself.breakdown.similarity == 0.0
+
+
+def test_a_candidate_is_compared_with_itself_in_the_bottom_tier() -> None:
+    tiers = RatedTiers(top={}, bottom={"v1": axis(3)})
+
+    [scored] = rank(
+        [candidate()],
+        curation={},
+        history=NO_HISTORY,
+        embeddings={"v1": axis(3)},
+        rated_tiers=tiers,
+    )
+
+    assert scored.breakdown.similarity == pytest.approx(-SIMILARITY_WEIGHT)
+
+
 def test_similarity_shows_in_breakdown_dict() -> None:
     [scored] = rank(
         [candidate()],

@@ -13,6 +13,7 @@ import {
 import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { AppShell } from "#/components/AppShell";
+import { DiscoveryRecap, RecapSkeleton } from "#/components/DiscoveryRecap";
 import { GoodRateTrend } from "#/components/GoodRateTrend";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
@@ -45,17 +46,31 @@ import {
 import { ScoreFace } from "#/components/ScoreFace";
 import { scoreLabel } from "#/lib/scores";
 import { cn } from "#/lib/utils";
-import { weeklyInsightsQuery, type WeekInsights } from "#/server/insights";
+import {
+  discoveryRecapQuery,
+  weeklyInsightsQuery,
+  type WeekInsights,
+} from "#/server/insights";
 
-/** Whether the feed is working, by the success metric rather than watch time. */
+/**
+ * Whether the feed is working, by the success metric rather than watch time,
+ * and whether discovery is: the week's recap of new channels and topics tops
+ * the page.
+ */
 export const Route = createFileRoute("/insights")({
   validateSearch: (search: Record<string, unknown>): { weeks: WeekRange } => ({
     weeks: parseWeekRange(search.weeks),
   }),
   head: () => ({ meta: [{ title: "Insights · Homefeed" }] }),
   loaderDeps: ({ search }) => ({ weeks: search.weeks }),
-  loader: ({ context: { queryClient }, deps }) =>
-    queryClient.ensureQueryData(weeklyInsightsQuery(deps.weeks)),
+  loader: async ({ context: { queryClient }, deps }) => {
+    // The recap is extra: it doesn't hold up or break the rest of the page
+    // (see DiscoveryRecap).
+    await Promise.all([
+      queryClient.ensureQueryData(weeklyInsightsQuery(deps.weeks)),
+      queryClient.prefetchQuery(discoveryRecapQuery),
+    ]);
+  },
   pendingComponent: InsightsPending,
   component: Insights,
   errorComponent: InsightsError,
@@ -100,7 +115,7 @@ function Insights() {
     <AppShell className="flex max-w-5xl flex-col gap-10">
       <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
         <div className="flex max-w-prose flex-col gap-1">
-          <h2 className="text-xl font-semibold">Insights</h2>
+          <h1 className="text-xl font-semibold">Insights</h1>
           <p className="text-pretty text-muted-foreground">
             Is the feed working? The measure is the good rate: the share of
             rated videos scored {data.good_threshold} or higher. Last {weeks}{" "}
@@ -142,6 +157,8 @@ function Insights() {
         </div>
       </header>
 
+      <DiscoveryRecap />
+
       {summary && (
         <Card className="flex-row items-start gap-3 bg-accent p-4 text-sm">
           <Sparkles
@@ -154,12 +171,12 @@ function Insights() {
 
       {thisWeek && (
         <section aria-labelledby="this-week-heading">
-          <h3 id="this-week-heading" className="text-lg font-semibold">
+          <h2 id="this-week-heading" className="text-lg font-semibold">
             This week{" "}
             <span className="font-normal text-muted-foreground">
               (from {formatWeek(thisWeek.week_start)})
             </span>
-          </h3>
+          </h2>
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
             <StatCard
               label="Good rate"
@@ -271,7 +288,7 @@ function Panel({
         )}
       >
         <div className="flex min-w-0 flex-col gap-1">
-          <CardTitle render={<h3 id={id} />} className="text-lg">
+          <CardTitle render={<h2 id={id} />} className="text-lg">
             {title}
           </CardTitle>
           {description && (
@@ -538,7 +555,7 @@ function ScoreShares({ weeks }: { weeks: readonly WeekInsights[] }) {
       description={
         shown.length === 0
           ? "Where the scores of each week's feed items came from."
-          : "Where the scores of each week's feed items came from: the trained model, your channel priors and tag subscriptions, or similarity to videos you rated."
+          : "Where the scores of each week's feed items came from: the trained model, your channel preferences and tag subscriptions, or similarity to videos you rated."
       }
     >
       {shown.length === 0 ? (
@@ -609,7 +626,7 @@ function WeekTable({
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between gap-2">
-        <CardTitle render={<h3 id={headingId} />} className="text-lg">
+        <CardTitle render={<h2 id={headingId} />} className="text-lg">
           Week by week
         </CardTitle>
         <Button
@@ -739,6 +756,13 @@ function InsightsPending() {
         </div>
         <div className="h-9 w-56 rounded-full bg-muted motion-safe:animate-pulse" />
       </div>
+      <section className="flex flex-col gap-4">
+        <div
+          aria-hidden="true"
+          className="h-6 w-32 rounded bg-muted motion-safe:animate-pulse"
+        />
+        <RecapSkeleton />
+      </section>
       <div className="grid gap-3 sm:grid-cols-3" aria-hidden="true">
         {["good", "rating", "share"].map((key) => (
           <Card key={key} className="gap-3 p-5">

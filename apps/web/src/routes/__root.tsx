@@ -7,6 +7,7 @@ import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { TanStackDevtools } from "@tanstack/react-devtools";
 
 import { DisableThemeTransitions } from "../components/DisableThemeTransitions";
+import { NavigationFocus } from "../components/NavigationFocus";
 import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
 
 import { getAppMode } from "../server/app-mode";
@@ -55,6 +56,7 @@ function RootDocument({ children }: { children: ReactNode }) {
       </head>
       <body>
         <DisableThemeTransitions />
+        <NavigationFocus />
         {children}
         <TanStackDevtools
           config={{

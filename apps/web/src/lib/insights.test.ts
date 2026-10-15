@@ -5,6 +5,7 @@ import {
   averageGoodRate,
   deltaPoints,
   DEFAULT_WEEK_RANGE,
+  formatDay,
   formatPercent,
   formatWeek,
   goodRateDelta,
@@ -72,6 +73,11 @@ describe("formatting", () => {
   it("names weeks by their Monday", () => {
     expect(formatWeek("2026-10-05")).toBe("Oct 5");
     expect(formatWeek("nope")).toBe("nope");
+  });
+
+  it("names days the same way", () => {
+    expect(formatDay("2026-10-15")).toBe("Oct 15");
+    expect(formatDay("nope")).toBe("nope");
   });
 
   it("pluralizes counts", () => {

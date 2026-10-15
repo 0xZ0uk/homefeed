@@ -22,6 +22,13 @@ import { Button } from "#/components/ui/button";
 import { CardContent, CardFooter } from "#/components/ui/card";
 import { Input } from "#/components/ui/input";
 import {
+  MAX_SHARE_PERCENT,
+  MIN_SHARE_PERCENT,
+  formatShare,
+  parseSharePercent,
+  sharePercentText,
+} from "#/lib/feed-mix";
+import {
   DEFAULT_MODELS,
   LLM_PROVIDERS,
   MAX_FEED_SIZE,
@@ -93,6 +100,7 @@ const SECTION_KEYS = {
   feed: [
     "feed_size",
     "feed_exploration_slots",
+    "feed_max_topic_share",
     "feed_min_duration_seconds",
     "feed_max_duration_seconds",
   ],
@@ -284,6 +292,9 @@ function FeedSettings({
   const { save, ...state } = saver;
   const [size, setSize] = useState(String(values.feed_size));
   const [slots, setSlots] = useState(String(values.feed_exploration_slots));
+  const [share, setShare] = useState(
+    sharePercentText(values.feed_max_topic_share),
+  );
   const [shortest, setShortest] = useState(
     minutesFromSeconds(values.feed_min_duration_seconds),
   );
@@ -302,11 +313,16 @@ function FeedSettings({
       max: MAX_FEED_SIZE,
       label: "Discovery slots",
     });
+    const parsedShare = parseSharePercent(
+      share,
+      "Most of a feed one topic may take",
+    );
     const parsedShortest = parseOptionalMinutes(shortest, "Shortest video");
     const parsedLongest = parseOptionalMinutes(longest, "Longest video");
     const failure = firstFailure(
       [parsedSize, `${id}-size`],
       [parsedSlots, `${id}-slots`],
+      [parsedShare, `${id}-share`],
       [parsedShortest, `${id}-shortest`],
       [parsedLongest, `${id}-longest`],
     );
@@ -314,6 +330,7 @@ function FeedSettings({
       failure ||
       !parsedSize.ok ||
       !parsedSlots.ok ||
+      !parsedShare.ok ||
       !parsedShortest.ok ||
       !parsedLongest.ok
     ) {
@@ -343,6 +360,7 @@ function FeedSettings({
         {
           feed_size: parsedSize.value,
           feed_exploration_slots: parsedSlots.value,
+          feed_max_topic_share: parsedShare.value,
           feed_min_duration_seconds: parsedShortest.value,
           feed_max_duration_seconds: parsedLongest.value,
         },
@@ -407,6 +425,36 @@ function FeedSettings({
             className="max-w-32"
           />
         </Field>
+        <div className="sm:col-span-2">
+          <Field
+            id={`${id}-share`}
+            label="Most of a feed one topic may take"
+            hint={`As a share of the videos per day, from ${MIN_SHARE_PERCENT}% to ${MAX_SHARE_PERCENT}% (${MAX_SHARE_PERCENT}% is no limit). Picks that would go over it come last.`}
+            settingKey="feed_max_topic_share"
+            defaultText={formatShare(defaults.feed_max_topic_share)}
+            {...field}
+          >
+            <div className="flex items-center gap-2">
+              <Input
+                id={`${id}-share`}
+                type="number"
+                inputMode="numeric"
+                min={MIN_SHARE_PERCENT}
+                max={MAX_SHARE_PERCENT}
+                value={share}
+                {...state.describe(`${id}-share`)}
+                onChange={(event) => setShare(event.target.value)}
+                className="max-w-32"
+              />
+              <span
+                aria-hidden="true"
+                className="text-sm text-muted-foreground"
+              >
+                %
+              </span>
+            </div>
+          </Field>
+        </div>
         <Field
           id={`${id}-shortest`}
           label="Shortest video (minutes)"

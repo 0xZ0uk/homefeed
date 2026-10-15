@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import { ScoreScale } from "#/components/ScoreScale";
 import { Button } from "#/components/ui/button";
+import { SCORE_SCALE_HINT } from "#/lib/scores";
 
 interface RatingPickerProps {
   title: string;
@@ -18,8 +19,10 @@ interface RatingPickerProps {
 }
 
 /**
- * A 1 to 10 rating prompt: picking a face saves it and closes the prompt.
- * Picking the face already lit keeps that rating and closes too.
+ * A 1 to 10 rating prompt: the title, a hint of what the ends of the scale
+ * mean, and the faces. Picking a face saves it and closes the prompt; picking
+ * the face already lit keeps that rating and closes too. The title is a
+ * section heading, so it sits below the page's own (the video's title).
  */
 export function RatingPicker({
   title,
@@ -30,6 +33,7 @@ export function RatingPicker({
   autoFocus = false,
 }: RatingPickerProps) {
   const titleId = useId();
+  const hintId = useId();
   const scale = useRef<HTMLButtonElement>(null);
   const [picked, setPicked] = useState(current);
   const [saving, setSaving] = useState(false);
@@ -68,13 +72,20 @@ export function RatingPicker({
       aria-labelledby={titleId}
       className="flex flex-col items-center gap-2"
     >
-      <h3 id={titleId} className="text-lg font-semibold">
-        {title}
-      </h3>
+      <div className="flex flex-col items-center">
+        <h2 id={titleId} className="text-lg font-semibold">
+          {title}
+        </h2>
+        <p id={hintId} className="text-sm text-muted-foreground">
+          {SCORE_SCALE_HINT}
+        </p>
+      </div>
       <ScoreScale
         value={picked}
         onPick={(score) => void pick(score)}
         label={title}
+        labelledBy={titleId}
+        describedBy={hintId}
         disabled={saving}
         buttonRef={scale}
         className="w-full max-w-xl"

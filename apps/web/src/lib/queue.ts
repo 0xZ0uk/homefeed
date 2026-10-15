@@ -48,6 +48,16 @@ export function nextInQueue<T extends Queued>(
   return items[index + 1] ?? null;
 }
 
+/**
+ * The name of the masthead's queue button, which shows only an icon and a
+ * count on narrow screens: "Queue", or "Queue, 2 videos" once something is
+ * queued.
+ */
+export function queueButtonLabel(count: number): string {
+  if (count === 0) return "Queue";
+  return `Queue, ${count} ${count === 1 ? "video" : "videos"}`;
+}
+
 const YOUTUBE_HOSTS = new Set([
   "youtube.com",
   "www.youtube.com",

@@ -20,9 +20,9 @@ export const UPLOAD_DATES = [
 export type UploadDate = (typeof UPLOAD_DATES)[number]["value"];
 
 export const DURATIONS = [
-  { value: "short", label: "Under 4 minutes" },
-  { value: "medium", label: "4–20 minutes" },
-  { value: "long", label: "Over 20 minutes" },
+  { value: "short", label: "Under 4 min" },
+  { value: "medium", label: "4–20 min" },
+  { value: "long", label: "Over 20 min" },
 ] as const;
 export type Duration = (typeof DURATIONS)[number]["value"];
 
@@ -95,7 +95,7 @@ export function searchParamsFor(query: string, filters: Filters): SearchParams {
 
 /**
  * The non-default filters in words, e.g. "Newest first · This week · Over 20
- * minutes", or null for a plain search.
+ * min", or null for a plain search.
  */
 export function describeFilters(filters: Filters): string | null {
   const parts: (string | undefined)[] = [

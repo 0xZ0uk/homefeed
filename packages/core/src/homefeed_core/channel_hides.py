@@ -1,9 +1,14 @@
 """Hidden channels: channels I don't want to see suggested on Discover.
 
-A `dismissed` channel is only left out of the suggestions. A `blocked` channel ("Don't
-show") is also treated like a muted channel by the ranker (none of its videos reach the
-feed), and is no longer a seed of the channel graph. Hiding again changes the kind and
-time; subscribing to a channel clears its hide (`curation.subscribe`).
+The app words the two kinds as "Not now" and "Hide channel".
+
+A `dismissed` channel ("Not now") is only left out of the suggestions; its videos can
+still reach the feed. A `blocked` channel ("Hide channel") is also treated like a muted
+channel by the ranker (none of its videos reach the feed or the Discovery carousel), and
+it is no longer a seed of the channel graph or a source of tag discovery results. Hiding
+again changes the kind and time; subscribing to a channel clears its hide
+(`curation.subscribe`). Ending a channel trial records a `dismissed` hide too (see
+homefeed_core.trials).
 """
 
 from dataclasses import dataclass

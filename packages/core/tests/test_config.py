@@ -10,6 +10,7 @@ ENV_VARS = (
     "DATA_DIR",
     "DATABASE_PATH",
     "FEED_SIZE",
+    "FEED_MAX_TOPIC_SHARE",
     "FEED_REFRESH_TIME",
     "LLM_PROVIDER",
     "LLM_MODEL",
@@ -33,6 +34,7 @@ def test_defaults() -> None:
     settings = Settings()
 
     assert settings.feed_size == 20
+    assert settings.feed_max_topic_share == 0.4
     assert settings.feed_refresh_time == time(6, 0)
     # The hosted OpenRouter API, which stays off until OPENROUTER_API_KEY is set.
     assert settings.llm_provider == "openrouter"
@@ -53,6 +55,17 @@ def test_loads_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.feed_size == 10
     assert settings.feed_refresh_time == time(7, 30)
     assert settings.llm_provider == "ollama"
+
+
+def test_the_topic_share_comes_from_the_environment_within_its_range(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FEED_MAX_TOPIC_SHARE", "0.25")
+    assert Settings().feed_max_topic_share == 0.25
+
+    monkeypatch.setenv("FEED_MAX_TOPIC_SHARE", "2")
+    with pytest.raises(ValueError, match="feed_max_topic_share"):
+        Settings()
 
 
 def test_get_settings_reads_nearest_env_file_from_package_dir(

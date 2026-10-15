@@ -19,13 +19,13 @@ export function NextInQueue({ videoId }: { videoId: string }) {
       aria-labelledby="next-in-queue"
       className="flex flex-col gap-1 rounded-xl border p-4"
     >
-      <h3
+      <h2
         id="next-in-queue"
         className="flex items-center gap-2 text-sm text-muted-foreground"
       >
         <ListVideo className="size-4" />
         Next in your queue
-      </h3>
+      </h2>
       <Link
         to="/watch/$videoId"
         params={{ videoId: next.video_id }}

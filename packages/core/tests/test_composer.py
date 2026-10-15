@@ -9,6 +9,7 @@ from homefeed_core.composer import (
     VideoRef,
     compose,
     explain,
+    followed_topics,
     referenced_video_ids,
 )
 from homefeed_core.curation import Prior
@@ -121,6 +122,120 @@ def test_pins_respect_cap_and_size() -> None:
 
     assert len(slots) == 5
     assert all(slot.is_pinned for slot in slots)
+
+
+def tagged(
+    video_id: str, channel_id: str, score: float, *topics: str, boost: float = 0.5
+) -> ScoredCandidate:
+    """An item with the final `score` that matched the `topics`, each boosted by `boost`."""
+    breakdown = ScoreBreakdown(
+        channel=score - boost * len(topics), tags=dict.fromkeys(topics, boost)
+    )
+    return scored(video_id, channel_id, score, breakdown=breakdown)
+
+
+def topic_count(slots: list[FeedSlot], topic: str) -> int:
+    return sum(topic in followed_topics(slot.item) for slot in slots)
+
+
+def share(size: int, max_topic_share: float) -> ComposeSettings:
+    return ComposeSettings(size=size, exploration_slots=0, max_topic_share=max_topic_share)
+
+
+def test_a_followed_topic_takes_at_most_its_share_of_the_feed() -> None:
+    godot = [tagged(f"g{n}", channel(n), 0.9 - n / 100, "Godot") for n in range(12)]
+    others = [scored(f"o{n}", channel(20 + n), 0.1 - n / 100) for n in range(8)]
+
+    slots = compose([*godot, *others], {}, share(10, 0.4), random.Random(1))
+
+    # ceil(0.4 * 10) = 4 picks: the best four, then the others although they score lower.
+    assert video_ids(slots) == ["g0", "g1", "g2", "g3", *(f"o{n}" for n in range(6))]
+    assert topic_count(slots, "Godot") == 4
+
+
+def test_deferred_items_fill_the_feed_when_nothing_else_can() -> None:
+    godot = [tagged(f"g{n}", channel(n), 0.9 - n / 100, "Godot") for n in range(12)]
+    others = [scored(f"o{n}", channel(20 + n), 0.1 - n / 100) for n in range(3)]
+
+    slots = compose([*godot, *others], {}, share(10, 0.4), random.Random(1))
+
+    # Never short of the size: the deferred picks come last, best first.
+    assert video_ids(slots) == ["g0", "g1", "g2", "g3", "o0", "o1", "o2", "g4", "g5", "g6"]
+    assert [slot.position for slot in slots] == list(range(10))
+
+
+def test_an_item_is_deferred_when_any_of_its_topics_is_full() -> None:
+    items = [
+        tagged("a", channel(1), 0.9, "Godot"),
+        tagged("b", channel(2), 0.8, "Godot", "Game development"),
+        tagged("c", channel(3), 0.7, "Game development"),
+        tagged("d", channel(4), 0.6, "Godot", "Game development"),
+        scored("e", channel(5), 0.1),
+        scored("f", channel(6), 0.05),
+    ]
+
+    slots = compose(items, {}, share(4, 0.5), random.Random(1))
+
+    # Two picks per topic: "d" has two topics, and Godot is full.
+    assert video_ids(slots) == ["a", "b", "c", "e"]
+    assert topic_count(slots, "Godot") == topic_count(slots, "Game development") == 2
+
+
+def test_pins_are_never_capped_but_count_towards_their_topics() -> None:
+    pinned = [tagged(f"p{n}", channel(n), 0.0, "Godot") for n in range(4)]
+    curation = {channel(n): ChannelCuration(pinned=True) for n in range(4)}
+    godot = [tagged(f"g{n}", channel(10 + n), 0.9 - n / 100, "Godot") for n in range(3)]
+    others = [scored(f"o{n}", channel(20 + n), 0.1 - n / 100) for n in range(6)]
+
+    slots = compose([*pinned, *godot, *others], curation, share(8, 0.25), random.Random(1))
+
+    # The cap is 2, and all four pins are in; the topic is full, so only others follow.
+    assert [slot.is_pinned for slot in slots] == [True] * 4 + [False] * 4
+    assert video_ids(slots[4:]) == ["o0", "o1", "o2", "o3"]
+
+
+def test_a_muted_tag_is_no_topic() -> None:
+    muted = [tagged(f"d{n}", channel(n), 0.5 - n / 100, "Drama", boost=-0.5) for n in range(6)]
+    other = scored("o", channel(20), 0.1)
+
+    slots = compose([*muted, other], {}, share(5, 0.2), random.Random(1))
+
+    assert followed_topics(muted[0]) == ()
+    assert video_ids(slots) == ["d0", "d1", "d2", "d3", "d4"]
+
+
+def test_a_share_of_one_leaves_the_feed_as_ranked() -> None:
+    godot = [tagged(f"g{n}", channel(n), 0.9 - n / 100, "Godot") for n in range(12)]
+    others = [scored(f"o{n}", channel(20 + n), 0.1 - n / 100) for n in range(8)]
+
+    slots = compose([*godot, *others], {}, share(10, 1.0), random.Random(1))
+
+    assert video_ids(slots) == [f"g{n}" for n in range(10)]
+
+
+def test_an_exploration_pick_whose_topic_is_full_waits_with_the_rest() -> None:
+    items = [tagged(f"g{n}", channel(n), 0.9 - n / 100, "Godot") for n in range(3)]
+    settings = ComposeSettings(size=10, exploration_slots=3, max_topic_share=0.2)
+
+    slots = compose(items, {}, settings, random.Random(1))
+
+    # Three channels share three slots, but only two picks may be Godot: the third is
+    # still in the feed, as a plain pick.
+    assert [(slot.item.candidate.video_id, slot.is_exploration) for slot in slots] == [
+        ("g0", True),
+        ("g1", True),
+        ("g2", False),
+    ]
+
+
+def test_the_topic_share_rounds_up_to_whole_picks() -> None:
+    assert ComposeSettings().max_topic_share == 0.4
+    assert ComposeSettings(size=20, max_topic_share=0.4).max_per_topic == 8
+    assert ComposeSettings(size=15, max_topic_share=0.4).max_per_topic == 6
+    assert ComposeSettings(size=7, max_topic_share=0.25).max_per_topic == 2  # 1.75
+    assert ComposeSettings(size=50, max_topic_share=0.14).max_per_topic == 7  # not float noise's 8
+    assert ComposeSettings(size=3, max_topic_share=0.1).max_per_topic == 1
+    assert ComposeSettings(size=20, max_topic_share=0.0).max_per_topic == 1
 
 
 def test_ties_prefer_newer_uploads() -> None:
@@ -278,7 +393,7 @@ def test_exploration_explanations() -> None:
     )
 
     assert {slot.item.candidate.video_id: slot.explanation for slot in slots} == {
-        "a": "Exploring: new channel · related to How to sharpen a chisel (8)",
+        "a": "Exploring: new channel · related to “How to sharpen a chisel”, which you rated 8",
         "b": "Exploring: channel with 2 ratings · new from your subscriptions",
     }
 
@@ -298,6 +413,9 @@ RATED = {
     "seed": VideoRef("How to sharpen a chisel", 8),
     "near": VideoRef("Dovetails by hand", 9),
     "unrated": VideoRef("Some video"),
+    "more": VideoRef("Mortise and tenon", feedback=1),
+    "less": VideoRef("A dull saw", feedback=-1),
+    "both": VideoRef("Rated and marked", 3, feedback=1),  # the rating wins
 }
 
 
@@ -315,7 +433,7 @@ def test_explanations_name_the_largest_positive_term() -> None:
     disliked = scored("c", channel(1), 0, breakdown=similar_to("near", -0.3))
 
     assert explain(similar, videos=RATED) == (
-        "New from your subscriptions · similar to Dovetails by hand (9)"
+        "New from your subscriptions · similar to “Dovetails by hand”, which you rated 9"
     )
     assert explain(loved, videos=RATED) == "New from your subscriptions · channel you love"
     assert explain(disliked, videos=RATED) == "New from your subscriptions"
@@ -355,15 +473,18 @@ def test_explanations_for_related_videos() -> None:
     only_own_seed = related("seed", similar_to("seed", 0.4))
 
     assert explain(loved, videos=RATED) == (
-        "Related to How to sharpen a chisel (8) · channel you love"
+        "Related to “How to sharpen a chisel”, which you rated 8 · channel you love"
     )
     assert explain(similar, videos=RATED) == (
-        "Related to How to sharpen a chisel (8) · similar to Dovetails by hand (9)"
+        "Related to “How to sharpen a chisel”, which you rated 8 · "
+        "similar to “Dovetails by hand”, which you rated 9"
     )
     assert explain(own_seed, videos=RATED) == (
-        "Related to How to sharpen a chisel (8) · channel you love"
+        "Related to “How to sharpen a chisel”, which you rated 8 · channel you love"
     )
-    assert explain(only_own_seed, videos=RATED) == "Related to How to sharpen a chisel (8)"
+    assert explain(only_own_seed, videos=RATED) == (
+        "Related to “How to sharpen a chisel”, which you rated 8"
+    )
 
 
 def test_explanations_without_titles_or_scores() -> None:
@@ -374,11 +495,49 @@ def test_explanations_without_titles_or_scores() -> None:
     other = scored("d", channel(1), 0, source="saved_search")
 
     assert explain(unknown, videos=RATED) == "Related to a video you rated highly"
-    assert explain(unrated, videos=RATED) == "Related to Some video"
-    assert explain(long, videos=long_title) == f"Related to {'x' * 59}… (8)"
+    assert explain(unrated, videos=RATED) == "Related to “Some video”"
+    assert explain(long, videos=long_title) == f"Related to “{'x' * 59}…”, which you rated 8"
     assert explain(other) == "Found via saved search"
     featured = scored("e", channel(1), 0, source="channel_graph", source_detail="UC" + "a" * 22)
     assert explain(featured) == "Featured by a channel you like"
+
+
+def test_explanations_name_videos_the_user_wanted_more_of() -> None:
+    def similar(nearest: str) -> ScoredCandidate:
+        return scored("a", channel(1), 0, breakdown=similar_to(nearest, 0.4))
+
+    related = scored("r", channel(1), 0, source="related", source_detail="more")
+
+    assert explain(similar("more"), videos=RATED) == (
+        "New from your subscriptions · similar to “Mortise and tenon”, which you wanted more of"
+    )
+    assert (
+        explain(related, videos=RATED) == "Related to “Mortise and tenon”, which you wanted more of"
+    )
+    # An explicit rating wins over feedback.
+    assert explain(similar("both"), videos=RATED) == (
+        "New from your subscriptions · similar to “Rated and marked”, which you rated 3"
+    )
+    # Nothing is claimed about a video the user wanted less of; only its title is named.
+    assert explain(similar("less"), videos=RATED) == (
+        "New from your subscriptions · similar to “A dull saw”"
+    )
+
+
+def test_explanations_for_videos_without_a_title() -> None:
+    videos = {
+        "rated": VideoRef("  ", 7),
+        "more": VideoRef("", feedback=1),
+        "plain": VideoRef(""),
+    }
+
+    def related(seed: str) -> str:
+        item = scored("r", channel(1), 0, source="related", source_detail=seed)
+        return explain(item, videos=videos)
+
+    assert related("rated") == "Related to a video you rated 7"
+    assert related("more") == "Related to a video you wanted more of"
+    assert related("plain") == "Related to a video you rated highly"
 
 
 def test_explains_saved_search_candidates_by_their_query() -> None:
@@ -403,8 +562,8 @@ def test_compose_explains_with_the_given_videos() -> None:
 
     assert referenced_video_ids(items) == {"seed", "near"}
     assert {slot.item.candidate.video_id: slot.explanation for slot in slots} == {
-        "a": "Related to How to sharpen a chisel (8)",
-        "b": "New from your subscriptions · similar to Dovetails by hand (9)",
+        "a": "Related to “How to sharpen a chisel”, which you rated 8",
+        "b": "New from your subscriptions · similar to “Dovetails by hand”, which you rated 9",
         "c": "New from your subscriptions",
     }
 

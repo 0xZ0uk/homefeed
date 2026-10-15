@@ -1,5 +1,7 @@
 import {
+  getDiscoveryRecap,
   getWeeklyInsights,
+  type DiscoveryRecapOut,
   type WeeklyInsightsOut,
 } from "@homefeed/api-client";
 import { queryOptions } from "@tanstack/react-query";
@@ -52,3 +54,28 @@ export const weeklyInsightsQuery = Object.assign(
   weeklyInsightsOptions(INSIGHTS_WEEKS),
 );
 export type WeeklyInsightsQuery = ReturnType<typeof weeklyInsightsQuery>;
+
+/** How many days each window of the discovery recap covers: a week. */
+export const DISCOVERY_DAYS = 7;
+
+const fetchDiscoveryRecap = createServerFn({ method: "GET" }).handler(
+  async (): Promise<DiscoveryRecapOut> => {
+    const { data } = await getDiscoveryRecap({
+      client: apiClient(),
+      query: { days: DISCOVERY_DAYS },
+      throwOnError: true,
+    });
+    return data;
+  },
+);
+
+/**
+ * The last week's discoveries against the week before: the channels watched for
+ * the first time, the new topics, and the figures to compare. Under the
+ * insights' key, and the statuses in it change with a subscription, so
+ * subscribing (or undoing it) invalidates it.
+ */
+export const discoveryRecapQuery = queryOptions({
+  queryKey: ["insights", "discoveries", DISCOVERY_DAYS],
+  queryFn: () => fetchDiscoveryRecap(),
+});

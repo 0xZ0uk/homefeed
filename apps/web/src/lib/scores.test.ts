@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { SCORES, isScore, scoreLabel, scoreText } from "./scores";
+import {
+  SCORES,
+  SCORE_SCALE_HINT,
+  isScore,
+  scoreLabel,
+  scoreText,
+} from "./scores";
 
 describe("isScore", () => {
   it("accepts the whole scores 1 to 10", () => {
@@ -29,5 +35,13 @@ describe("scoreLabel", () => {
 describe("scoreText", () => {
   it("gives the word and the number", () => {
     expect(scoreText(8)).toBe("Great, 8 out of 10");
+  });
+});
+
+describe("SCORE_SCALE_HINT", () => {
+  it("names both ends of the scale in its own words", () => {
+    expect(SCORE_SCALE_HINT).toBe("1 = awful · 10 = amazing");
+    expect(SCORE_SCALE_HINT).toContain(scoreLabel(1).toLowerCase());
+    expect(SCORE_SCALE_HINT).toContain(scoreLabel(10).toLowerCase());
   });
 });
