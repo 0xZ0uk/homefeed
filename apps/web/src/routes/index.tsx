@@ -2,10 +2,12 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { AppShell } from "#/components/AppShell";
+import { DiscoveryCarousel } from "#/components/DiscoveryCarousel";
 import { FeedError } from "#/components/FeedError";
 import { FeedList } from "#/components/FeedList";
 import { RefreshFeedButton } from "#/components/RefreshFeedButton";
 import { formatFeedDate } from "#/lib/format";
+import { discoveryVideosQuery } from "#/server/discover";
 import { todayFeedQuery } from "#/server/feeds";
 import { onboardingQuery } from "#/server/onboarding";
 
@@ -15,7 +17,12 @@ export const Route = createFileRoute("/")({
     // pages stay reachable.
     const onboarding = await queryClient.fetchQuery(onboardingQuery);
     if (onboarding.needed) throw redirect({ to: "/welcome" });
-    await queryClient.ensureQueryData(todayFeedQuery);
+    // Discovery is extra: it doesn't hold up or break the page (see
+    // DiscoveryCarousel).
+    await Promise.all([
+      queryClient.ensureQueryData(todayFeedQuery),
+      queryClient.prefetchQuery(discoveryVideosQuery),
+    ]);
   },
   component: Home,
   errorComponent: FeedError,
@@ -41,6 +48,7 @@ function Home() {
         )
       }
     >
+      <DiscoveryCarousel />
       <h2 className="sr-only">
         Today{feed && `, ${formatFeedDate(feed.date)}`}
       </h2>

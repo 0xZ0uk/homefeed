@@ -1854,6 +1854,42 @@ def refresh_suggested_channels(
     )
 
 
+class DiscoveryItemOut(BaseModel):
+    video_id: str
+    title: str
+    duration_seconds: int | None
+    published_at: str | None = Field(description="Upload time, ISO 8601 UTC")
+    thumbnail_url: str | None
+    view_count: int | None
+    channel_id: str
+    channel_title: str
+    channel_handle: str | None
+    channel_thumbnail_url: str | None
+    source: str = Field(description="The candidate source that found it; never subscription")
+    source_detail: str | None
+    score: float
+    breakdown: ScoreBreakdownOut
+    explanation: str
+
+
+@app.get("/discover/videos", tags=["discovery"])
+def get_discovery_videos(
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=50)] = feeds.DISCOVERY_SIZE,
+) -> list[DiscoveryItemOut]:
+    """The best-ranked candidates from outside my subscriptions (related videos, featured
+    channels, tag and saved searches, external sources), one per channel, best first.
+
+    Ranked like the feed, so watched, dismissed and filtered videos never show; videos of
+    subscribed channels and everything in today's feed are left out too. Computed on
+    each request, not stored.
+    """
+    return [
+        DiscoveryItemOut.model_validate({**vars(item), "breakdown": item.breakdown.to_dict()})
+        for item in feeds.discover(session, size=limit)
+    ]
+
+
 class ChannelHideInput(BaseModel):
     kind: channel_hides.HideKind = Field(
         description="dismissed removes the channel from Discover suggestions; blocked "

@@ -3,6 +3,7 @@ import { RefreshCw } from "lucide-react";
 
 import { Button } from "#/components/ui/button";
 import { cn } from "#/lib/utils";
+import { discoveryVideosQuery } from "#/server/discover";
 import {
   feedQuery,
   rebuildFeed,
@@ -31,6 +32,9 @@ export function RefreshFeedButton({
     onSuccess: (feed) => {
       queryClient.setQueryData(todayFeedQuery.queryKey, feed);
       queryClient.setQueryData(feedQuery(feed.date).queryKey, feed);
+      void queryClient.invalidateQueries({
+        queryKey: discoveryVideosQuery.queryKey,
+      });
     },
   });
 

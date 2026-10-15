@@ -35,6 +35,7 @@ export function VideoCard({
   top,
   overlay,
   menu,
+  className,
 }: {
   video: CardVideo;
   now: Date;
@@ -46,6 +47,7 @@ export function VideoCard({
   overlay?: ReactNode;
   /** Shown at the end of the title row. */
   menu?: ReactNode;
+  className?: string;
 }) {
   const duration = formatDuration(item.duration_seconds);
   const age = formatAge(item.published_at, now);
@@ -58,6 +60,7 @@ export function VideoCard({
       className={cn(
         "group/card relative flex flex-col gap-3",
         (faded || item.watched) && "opacity-60",
+        className,
       )}
     >
       {top}

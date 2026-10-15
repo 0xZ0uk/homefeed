@@ -12,7 +12,8 @@ and channel info, each marked `watched` if the user has watched it since.
 `extend_feed` appends the next page of ranked picks to a stored feed (the "Show more"
 button), leaving out videos already in it. `dismiss_feed_item` hides an item from the
 user with an optional reason; the video is then left out of every later feed and counts
-as a weak negative for training.
+as a weak negative for training. `discover` ranks the pool the same way for the home
+page's Discovery carousel: the best picks from outside the subscriptions, not stored.
 
 A date can have several feeds (each refresh adds one, so dismissals and what was shown
 stay on record); the feed for a date is the latest one built for it. Dates are local
@@ -63,6 +64,7 @@ from homefeed_core.ranker import (
     RankCandidate,
     RatedTiers,
     ScoreBreakdown,
+    ScoredCandidate,
     rank,
 )
 from homefeed_core.ranking_models import load_active_model, ranker_model
@@ -102,6 +104,25 @@ class FeedItem:
     dismissed_at: str | None
     dismiss_reason: str | None
     watched: bool  # played or rated, as of when the feed is read (see `watched_video_ids`)
+
+
+@dataclass(frozen=True)
+class DiscoveryItem:
+    video_id: str
+    title: str
+    duration_seconds: int | None
+    published_at: str | None  # ISO 8601 UTC
+    thumbnail_url: str | None
+    view_count: int | None
+    channel_id: str
+    channel_title: str
+    channel_handle: str | None
+    channel_thumbnail_url: str | None
+    source: str
+    source_detail: str | None
+    score: float
+    breakdown: ScoreBreakdown
+    explanation: str
 
 
 @dataclass(frozen=True)
@@ -221,6 +242,76 @@ def extend_feed(
     return extended
 
 
+# Videos in the home page's Discovery carousel.
+DISCOVERY_SIZE = 10
+
+
+def discover(
+    session: Session,
+    *,
+    size: int = DISCOVERY_SIZE,
+    settings: Settings | None = None,
+    now: datetime | None = None,
+) -> list[DiscoveryItem]:
+    """Up to `size` of the best-ranked candidates from outside the subscriptions (found
+    by related videos, featured channels, tag searches, saved searches and external
+    sources), one per channel, best first.
+
+    Ranking is the feed's, so watched, dismissed and filtered videos never show. Videos
+    of subscribed channels and every video in today's feed (dismissed ones included)
+    are left out too, so the carousel doesn't repeat the feed. Nothing is stored and
+    there's no randomness: the picks change only when the pool or the ranking does."""
+    settings = settings or get_settings()
+    now = now or datetime.now(UTC)
+    today = get_feed(session, local_today(now, get_user_settings(session, settings).tz))
+    subscribed = set(curation_prefs.subscribed_channel_ids(session))
+    ranking = _rank_pool(
+        session,
+        settings=settings,
+        now=now,
+        exclude={item.video_id for item in today.items} if today else (),
+        keep=lambda c: c.source != SUBSCRIPTION and c.channel_id not in subscribed,
+    )
+    slots = _compose(
+        session,
+        ranking,
+        ComposeSettings(size=size, per_channel_cap=1, exploration_slots=0),
+        random.Random(0),  # ties only; no exploration
+    )
+    return _discovery_items(session, slots)
+
+
+def _discovery_items(session: Session, slots: Sequence[FeedSlot]) -> list[DiscoveryItem]:
+    if not slots:
+        return []
+    rows = {
+        row[0]: row
+        for row in session.execute(
+            text(
+                """
+                SELECT v.id, v.title, v.duration_seconds, v.published_at, v.thumbnail_url,
+                       v.view_count, c.id, c.title, c.handle, c.thumbnail_url
+                FROM videos AS v JOIN channels AS c ON c.id = v.channel_id
+                WHERE v.id IN :ids
+                """
+            ).bindparams(bindparam("ids", expanding=True)),
+            {"ids": [slot.item.candidate.video_id for slot in slots]},
+        )
+    }
+    return [
+        DiscoveryItem(
+            *rows[slot.item.candidate.video_id],
+            source=slot.item.candidate.source,
+            source_detail=slot.item.candidate.source_detail,
+            score=slot.item.score,
+            breakdown=slot.item.breakdown,
+            explanation=slot.explanation,
+        )
+        for slot in slots
+        if slot.item.candidate.video_id in rows
+    ]
+
+
 def _rank_and_compose(
     session: Session,
     *,
@@ -233,10 +324,40 @@ def _rank_and_compose(
     `feed_size` slots. Returns the slots, how many candidates were left after ranking
     and the active model version (None when rules-only)."""
     user = get_user_settings(session, settings)
+    ranking = _rank_pool(session, settings=settings, now=now, exclude=exclude)
+    slots = _compose(
+        session,
+        ranking,
+        ComposeSettings(size=user.feed_size, exploration_slots=user.feed_exploration_slots),
+        rng or random.Random(),
+    )
+    return slots, len(ranking.scored), ranking.model_version
+
+
+@dataclass(frozen=True)
+class _Ranking:
+    scored: list[ScoredCandidate]
+    curation: dict[str, ChannelCuration]
+    model_version: str | None  # None when rules-only
+
+
+def _rank_pool(
+    session: Session,
+    *,
+    settings: Settings,
+    now: datetime,
+    exclude: Collection[str],
+    keep: Callable[[RankCandidate], bool] | None = None,
+) -> _Ranking:
+    """Rank the recent candidate pool (only the candidates `keep` accepts, if given),
+    best first, leaving out `exclude`d videos."""
+    user = get_user_settings(session, settings)
     curation = load_curation(session)
     pool = load_rank_candidates(session, since=now - timedelta(days=settings.feed_candidate_days))
     # Uploads of channels unsubscribed since they were polled no longer belong.
     pool = [c for c in pool if c.source != SUBSCRIPTION or c.channel_id in curation]
+    if keep is not None:
+        pool = [c for c in pool if keep(c)]
     tag_subscriptions = curation_prefs.list_tag_subscriptions(session)
     active = load_active_model(
         session, data_dir=settings.data_dir, embedding_model=settings.embedding_model
@@ -258,15 +379,22 @@ def _rank_and_compose(
     )
     if exclude:
         scored = [item for item in scored if item.candidate.video_id not in exclude]
-    slots = compose(
-        scored,
-        curation,
-        ComposeSettings(size=user.feed_size, exploration_slots=user.feed_exploration_slots),
-        rng or random.Random(),
-        videos=load_video_refs(session, referenced_video_ids(scored)),
-        channel_ratings=load_channel_ratings(session),
+    return _Ranking(scored, curation, None if active is None else str(active.version.id))
+
+
+def _compose(
+    session: Session, ranking: _Ranking, settings: ComposeSettings, rng: random.Random
+) -> list[FeedSlot]:
+    return list(
+        compose(
+            ranking.scored,
+            ranking.curation,
+            settings,
+            rng,
+            videos=load_video_refs(session, referenced_video_ids(ranking.scored)),
+            channel_ratings=load_channel_ratings(session),
+        )
     )
-    return list(slots), len(scored), None if active is None else str(active.version.id)
 
 
 def _tag_confidences(

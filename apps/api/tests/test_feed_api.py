@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 from homefeed_api.main import app, get_feed_poll, get_gateway
 from homefeed_core import feeds
-from homefeed_core.candidates import SUBSCRIPTION, record
+from homefeed_core.candidates import RELATED, SUBSCRIPTION, record
 from homefeed_core.config import get_settings
 from homefeed_core.db import get_session_factory
 from homefeed_core.gateway.fake import FakeGateway
@@ -368,3 +368,28 @@ def test_more_is_404_for_a_missing_feed(client: TestClient) -> None:
     assert response.status_code == 404
     assert response.json() == {"detail": "No such feed"}
     assert client.post("/feeds/0/more").status_code == 422
+
+
+def test_discovery_videos_come_from_outside_the_subscriptions(client: TestClient) -> None:
+    seed()
+    assert client.get("/discover/videos").json() == []
+    outside = "UC" + "o" * 22
+    with get_session_factory().begin() as session:
+        session.execute(
+            text("INSERT INTO channels (id, title) VALUES (:id, 'Outside')"), {"id": outside}
+        )
+        session.execute(
+            text("INSERT INTO videos (id, channel_id, title) VALUES ('o0000000000', :id, 'Far')"),
+            {"id": outside},
+        )
+        record(session, ["o0000000000"], source=RELATED, source_detail="w0000000000")
+
+    response = client.get("/discover/videos")
+
+    assert response.status_code == 200, response.text
+    [item] = response.json()
+    assert item["video_id"] == "o0000000000"
+    assert (item["channel_title"], item["source"]) == ("Outside", RELATED)
+    assert item["explanation"].startswith("Related to")
+    assert set(item["breakdown"]) >= {"final", "channel", "similarity"}
+    assert client.get("/discover/videos", params={"limit": 0}).status_code == 422

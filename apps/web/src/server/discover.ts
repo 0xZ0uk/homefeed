@@ -1,8 +1,10 @@
 import {
   getChannelProfile,
+  getDiscoveryVideos,
   getSuggestedChannels,
   refreshSuggestedChannels,
   type ChannelProfileOut,
+  type DiscoveryItemOut,
   type SuggestedChannel,
 } from "@homefeed/api-client";
 import { queryOptions } from "@tanstack/react-query";
@@ -11,9 +13,16 @@ import { createServerFn } from "@tanstack/react-start";
 import { isChannelId } from "#/lib/discover";
 import { apiClient, apiErrorMessage } from "#/server/api";
 
-/** Server functions for the discover page. Subscribing uses `channels.subscribe`. */
+/**
+ * Server functions for the discover page and the home page's Discovery
+ * carousel. Subscribing uses `channels.subscribe`.
+ */
 
 export type { ChannelProfileOut, SuggestedChannel };
+export type DiscoveryVideo = DiscoveryItemOut;
+
+/** How many videos the home page's Discovery carousel shows. */
+export const DISCOVERY_LIMIT = 10;
 
 /** How many suggested channels the discover page shows. */
 export const SUGGESTIONS_LIMIT = 20;
@@ -34,6 +43,28 @@ const fetchSuggestedChannels = createServerFn({ method: "GET" }).handler(
 export const suggestedChannelsQuery = queryOptions({
   queryKey: ["discover", "suggested-channels", SUGGESTIONS_LIMIT],
   queryFn: () => fetchSuggestedChannels(),
+});
+
+const fetchDiscoveryVideos = createServerFn({ method: "GET" }).handler(
+  async (): Promise<DiscoveryVideo[]> => {
+    const { data } = await getDiscoveryVideos({
+      client: apiClient(),
+      query: { limit: DISCOVERY_LIMIT },
+      throwOnError: true,
+    });
+    return data;
+  },
+);
+
+/**
+ * The best picks from outside the subscriptions, leaving out today's feed.
+ * Ranking them takes a moment, so they're kept for a while; refreshing the
+ * feed invalidates them, since what's in it changes.
+ */
+export const discoveryVideosQuery = queryOptions({
+  queryKey: ["discover", "videos", DISCOVERY_LIMIT],
+  queryFn: () => fetchDiscoveryVideos(),
+  staleTime: 5 * 60 * 1000,
 });
 
 /** Re-crawl the featured channels, preferring ones not in `exclude`. */

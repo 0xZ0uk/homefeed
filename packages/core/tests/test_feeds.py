@@ -13,7 +13,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from homefeed_core import feeds
-from homefeed_core.candidates import SUBSCRIPTION, record
+from homefeed_core.candidates import CHANNEL_GRAPH, RELATED, SUBSCRIPTION, TAG, record
 from homefeed_core.composer import ChannelRatings
 from homefeed_core.config import Settings
 from homefeed_core.curation import add_keyword_mute, subscribe_tag
@@ -228,6 +228,71 @@ def test_extend_feed_returns_the_feed_unchanged_when_the_pool_is_exhausted(
 
 def test_extend_feed_of_a_missing_feed_is_none(sessions: sessionmaker[Session]) -> None:
     assert extend(sessions, 999, 5) is None
+
+
+OUTSIDE = ["UC" + c * 22 for c in "abc"]  # not subscribed
+
+
+def add_outside_videos(session: Session) -> None:
+    """Three videos from each of three unsubscribed channels, found by sources other than
+    subscriptions, and one from a subscribed channel found by a related video."""
+    for channel_id, source in zip(OUTSIDE, [RELATED, CHANNEL_GRAPH, TAG], strict=True):
+        session.execute(
+            text("INSERT INTO channels (id, title) VALUES (:id, :title)"),
+            {"id": channel_id, "title": f"Outside {channel_id[2]}"},
+        )
+        for n in range(3):
+            session.execute(
+                text("INSERT INTO videos (id, channel_id, title) VALUES (:id, :channel, 'x')"),
+                {"id": vid(channel_id, n), "channel": channel_id},
+            )
+        record(session, [vid(channel_id, n) for n in range(3)], source=source, now=NOW)
+    add_videos(session, LOVED, range(9, 10))
+    session.execute(text("DELETE FROM candidates WHERE video_id = :id"), {"id": vid(LOVED, 9)})
+    record(session, [vid(LOVED, 9)], source=RELATED, now=NOW)
+
+
+def discover(sessions: sessionmaker[Session], size: int = 10) -> list[feeds.DiscoveryItem]:
+    with sessions() as session:
+        return feeds.discover(session, size=size, settings=SETTINGS, now=NOW)
+
+
+def test_discover_picks_one_video_per_channel_from_outside_the_subscriptions(
+    sessions: sessionmaker[Session],
+) -> None:
+    with sessions.begin() as session:
+        add_outside_videos(session)
+
+    items = discover(sessions)
+
+    assert sorted(item.channel_id for item in items) == OUTSIDE
+    assert {item.source for item in items} == {RELATED, CHANNEL_GRAPH, TAG}
+    assert items[0].channel_title.startswith("Outside ")
+    assert all(item.explanation for item in items)
+    assert [item.score for item in items] == sorted((item.score for item in items), reverse=True)
+    assert len(discover(sessions, size=2)) == 2
+
+
+def test_discover_leaves_out_todays_feed_and_watched_videos(
+    sessions: sessionmaker[Session],
+) -> None:
+    with sessions.begin() as session:
+        add_outside_videos(session)
+        for n in range(3):
+            set_rating(session, vid(OUTSIDE[0], n), 7)
+    in_feed = {item.video_id for item in build(sessions, feed_date=TODAY).items}
+
+    shown = {item.video_id for item in discover(sessions)}
+
+    assert in_feed & {vid(c, n) for c in OUTSIDE for n in range(3)}  # the feed has some
+    assert len(shown) == 2 and shown.isdisjoint(in_feed)
+    assert OUTSIDE[0] not in {video_id[0] for video_id in shown}
+
+
+def test_discover_with_an_empty_pool(tmp_path: Path) -> None:
+    factory = open_database(tmp_path / "homefeed.sqlite")
+    with factory() as session:
+        assert feeds.discover(session, settings=SETTINGS, now=NOW) == []
 
 
 def test_watched_and_dismissed_are_left_out(sessions: sessionmaker[Session]) -> None:
