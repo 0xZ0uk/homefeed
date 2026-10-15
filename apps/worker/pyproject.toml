@@ -7,7 +7,6 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "apscheduler>=3.11.3,<4",
     "homefeed-core",
 ]
 

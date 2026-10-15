@@ -534,7 +534,6 @@ source = { editable = "apps/api" }
 dependencies = [
     { name = "fastapi", extra = ["standard"] },
     { name = "homefeed-core" },
-    { name = "homefeed-worker" },
 ]
 
 [package.dev-dependencies]
@@ -549,7 +548,6 @@ dev = [
 requires-dist = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.143.0" },
     { name = "homefeed-core", editable = "packages/core" },
-    { name = "homefeed-worker", editable = "apps/worker" },
 ]
 
 [package.metadata.requires-dev]
@@ -565,6 +563,7 @@ name = "homefeed-core"
 version = "0.1.0"
 source = { editable = "packages/core" }
 dependencies = [
+    { name = "apscheduler" },
     { name = "fastembed" },
     { name = "lightgbm" },
     { name = "numpy" },
@@ -588,6 +587,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "apscheduler", specifier = ">=3.11.3,<4" },
     { name = "fastembed", specifier = ">=0.9.0" },
     { name = "lightgbm", specifier = ">=4.7.0" },
     { name = "numpy", specifier = ">=2.5.4" },
@@ -614,7 +614,6 @@ name = "homefeed-worker"
 version = "0.1.0"
 source = { editable = "apps/worker" }
 dependencies = [
-    { name = "apscheduler" },
     { name = "homefeed-core" },
 ]
 
@@ -626,10 +625,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "apscheduler", specifier = ">=3.11.3,<4" },
-    { name = "homefeed-core", editable = "packages/core" },
-]
+requires-dist = [{ name = "homefeed-core", editable = "packages/core" }]
 
 [package.metadata.requires-dev]
 dev = [

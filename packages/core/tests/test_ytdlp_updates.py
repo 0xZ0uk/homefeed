@@ -269,7 +269,7 @@ def test_entry_points_activate_before_yt_dlp_is_imported(tmp_path: Path) -> None
         "import sys\n"
         "import homefeed_api, homefeed_worker\n"
         "assert 'yt_dlp' not in sys.modules, 'yt_dlp imported by the package inits'\n"
-        "import homefeed_api.main, homefeed_worker.scheduler\n"
+        "import homefeed_api.main, homefeed_worker.scheduler, homefeed_core.jobs\n"
         "assert 'yt_dlp' in sys.modules\n"
     )
     env = {
