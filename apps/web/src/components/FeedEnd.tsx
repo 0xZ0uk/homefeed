@@ -158,8 +158,8 @@ export function FeedEnd({
 
 /**
  * A wildcard as a card: why it's here ("Wildcard: outside the topics you
- * follow") with the score behind it under "Details", chips, and the quick
- * actions to steer the feed from it.
+ * follow"), which opens the score behind it, topic tags, and the quick actions
+ * to steer the feed from it.
  */
 function WildcardCard({
   video,

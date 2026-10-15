@@ -39,9 +39,9 @@ import { discoveryVideosQuery, type DiscoveryVideo } from "#/server/discover";
  * motion (they can still start it). It's left out while the videos load, when
  * there are none, and if they fail: the feed below matters more.
  *
- * Each video is a card like the feed's: why it's here with a "Details" button,
- * chips, and quick actions to steer the feed ("More like this", "Less like
- * this", "Later"), whose outcome is said in a status line hanging under the
+ * Each video is a card like the feed's: why it's here (pressed, the score
+ * behind it), topic tags, and quick actions to steer the feed ("More" and
+ * "Less" like this, "Later"), whose outcome is said in a status line hanging under the
  * heading, with an Undo. Holding focus on a video keeps the carousel still.
  */
 export function DiscoveryCarousel() {
@@ -208,6 +208,8 @@ function Slide({
     <VideoCard
       video={{ ...video, watched: false }}
       now={now}
+      // Discovery sits in the "New to you" lane, and has only new channels.
+      markNew={false}
       className="snap-start"
       overlay={
         source && (

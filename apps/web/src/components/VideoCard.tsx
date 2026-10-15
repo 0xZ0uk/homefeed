@@ -2,16 +2,24 @@ import type { ScoreBreakdownOut } from "@homefeed/api-client";
 import { Link } from "@tanstack/react-router";
 import {
   CircleCheck,
+  Compass,
   CornerDownRight,
   EyeOff,
+  Globe,
+  Hash,
   Layers,
+  Link2,
+  Network,
+  Pin,
+  Rss,
+  Search,
   TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "#/components/ui/avatar";
-import { WhyThisPopover } from "#/components/WhyThisPopover";
+import { REASON, WhyThisPopover } from "#/components/WhyThisPopover";
 import {
   CARD_FLAG_LABELS,
   cardFlags,
@@ -43,8 +51,14 @@ export interface CardVideo {
   watched: boolean;
   /** Why it's here: the card's reason line. */
   explanation?: string;
-  /** How its score was made, for the reason's "Details". */
+  /** How its score was made, for the reason's details. */
   breakdown?: ScoreBreakdownOut;
+  /** The candidate source that found it, for the reason's icon. */
+  source?: string | null;
+  /** Picked to explore a channel I hardly know. */
+  is_exploration?: boolean;
+  /** From a channel I pinned. */
+  is_pinned?: boolean;
   /** False for a channel I don't subscribe to; unknown shows nothing. */
   channel_subscribed?: boolean;
   /** Up to three topic tags, each linking to its page. */
@@ -63,26 +77,37 @@ const FLAG_ICONS: Record<CardFlag, LucideIcon> = {
   clickbait: TriangleAlert,
 };
 
+/** Icons of the sources a reason can start from; others get an arrow. */
+const SOURCE_ICONS: Record<string, LucideIcon> = {
+  subscription: Rss,
+  related: Link2,
+  saved_search: Search,
+  channel_graph: Network,
+  tag: Hash,
+  external: Globe,
+};
+
 /**
- * A small rounded label on a card, one line high however long its text (which is
- * cut short, as a tag's can be long). A transparent border lets a link take a
- * visible one for its focus ring, as buttons do.
+ * A label over the thumbnail, as the length is: white on a dark plate, so it
+ * reads on any picture.
  */
-const CHIP =
-  "inline-flex h-6 max-w-full items-center gap-1.5 rounded-full border border-transparent bg-secondary px-2.5 text-[0.8125rem] whitespace-nowrap text-secondary-foreground";
+export const MEDIA_BADGE =
+  "inline-flex max-w-full items-center gap-1 rounded bg-black/80 px-1.5 py-px text-xs font-medium text-white";
 
 /**
  * One video: its thumbnail (or, when it has none, a placeholder in the
- * channel's colour), then the channel's avatar beside title, channel with
- * length, stats and a menu of actions. Below that come what helps decide:
- * the reason it's here with a "Details" button, chips (new to me, topic tags,
- * deep dive, likely clickbait) and a row of quick actions. The title is the
- * card's one link, stretched over the whole card; the controls and links
- * above it are raised over that.
+ * channel's colour) with its length and what it is (watched, new to me, a deep
+ * dive, likely clickbait) on it; then the channel's avatar beside title,
+ * channel and stats, and a menu of actions. Below that come what helps decide:
+ * the reason it's here, which opens its score breakdown, then the topic tags
+ * and a row of quick actions. The title is the card's one link, stretched over
+ * the whole card; the controls and links above it are raised over that.
  *
  * A watched video keeps its text at full strength: its thumbnail is greyed
  * out, with a bar along the bottom for how far I got, and a "Watched" label
  * says so in words. A dismissed one (shown on past feeds) says "Dismissed".
+ * Where the page around the card already says the channel is new to me (the
+ * "New to you" lane, Discovery), `markNew={false}` leaves that label off.
  */
 export function VideoCard({
   video: item,
@@ -91,6 +116,7 @@ export function VideoCard({
   menu,
   rate,
   actions,
+  markNew = true,
   className,
 }: {
   video: CardVideo;
@@ -101,8 +127,10 @@ export function VideoCard({
   menu?: ReactNode;
   /** Shown with the "Watched" label: the button to rate the video. */
   rate?: ReactNode;
-  /** Shown under the chips: the card's quick actions. */
+  /** Shown after the tags: the card's quick actions. */
   actions?: ReactNode;
+  /** Label a video from a channel I don't follow "New to you". */
+  markNew?: boolean;
   className?: string;
 }) {
   const duration = formatDuration(item.duration_seconds);
@@ -114,15 +142,14 @@ export function VideoCard({
   const progress = progressPercent(item.watched_fraction);
   const flags = cardFlags(item.llm);
   const tags = item.tags ?? [];
-  const isNew = item.channel_subscribed === false;
+  const isNew = markNew && item.channel_subscribed === false;
+  const hasBadges =
+    item.watched || !!item.dismissed_at || isNew || flags.length > 0;
 
   return (
     <li className={cn("group/card relative flex flex-col gap-3", className)}>
       <div
-        className={cn(
-          "relative aspect-video overflow-hidden rounded-xl bg-secondary",
-          item.watched && "grayscale",
-        )}
+        className="relative aspect-video overflow-hidden rounded-xl bg-secondary"
         style={thumbnail ? undefined : { backgroundColor: color }}
       >
         {thumbnail ? (
@@ -130,19 +157,77 @@ export function VideoCard({
             src={thumbnail}
             alt=""
             loading="lazy"
-            className="size-full rounded-[inherit] object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
+            className={cn(
+              "size-full rounded-[inherit] object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10",
+              item.watched && "grayscale",
+            )}
           />
         ) : (
           <span
             aria-hidden="true"
-            className="flex size-full items-center justify-center bg-linear-to-br from-white/10 to-black/30 text-7xl font-bold text-white/25"
+            className={cn(
+              "flex size-full items-center justify-center bg-linear-to-br from-white/10 to-black/30 text-7xl font-bold text-white/25",
+              item.watched && "grayscale",
+            )}
           >
             {initial(item.channel_title)}
           </span>
         )}
+        {hasBadges && (
+          <div className="absolute inset-x-1.5 top-1.5 flex flex-wrap items-start gap-1">
+            {item.watched && (
+              <span className={MEDIA_BADGE}>
+                <CircleCheck aria-hidden="true" className="size-3.5 shrink-0" />
+                Watched
+                {progress !== null && (
+                  <span className="sr-only">, {progress}% of it</span>
+                )}
+              </span>
+            )}
+            {item.watched && rate}
+            {item.dismissed_at && (
+              <span className={MEDIA_BADGE}>
+                <EyeOff aria-hidden="true" className="size-3.5 shrink-0" />
+                {dismissedLabel(item.dismiss_reason)}
+              </span>
+            )}
+            {isNew && (
+              <span className={MEDIA_BADGE}>
+                <span
+                  aria-hidden="true"
+                  className="size-2 shrink-0 rounded-full bg-brand forced-colors:bg-[CanvasText]"
+                />
+                New to you
+              </span>
+            )}
+            {flags.map((flag) => {
+              const Icon = FLAG_ICONS[flag];
+              return (
+                <span key={flag} className={MEDIA_BADGE}>
+                  <Icon
+                    aria-hidden="true"
+                    className={cn(
+                      "size-3.5 shrink-0",
+                      flag === "clickbait" && "text-overlay-warning",
+                    )}
+                  />
+                  {CARD_FLAG_LABELS[flag]}
+                </span>
+              );
+            })}
+          </div>
+        )}
         {duration && (
-          <span className="absolute right-1.5 bottom-1.5 rounded bg-black/80 px-1 py-px text-xs font-medium text-white tabular-nums">
-            {duration}
+          <span
+            className={cn(
+              MEDIA_BADGE,
+              "absolute end-1.5 bottom-1.5 px-1 tabular-nums",
+            )}
+          >
+            {/* The clock reading for the eye, the length in words for a
+                screen reader. */}
+            <span aria-hidden={length ? true : undefined}>{duration}</span>
+            {length && <span className="sr-only">{length}</span>}
           </span>
         )}
         {progress !== null && (
@@ -185,105 +270,123 @@ export function VideoCard({
               {item.title}
             </Link>
           </h3>
-          <p className="mt-1 flex gap-x-1 text-sm text-muted-foreground">
-            <span className="truncate">{item.channel_title}</span>{" "}
-            {length && <span className="shrink-0">· {length}</span>}
+          {/* Channel, views and age on one line. Each part starts with its
+              dot, and the row is pulled back by a dot's width and clipped,
+              so a part that wraps to a new line doesn't start with one. */}
+          <p className="mt-1 overflow-hidden text-sm text-muted-foreground">
+            <span className="-ms-3 flex flex-wrap">
+              {[
+                <span key="channel" className="truncate">
+                  {item.channel_title}
+                </span>,
+                views && (
+                  <span key="views" className="tabular-nums">
+                    {views}
+                  </span>
+                ),
+                age && item.published_at && (
+                  <time
+                    key="age"
+                    dateTime={item.published_at}
+                    suppressHydrationWarning
+                    className="tabular-nums"
+                  >
+                    {age}
+                  </time>
+                ),
+              ]
+                .filter(Boolean)
+                .map((part, index) => (
+                  <span key={index} className="flex max-w-full min-w-0">
+                    <span
+                      aria-hidden="true"
+                      className="w-3 shrink-0 text-center"
+                    >
+                      ·
+                    </span>
+                    {part}
+                  </span>
+                ))}
+            </span>
           </p>
-          <p className="flex flex-wrap gap-x-1 text-sm text-muted-foreground">
-            {[
-              views,
-              age && item.published_at && (
-                <time dateTime={item.published_at} suppressHydrationWarning>
-                  {age}
-                </time>
-              ),
-            ]
-              .filter(Boolean)
-              .map((part, index) => (
-                <span key={index} className="tabular-nums">
-                  {index > 0 && "• "}
-                  {part}
-                </span>
-              ))}
-          </p>
-          {(item.watched || item.dismissed_at) && (
-            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-              {item.watched && (
-                <span className="inline-flex items-center gap-1">
-                  <CircleCheck aria-hidden="true" className="size-4" />
-                  Watched
-                  {progress !== null && (
-                    <span className="sr-only">, {progress}% of it</span>
-                  )}
-                </span>
-              )}
-              {item.watched && rate}
-              {item.dismissed_at && (
-                <span className="inline-flex items-center gap-1">
-                  <EyeOff aria-hidden="true" className="size-4" />
-                  {dismissedLabel(item.dismiss_reason)}
-                </span>
-              )}
-            </p>
-          )}
         </div>
         {menu}
       </div>
-      {item.explanation && (
-        <div className="flex items-baseline gap-x-1">
-          <p className="line-clamp-2 min-w-0 text-sm leading-snug">
-            <CornerDownRight
-              aria-hidden="true"
-              className="mr-1 inline size-4 align-text-bottom text-muted-foreground"
-            />
-            {item.explanation}
-          </p>
-          {item.breakdown && (
-            <WhyThisPopover
-              title={item.title}
-              explanation={item.explanation}
-              breakdown={item.breakdown}
-            />
+      {item.explanation &&
+        (item.breakdown ? (
+          <WhyThisPopover
+            title={item.title}
+            explanation={item.explanation}
+            breakdown={item.breakdown}
+          >
+            <Reason video={item} explanation={item.explanation} clamp />
+          </WhyThisPopover>
+        ) : (
+          <div className={REASON}>
+            <Reason video={item} explanation={item.explanation} />
+          </div>
+        ))}
+      {(tags.length > 0 || actions) && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          {tags.length > 0 && (
+            // Wide enough for a tag or two; past that, the actions go below.
+            <div className="flex min-w-0 flex-[1_1_8rem] flex-wrap gap-x-3">
+              {tags.map((tag) => (
+                <Link
+                  key={tag.slug}
+                  to="/tags/$slug"
+                  params={{ slug: tag.slug }}
+                  className="relative z-10 -mx-1 inline-block rounded-md px-1 text-[0.8125rem] leading-6 break-words text-muted-foreground outline-none hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span aria-hidden="true">#</span>
+                  {tag.label}
+                </Link>
+              ))}
+            </div>
           )}
+          {actions && <div className="ms-auto">{actions}</div>}
         </div>
       )}
-      {(isNew || tags.length > 0 || flags.length > 0) && (
-        <div className="flex flex-wrap gap-1.5">
-          {isNew && (
-            <span className={CHIP}>
-              <span
-                aria-hidden="true"
-                className="size-2 shrink-0 rounded-full bg-brand forced-colors:bg-[CanvasText]"
-              />
-              New to you
-            </span>
-          )}
-          {tags.map((tag) => (
-            <Link
-              key={tag.slug}
-              to="/tags/$slug"
-              params={{ slug: tag.slug }}
-              className={cn(
-                CHIP,
-                "relative z-10 outline-none hover:bg-accent focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-              )}
-            >
-              <span className="truncate">{tag.label}</span>
-            </Link>
-          ))}
-          {flags.map((flag) => {
-            const Icon = FLAG_ICONS[flag];
-            return (
-              <span key={flag} className={CHIP}>
-                <Icon aria-hidden="true" className="size-3.5 shrink-0" />
-                {CARD_FLAG_LABELS[flag]}
-              </span>
-            );
-          })}
-        </div>
-      )}
-      {actions}
     </li>
+  );
+}
+
+/**
+ * A card's reason: an icon for where the video came from (a compass, in the
+ * brand colour, for a channel being explored), then the reason with its first
+ * part, the source, in medium weight. `clamp` cuts it to two lines, for when
+ * the whole of it is a press away.
+ */
+function Reason({
+  video,
+  explanation,
+  clamp = false,
+}: {
+  video: CardVideo;
+  explanation: string;
+  clamp?: boolean;
+}) {
+  const Icon = video.is_exploration
+    ? Compass
+    : video.is_pinned
+      ? Pin
+      : ((video.source ? SOURCE_ICONS[video.source] : undefined) ??
+        CornerDownRight);
+  const [lead, ...rest] = explanation.split(" · ");
+  return (
+    <>
+      <Icon
+        aria-hidden="true"
+        className={cn(
+          "mt-px size-4 shrink-0",
+          video.is_exploration ? "text-brand" : "text-muted-foreground",
+        )}
+      />
+      <span className={cn("min-w-0 flex-1", clamp && "line-clamp-2")}>
+        <span className="font-medium">{lead}</span>
+        {rest.length > 0 && ` · ${rest.join(" · ")}`}
+      </span>
+    </>
   );
 }
 

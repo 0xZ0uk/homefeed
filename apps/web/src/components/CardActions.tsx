@@ -1,8 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ListCheck, ListPlus, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Clock, ClockCheck, Star, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useId, useState } from "react";
 
 import { useQueueToggle } from "#/components/QueueButton";
+import { ScoreFace } from "#/components/ScoreFace";
 import { ScoreScale } from "#/components/ScoreScale";
 import { Button } from "#/components/ui/button";
 import {
@@ -158,12 +159,16 @@ interface FeedbackChange {
 const TOGGLE =
   "relative z-10 aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary aria-pressed:hover:text-primary-foreground";
 
+/** A half of the joined "More" and "Less" control, on its shared fill. */
+const HALF =
+  "hover:bg-accent dark:hover:bg-accent aria-pressed:dark:hover:bg-primary";
+
 /**
- * A card's quick actions, always visible: "More like this" and "Less like
- * this" steer the ranking and are pressed while they apply (pressing the
- * pressed one clears it), and "Later" puts the video in the watch queue and
- * stays pressed while it's there. Each button names the video for screen
- * readers.
+ * A card's quick actions, always visible and on one row: "More" and "Less"
+ * (like this), joined as one control, steer the ranking and are pressed while
+ * they apply (pressing the pressed one clears it); "Later" puts the video in
+ * the watch queue and stays pressed while it's there. Each button's name says
+ * it in full and names the video for screen readers.
  */
 export function CardActions({
   title,
@@ -179,38 +184,41 @@ export function CardActions({
 }) {
   const signal = signalOf(feedback);
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex items-center gap-2">
+      <div className="flex rounded-full bg-secondary">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-pressed={signal === MORE_LIKE_THIS}
+          onClick={() => onFeedback(MORE_LIKE_THIS)}
+          className={cn(TOGGLE, HALF, "rounded-e-none ps-2.5 pe-2")}
+        >
+          <ThumbsUp
+            aria-hidden="true"
+            className={cn(signal === MORE_LIKE_THIS && "fill-current")}
+          />
+          More<span className="sr-only"> like this: {title}</span>
+        </Button>
+        <span aria-hidden="true" className="my-1.5 w-px bg-border" />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-pressed={signal === LESS_LIKE_THIS}
+          onClick={() => onFeedback(LESS_LIKE_THIS)}
+          className={cn(TOGGLE, HALF, "rounded-s-none ps-2 pe-2.5")}
+        >
+          <ThumbsDown
+            aria-hidden="true"
+            className={cn(signal === LESS_LIKE_THIS && "fill-current")}
+          />
+          Less<span className="sr-only"> like this: {title}</span>
+        </Button>
+      </div>
       <Button
         type="button"
-        variant="outline"
-        size="sm"
-        aria-pressed={signal === MORE_LIKE_THIS}
-        onClick={() => onFeedback(MORE_LIKE_THIS)}
-        className={TOGGLE}
-      >
-        <ThumbsUp
-          aria-hidden="true"
-          className={cn(signal === MORE_LIKE_THIS && "fill-current")}
-        />
-        More like this<span className="sr-only">: {title}</span>
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        aria-pressed={signal === LESS_LIKE_THIS}
-        onClick={() => onFeedback(LESS_LIKE_THIS)}
-        className={TOGGLE}
-      >
-        <ThumbsDown
-          aria-hidden="true"
-          className={cn(signal === LESS_LIKE_THIS && "fill-current")}
-        />
-        Less like this<span className="sr-only">: {title}</span>
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
+        variant="secondary"
         size="sm"
         aria-pressed={queue.queued}
         // Not `disabled`: that would take focus away while a save is running.
@@ -218,12 +226,12 @@ export function CardActions({
         onClick={() => {
           if (queue.ready) queue.toggle();
         }}
-        className={TOGGLE}
+        className={cn(TOGGLE, "hover:bg-accent")}
       >
         {queue.queued ? (
-          <ListCheck aria-hidden="true" />
+          <ClockCheck aria-hidden="true" />
         ) : (
-          <ListPlus aria-hidden="true" />
+          <Clock aria-hidden="true" />
         )}
         Later<span className="sr-only">: {title}</span>
       </Button>
@@ -233,9 +241,10 @@ export function CardActions({
 
 /**
  * The button on a watched video's card to rate it, and then to change that
- * rating: "Rate it", or "You rated it 8" once rated. It opens a popover with
- * the rating scale and what its ends mean; picking a face rates the video and
- * closes it.
+ * rating, sitting on the thumbnail beside "Watched": "Rate it", or once rated
+ * the rating's face and number (named "You rated it 8"). It opens a popover
+ * with the rating scale and what its ends mean; picking a face rates the
+ * video and closes it.
  */
 export function RateButton({
   title,
@@ -254,14 +263,26 @@ export function RateButton({
       <PopoverTrigger
         render={
           <Button
-            variant="outline"
-            size="sm"
-            className="relative z-10 text-foreground"
+            variant="ghost"
+            size="xs"
+            className="relative z-10 bg-black/80 ps-1 text-white hover:bg-black hover:text-white aria-expanded:bg-black aria-expanded:text-white dark:hover:bg-black"
           />
         }
+        aria-label={
+          rating === null ? undefined : `${ratedLabel(rating)}: ${title}`
+        }
       >
-        {rating === null ? "Rate it" : ratedLabel(rating)}
-        <span className="sr-only">: {title}</span>
+        {rating === null ? (
+          <>
+            <Star aria-hidden="true" className="ms-0.5" />
+            Rate it<span className="sr-only">: {title}</span>
+          </>
+        ) : (
+          <>
+            <ScoreFace score={rating} filled className="size-4.5" />
+            <span className="tabular-nums">{rating}</span>
+          </>
+        )}
       </PopoverTrigger>
       <PopoverContent
         side="top"

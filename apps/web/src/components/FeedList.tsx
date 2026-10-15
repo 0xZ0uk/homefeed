@@ -47,9 +47,9 @@ import {
  * it by what I'm in the mood for (new to me, quick, medium, deep dives) and a
  * menu to sort it (ranked, the feed's own order, by default). The chips and
  * the sort apply to both lanes, and a lane with nothing to show says why.
- * Every card links to its watch page, says why it's there (with its score
- * breakdown under "Details"), and has quick actions that steer the feed:
- * "More like this", "Less like this" and "Later"; a watched card can be rated
+ * Every card links to its watch page, says why it's there (pressing that shows
+ * its score breakdown), and has quick actions that steer the feed: "More" and
+ * "Less" (like this) and "Later"; a watched card can be rated
  * on the spot. What an action did is said in a status line hanging under the
  * chips, with an Undo. There is deliberately no infinite scroll: today's feed
  * ends in a "Show more" button that appends the next page of picks when
