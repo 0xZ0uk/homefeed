@@ -43,3 +43,6 @@ __pycache__/
 # App data
 data/
 *.sqlite*
+
+# Claude Code agent worktrees
+.claude/worktrees/

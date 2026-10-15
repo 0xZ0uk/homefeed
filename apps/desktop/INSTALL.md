@@ -4,13 +4,13 @@ Homefeed is a YouTube app for your computer: a short daily feed of videos picked
 
 ## Windows
 
-1. Download `Homefeed-Setup-<version>.exe` from the releases page you were sent.
+1. Download `Homefeed-Setup-<version>.exe` from the [latest release](https://github.com/0xZ0uk/homefeed/releases/latest).
 2. Open it. Windows may show a blue "Windows protected your PC" box, because Homefeed isn't signed with a paid certificate. Click **More info**, then **Run anyway**.
 3. That's it: there are no questions to answer and no administrator password. Homefeed installs, adds shortcuts to the Start Menu and the desktop, and opens.
 
 ## Linux
 
-1. Download `Homefeed-<version>-x86_64.AppImage`.
+1. Download `Homefeed-<version>-x86_64.AppImage` from the [latest release](https://github.com/0xZ0uk/homefeed/releases/latest).
 2. Make it executable (`chmod +x Homefeed-*.AppImage`, or Properties → Permissions → "Allow executing file as program") and open it. If it doesn't start, your system may need FUSE 2 (`libfuse2`).
 
 ## Using it

@@ -57,7 +57,7 @@ jobs:
             echo "Release v$VERSION already exists in $RELEASES_REPO"
           else
             gh release create "v$VERSION" --repo "$RELEASES_REPO" --draft --target "$GITHUB_SHA" \
-              --title "Homefeed $VERSION" --notes "Homefeed $VERSION"
+              --title "Homefeed $VERSION" --generate-notes
           fi
 
   build:

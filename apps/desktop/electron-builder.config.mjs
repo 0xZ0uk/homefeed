@@ -8,12 +8,11 @@
  */
 
 // The GitHub repo whose releases the app updates from (and CI publishes to): this one.
-// It's private, so only an install that can read it (e.g. with a token) finds updates;
-// anywhere else the check is a logged 404. HOMEFEED_RELEASES_REPO overrides it at build
-// time (owner/name). See README.md, "Releasing".
+// HOMEFEED_RELEASES_REPO overrides it at build time (owner/name). See README.md,
+// "Releasing".
 const RELEASES_REPO =
   // eslint-disable-next-line turbo/no-undeclared-env-vars -- not a turbo task
-  process.env.HOMEFEED_RELEASES_REPO || "0xZ0uk/lenstube";
+  process.env.HOMEFEED_RELEASES_REPO || "0xZ0uk/homefeed";
 const [owner, repo] = RELEASES_REPO.split("/");
 
 /** @type {import("electron-builder").Configuration} */
