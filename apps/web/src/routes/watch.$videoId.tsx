@@ -15,6 +15,7 @@ import { AppShell } from "#/components/AppShell";
 import { Chapters } from "#/components/Chapters";
 import { PlayerMediaProvider } from "#/components/PlayerMedia";
 import { SaveToPlaylist } from "#/components/SaveToPlaylist";
+import { SubscribeChannel } from "#/components/SubscribeChannel";
 import { VideoTags } from "#/components/VideoTags";
 import { WatchAndRate } from "#/components/WatchAndRate";
 import { NextInQueue } from "#/components/NextInQueue";
@@ -121,6 +122,7 @@ function Watch() {
                 </span>
               )}
             </p>
+            <SubscribeChannel channelId={video.channel_id} />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <QueueButton videoId={video.id} title={video.title} />
