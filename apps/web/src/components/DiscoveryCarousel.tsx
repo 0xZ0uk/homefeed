@@ -39,10 +39,10 @@ import { discoveryVideosQuery, type DiscoveryVideo } from "#/server/discover";
  * motion (they can still start it). It's left out while the videos load, when
  * there are none, and if they fail: the feed below matters more.
  *
- * Each video is a card like the feed's: why it's here (pressed, the score
- * behind it), topic tags, and quick actions to steer the feed ("More" and
- * "Less" like this, "Later"), whose outcome is said in a status line hanging under the
- * heading, with an Undo. Holding focus on a video keeps the carousel still.
+ * Each video is a card like the feed's: topic tags, an (i) button with why
+ * it's here and the score behind it, and quick actions to steer the feed
+ * ("More" and "Less" like this, "Later"), whose outcome is said in a status
+ * line hanging under the heading, with an Undo. Holding focus on a video keeps the carousel still.
  */
 export function DiscoveryCarousel() {
   const { data: videos } = useQuery(discoveryVideosQuery);

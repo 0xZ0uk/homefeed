@@ -10,14 +10,16 @@ import { OUTSIDE, cardButton, seedOutside } from "./cards";
 
 const [plane, workbench] = WOODWORKING.videos;
 
-test("a card says why it's there, and pressing the reason shows the score breakdown", async ({
+test("a card's (i) button says why it's there, and pressing it shows the score breakdown", async ({
   page,
 }) => {
   await open(page, "/");
   const card = feedItem(page, plane.title);
 
-  // The reason is on the card itself, not behind a hover.
-  await expect(card).toContainText("New from your subscriptions");
+  // A screen reader hears the reason in the button's name, without opening it.
+  await expect(
+    cardButton(card, "Why this is here: New from your subscriptions"),
+  ).toBeVisible();
   await cardButton(card, "Why this is here").click();
 
   const details = page.getByRole("dialog", { name: "Why this is here" });
@@ -34,6 +36,24 @@ test("a card says why it's there, and pressing the reason shows the score breakd
   await expect(cardButton(card, "Why this is here")).toBeFocused();
 });
 
+test("pointing at a card's (i) button opens why it's there, and it stays open to be read", async ({
+  page,
+}) => {
+  await open(page, "/");
+  const card = feedItem(page, plane.title);
+
+  await cardButton(card, "Why this is here").hover();
+  const details = page.getByRole("dialog", { name: "Why this is here" });
+  await expect(details).toBeVisible();
+  // Moving onto the popover keeps it open.
+  await details.hover();
+  await expect(details).toBeVisible();
+  await expect(details.getByRole("row", { name: /^Score/ })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(details).toBeHidden();
+});
+
 test("a card shows its length and its tags, which lead to their pages", async ({
   page,
 }) => {
@@ -43,12 +63,12 @@ test("a card shows its length and its tags, which lead to their pages", async ({
   // The length on the thumbnail, in words for a screen reader.
   await expect(card).toContainText("11 min");
   await expect(card).toContainText(WOODWORKING.title);
-  // Its tags, most confident first, after the title's own link.
+  // Its tags, most confident first, above the thumbnail and the title's link.
   await expect(card.getByRole("link")).toHaveText([
-    workbench.title,
     "#workbench",
     "#woodworking",
     "#hand tools",
+    workbench.title,
   ]);
   // A video without tags has no chips to link to.
   await expect(

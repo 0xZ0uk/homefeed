@@ -1,83 +1,111 @@
 import type { ScoreBreakdownOut } from "@homefeed/api-client";
-import { ChevronRight } from "lucide-react";
+import { Info } from "lucide-react";
 import { useId, type ReactNode } from "react";
 
+import { Button } from "#/components/ui/button";
 import {
   Popover,
   PopoverContent,
   PopoverTitle,
   PopoverTrigger,
 } from "#/components/ui/popover";
-import { breakdownTerms, formatScore } from "#/lib/breakdown";
+import {
+  breakdownTerms,
+  formatScore,
+  scoreDirection,
+  type ScoreDirection,
+} from "#/lib/breakdown";
 import { cn } from "#/lib/utils";
 
 /**
- * The look of a card's reason: a soft panel, so it reads as one thing (and,
- * when it opens the breakdown, as a control) rather than loose text.
- */
-export const REASON =
-  "flex w-full items-start gap-2 rounded-lg bg-secondary/60 px-2.5 py-2 text-start text-sm leading-snug";
-
-/**
- * A card's reason (`children`) as a button: pressing it (click, tap, or Enter
- * or Space on it) opens a popover with the whole reason and the score
- * breakdown, how the item's score was made; Escape or clicking away closes
- * it. A chevron says it opens. The button is raised above the card's
- * stretched link so it can be pressed, and names the video for screen
- * readers.
+ * The (i) button on a card's thumbnail. Pointing at it, or pressing it (click,
+ * tap, or Enter or Space on it), opens a popover with why the video is here
+ * (`children`, the reason as the card puts it) and, when there is one, the
+ * score breakdown: how the item's score was made, each term green when it
+ * adds and red when it takes away. The popover stays open while the pointer
+ * is on it; Escape or clicking away closes it. The button is raised above the
+ * card's stretched link so it can be pressed, and its name carries the whole
+ * reason, so a screen reader hears it without opening anything.
  */
 export function WhyThisPopover({
   title,
   explanation,
   breakdown,
+  className,
   children,
 }: {
   /** The video's title, to tell this card's button from the others'. */
   title: string;
   explanation: string;
-  breakdown: ScoreBreakdownOut;
-  /** The reason as the card shows it. */
+  breakdown?: ScoreBreakdownOut;
+  className?: string;
+  /** The reason as the popover shows it. */
   children: ReactNode;
 }) {
   const headingId = useId();
   return (
     <Popover>
       <PopoverTrigger
-        className={cn(
-          REASON,
-          "relative z-10 border border-transparent pe-1.5 outline-none hover:bg-secondary focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-expanded:bg-secondary",
-        )}
+        openOnHover
+        delay={200}
+        closeDelay={150}
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className={cn(
+              "relative z-10 bg-black/80 text-white hover:bg-black hover:text-white aria-expanded:bg-black aria-expanded:text-white dark:hover:bg-black",
+              className,
+            )}
+          />
+        }
       >
-        <span className="sr-only">Why this is here: </span>
-        {children}
-        <span className="sr-only">, for {title}</span>
-        <ChevronRight
-          aria-hidden="true"
-          className="mt-px size-4 shrink-0 text-muted-foreground rtl:-scale-x-100"
-        />
+        <Info aria-hidden="true" className="size-4.5" />
+        <span className="sr-only">
+          Why this is here: {explanation}, for {title}
+        </span>
       </PopoverTrigger>
       <PopoverContent
         side="bottom"
-        align="start"
+        align="end"
         className="w-80 max-w-[calc(100vw-2rem)] gap-3 p-3 motion-reduce:data-open:animate-none motion-reduce:data-closed:animate-none"
       >
         {/* An h3 like the card titles, so the breakdown's h4 follows it in order. */}
         <PopoverTitle render={<h3 />} className="text-sm font-semibold">
           Why this is here
         </PopoverTitle>
-        <p className="text-sm">{explanation}</p>
-        <section aria-labelledby={headingId}>
-          <h4 id={headingId} className="mb-2 text-sm font-semibold">
-            Score breakdown
-          </h4>
-          <BreakdownTable breakdown={breakdown} />
-        </section>
+        <p className="flex items-start gap-2 text-sm leading-snug">
+          {children}
+        </p>
+        {breakdown && (
+          <section aria-labelledby={headingId}>
+            <h4
+              id={headingId}
+              className="mb-1.5 text-xs font-medium tracking-[0.05em] text-muted-foreground uppercase"
+            >
+              Score breakdown
+            </h4>
+            <BreakdownTable breakdown={breakdown} />
+          </section>
+        )}
       </PopoverContent>
     </Popover>
   );
 }
 
+/**
+ * How a term's points read: green when they add to the score, red when they
+ * take from it (the sign says so too), and a term that changes nothing is
+ * greyed, label and all, so the ones that count stand out.
+ */
+const DIRECTION: Record<ScoreDirection, string> = {
+  up: "font-medium text-score-up",
+  down: "font-medium text-score-down",
+  none: "text-muted-foreground",
+};
+
 function BreakdownTable({ breakdown }: { breakdown: ScoreBreakdownOut }) {
+  const total = scoreDirection(breakdown.final);
   return (
     <table className="w-full text-sm">
       <thead className="sr-only">
@@ -87,28 +115,48 @@ function BreakdownTable({ breakdown }: { breakdown: ScoreBreakdownOut }) {
         </tr>
       </thead>
       <tbody>
-        {breakdownTerms(breakdown).map((term) => (
-          <tr key={term.key} className="align-top">
-            <th scope="row" className="py-0.5 pr-3 text-left font-normal">
-              {term.label}
-              {term.detail && (
-                <span className="block text-xs text-muted-foreground">
-                  {term.detail}
-                </span>
-              )}
-            </th>
-            <td className="py-0.5 text-right tabular-nums">
-              {formatScore(term.value)}
-            </td>
-          </tr>
-        ))}
+        {breakdownTerms(breakdown).map((term) => {
+          const direction = scoreDirection(term.value);
+          return (
+            <tr key={term.key} className="align-top">
+              <th
+                scope="row"
+                className={cn(
+                  "py-0.5 pe-3 text-start font-normal",
+                  direction === "none" && "text-muted-foreground",
+                )}
+              >
+                {term.label}
+                {term.detail && (
+                  <span className="block text-xs text-muted-foreground">
+                    {term.detail}
+                  </span>
+                )}
+              </th>
+              <td
+                className={cn(
+                  "py-0.5 text-end tabular-nums",
+                  DIRECTION[direction],
+                )}
+              >
+                {formatScore(term.value)}
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
       <tfoot>
-        <tr className="border-t font-medium">
-          <th scope="row" className="pt-1 pr-3 text-left">
+        <tr className="border-t font-semibold">
+          <th scope="row" className="pt-1.5 pe-3 text-start">
             Score
           </th>
-          <td className="pt-1 text-right tabular-nums">
+          <td
+            className={cn(
+              "pt-1.5 text-end tabular-nums",
+              total !== "none" && DIRECTION[total],
+              "font-semibold",
+            )}
+          >
             {formatScore(breakdown.final)}
           </td>
         </tr>

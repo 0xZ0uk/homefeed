@@ -48,6 +48,13 @@
   --rating-9: oklch(0.74 0.15 140);
   --rating-10: oklch(0.66 0.14 150);
   --brand-foreground: oklch(0.99 0 0);
+  /*
+   * Which way a score term moves a video's score, in "Why this is here": green
+   * adds, red takes away. Its own role, apart from success and destructive,
+   * though it shares their values today.
+   */
+  --score-up: oklch(0.5 0.13 150);
+  --score-down: oklch(0.55 0.2 25);
   /* A warning on the dark plates over thumbnails, so the same on both themes. */
   --overlay-warning: oklch(0.8 0.13 80);
   /* SponsorBlock's own category colours, as the progress bar draws them. */
@@ -85,6 +92,8 @@
     --accent-foreground: oklch(0.96 0 0);
     --destructive: oklch(0.7 0.19 22);
     --success: oklch(0.75 0.14 150);
+    --score-up: oklch(0.75 0.14 150);
+    --score-down: oklch(0.7 0.19 22);
     --warning: oklch(0.8 0.13 80);
     --border: oklch(1 0 0 / 14%);
     --input: oklch(1 0 0 / 36%);
@@ -120,6 +129,8 @@
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
   --color-overlay-warning: var(--overlay-warning);
+  --color-score-up: var(--score-up);
+  --color-score-down: var(--score-down);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);

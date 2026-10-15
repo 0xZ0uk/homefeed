@@ -65,3 +65,15 @@ export function formatScore(value: number): string {
   if (Number(rounded) === 0) return "0.00";
   return value > 0 ? `+${rounded}` : rounded;
 }
+
+/** Which way a score term moves the score, as `formatScore` shows it. */
+export type ScoreDirection = "up" | "down" | "none";
+
+/**
+ * Whether `value` adds to the score, takes from it, or (rounded as shown)
+ * does neither: what colours a term green, red or grey.
+ */
+export function scoreDirection(value: number): ScoreDirection {
+  if (Number(value.toFixed(2)) === 0) return "none";
+  return value > 0 ? "up" : "down";
+}

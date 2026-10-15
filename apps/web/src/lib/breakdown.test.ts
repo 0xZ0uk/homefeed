@@ -1,7 +1,7 @@
 import type { ScoreBreakdownOut } from "@homefeed/api-client";
 import { describe, expect, it } from "vitest";
 
-import { breakdownTerms, formatScore } from "./breakdown";
+import { breakdownTerms, formatScore, scoreDirection } from "./breakdown";
 
 const rulesOnly: ScoreBreakdownOut = {
   model: 0,
@@ -82,5 +82,16 @@ describe("formatScore", () => {
     expect(formatScore(-0.1)).toBe("-0.10");
     expect(formatScore(0)).toBe("0.00");
     expect(formatScore(-0.001)).toBe("0.00");
+  });
+});
+
+describe("scoreDirection", () => {
+  it("says which way a term moves the score, as it's shown", () => {
+    expect(scoreDirection(0.254)).toBe("up");
+    expect(scoreDirection(-0.1)).toBe("down");
+    expect(scoreDirection(0)).toBe("none");
+    // Rounds to 0.00, so it shows as no change either way.
+    expect(scoreDirection(-0.001)).toBe("none");
+    expect(scoreDirection(0.004)).toBe("none");
   });
 });
