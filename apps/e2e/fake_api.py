@@ -5,7 +5,9 @@ Serves the real FastAPI app (`homefeed_api.main.app`) on 127.0.0.1:$E2E_API_PORT
 - a `FakeGateway` holding two subscribed channels and their uploads, so nothing talks to
   YouTube, plus Metalworking, which Woodworking features and nobody subscribes to (Discover
   suggests it once Woodworking is liked) and Gardening, subscribed only with `noisy=true`;
-- no RSS polling on feed refresh, and a stub embedding provider;
+- a feed refresh that polls subscriptions through the real pipeline, against a fake
+  feed fetcher serving RSS built from the `FakeGateway`'s uploads;
+- a stub embedding provider, and no network at all;
 - a throwaway data dir ($E2E_DATA_DIR, or a new temp dir removed on exit);
 - `POST /__e2e__/outside`, for the card specs: adds a video from a channel that isn't
   subscribed (found as related to a Woodworking video) and the LLM tagger's scores for it
@@ -23,8 +25,6 @@ Serves the real FastAPI app (`homefeed_api.main.app`) on 127.0.0.1:$E2E_API_PORT
   instead: no subscriptions, no feed, first-run setup not done. `?noisy=true` also
   subscribes to Gardening, whose six uploads all end up in the feed: a channel that keeps
   showing up;
-- a feed refresh that "polls" by storing the subscribed channels' uploads as candidates
-  (the real poller would fetch RSS), so subscribing then building a feed works;
 - `POST /__e2e__/similar`, which embeds videos at given similarities to a seed video and
   records what YouTube suggests next to it, for "Find more like this" (see `seed_similar`);
 - `POST /__e2e__/channel-picture`, which gives a channel a picture, as looking it up does
@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
     from homefeed_core.gateway.fake import FakeGateway
+    from homefeed_core.gateway.rss import FeedFetcher
 
 
 def configure(data_dir: Path) -> None:
@@ -127,13 +128,18 @@ VIDEO_TAGS = {
 
 def build_app() -> "FastAPI":
     from fastapi import Response, status
+    from functools import partial
 
     from homefeed_api.main import app, get_embedder, get_feed_poll, get_gateway, get_playback
+    from homefeed_core import pipeline
     from homefeed_core.embeddings import StubEmbeddingProvider
 
     app.dependency_overrides[get_gateway] = lambda: STATE["gateway"]
     app.dependency_overrides[get_playback] = lambda: STATE["playback"]
-    app.dependency_overrides[get_feed_poll] = lambda: poll_subscriptions
+    # The real pipeline poll, fed by a fake feed fetcher instead of YouTube's RSS.
+    app.dependency_overrides[get_feed_poll] = lambda: partial(
+        pipeline.poll_subscriptions, fetch=make_feed_fetcher()
+    )
     # A lambda: FastAPI would read the class's constructor parameters as request fields.
     app.dependency_overrides[get_embedder] = lambda: StubEmbeddingProvider()
 
@@ -318,26 +324,48 @@ def make_gateway() -> "FakeGateway":
     return gateway
 
 
-def poll_subscriptions() -> None:
-    """Stand in for the RSS poller: store the subscribed channels' uploads as candidates."""
-    from homefeed_core import curation, videos
-    from homefeed_core.candidates import SUBSCRIPTION, record
-    from homefeed_core.db import get_session_factory
+def make_feed_fetcher() -> "FeedFetcher":
+    """A `FeedFetcher` that serves each channel's uploads as the channel RSS feed the
+    poller parses, so a feed refresh polls subscriptions like the real thing would."""
+    from xml.sax.saxutils import escape
+
     from homefeed_core.gateway.fake import FakeGateway
 
     gateway = STATE["gateway"]
     assert isinstance(gateway, FakeGateway)
-    with get_session_factory().begin() as session:
-        for channel_id in curation.subscribed_channel_ids(session):
-            uploads = [gateway.videos[upload.id] for upload in gateway.uploads[channel_id]]
-            for video in uploads:
-                videos.store_video(session, video)
-            record(
-                session,
-                [video.id for video in uploads],
-                source=SUBSCRIPTION,
-                source_detail=channel_id,
-            )
+
+    def fetch(channel_id: str) -> bytes:
+        uploads = [gateway.videos[upload.id] for upload in gateway.uploads[channel_id]]
+        # YouTube lists newest first, as `parse_feed` documents. The poller looks
+        # namespaces up by prefix (atom, yt, media), so bind each explicitly.
+        entries = "".join(
+            f"""
+              <atom:entry>
+                <yt:videoId>{video.id}</yt:videoId>
+                <yt:channelId>{channel_id}</yt:channelId>
+                <atom:title>{escape(video.title)}</atom:title>
+                <atom:link rel="alternate" href="https://www.youtube.com/watch?v={video.id}"/>
+                <atom:published>{video.published_at.isoformat()}</atom:published>
+                <atom:updated>{video.published_at.isoformat()}</atom:updated>
+                <media:group>
+                  <media:title>{escape(video.title)}</media:title>
+                  <media:description>{escape(video.description or "")}</media:description>
+                  <media:community>
+                    <media:statistics views="{video.view_count or 0}"/>
+                  </media:community>
+                </media:group>
+              </atom:entry>"""
+            for video in reversed(uploads)
+        )
+        return f"""<?xml version="1.0" encoding="UTF-8"?>
+            <atom:feed xmlns:atom="http://www.w3.org/2005/Atom"
+                       xmlns:yt="http://www.youtube.com/xml/schemas/2015"
+                       xmlns:media="http://search.yahoo.com/mrss/">
+              <yt:channelId>{channel_id}</yt:channelId>
+              <atom:title>{escape(gateway.channels[channel_id].title)}</atom:title>{entries}
+            </atom:feed>""".encode()
+
+    return fetch
 
 
 def seed_similar(seed: str, similarities: dict[str, float], related: list[str]) -> None:

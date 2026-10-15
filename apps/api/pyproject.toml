@@ -9,7 +9,6 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi[standard]>=0.143.0",
     "homefeed-core",
-    "homefeed-worker",
 ]
 
 [build-system]
@@ -18,7 +17,6 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 homefeed-core = { workspace = true }
-homefeed-worker = { workspace = true }
 
 [dependency-groups]
 dev = [

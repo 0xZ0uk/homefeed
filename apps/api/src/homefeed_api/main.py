@@ -40,9 +40,9 @@ from homefeed_core import (
     importer,
     insights,
     onboarding,
+    pipeline,
     playback,
     playlists,
-    poller,
     queue,
     ranking_models,
     ratings,
@@ -79,7 +79,7 @@ from homefeed_core.gateway import (
     create_gateway,
 )
 from homefeed_core.gateway.events import format_timestamp
-from homefeed_worker.scheduler import start_background_scheduler
+from homefeed_core.jobs import start_background_scheduler
 
 
 def operation_id(route: APIRoute) -> str:
@@ -172,9 +172,12 @@ def get_embedder() -> EmbeddingProvider:
 def get_feed_poll() -> Callable[[], object] | None:
     """What `POST /feed/refresh` runs to poll subscriptions before building the feed.
 
-    Tests override this dependency so a refresh doesn't fetch RSS feeds.
+    The pipeline's poll takes the same lock as the scheduled poll job, so a manual
+    refresh and a background poll don't overlap when `RUN_WORKER_IN_API` runs the jobs
+    in this process. Tests override this dependency so a refresh doesn't fetch RSS
+    feeds.
     """
-    return poller.poll_due_channels
+    return pipeline.poll_subscriptions
 
 
 SessionDep = Annotated[Session, Depends(get_session)]

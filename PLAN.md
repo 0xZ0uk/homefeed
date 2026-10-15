@@ -47,7 +47,7 @@ Rating UX: when a video ends or the player is closed, show a 10-step face scale,
 ### Stack
 
 - **Monorepo:** Turborepo + nub workspaces (the `workspaces` field in the root `package.json`) for orchestration; **uv workspace** for Python.
-- **Backend:** Python 3.12+, FastAPI (API process), APScheduler (worker process).
+- **Backend:** Python 3.12+, FastAPI (API process), APScheduler (job orchestration in `homefeed_core.jobs` and the candidate pipeline in `homefeed_core.pipeline`; the worker process runs them — or the API process does, with `RUN_WORKER_IN_API`).
 - **Storage:** SQLite (WAL mode) + sqlite-vec for embedding similarity. One database file shared by API and worker.
 - **YouTube:** yt-dlp as a library; channel RSS feeds (`https://www.youtube.com/feeds/videos.xml?channel_id=…`) for subscriptions.
 - **ML:** 384-dim embeddings from OpenRouter (`perplexity/pplx-embed-v1-0.6b`, `EMBEDDING_PROVIDER=openrouter`) or a local fastembed (ONNX) model (`BAAI/bge-small-en-v1.5`), with similarity thresholds calibrated per model; LightGBM regressor, with logistic/ridge regression fallback while labels are few.
@@ -64,7 +64,7 @@ Rating UX: when a video ends or the player is closed, show a 10-step face scale,
 apps/
   web/            # TanStack Start frontend          (@homefeed/web)
   api/            # FastAPI app, thin HTTP layer     (@homefeed/api)
-  worker/         # APScheduler jobs, thin layer     (@homefeed/worker)
+  worker/         # entry point running the jobs (@homefeed/worker)
 packages/
   core/           # Python domain logic, see section 5 (@homefeed/core)
   api-client/     # TS client generated from OpenAPI  (@homefeed/api-client)
@@ -148,12 +148,12 @@ Goal: `nub run dev` starts web, api, and worker; `nub run test` and `nub run lin
 TanStack Start web app ──server functions──▶ API process (FastAPI)
                                               │  Playback Service, Curation, Ratings/Library
                                               ▼
-                                   packages/core (shared) ◀── Worker process (APScheduler)
+                                   packages/core (shared) ◀── Worker process
                                    ├─ SQLite + sqlite-vec       Poller → Candidates → Enricher
                                    └─ YouTube Gateway ──▶ YouTube   → Ranker → Feed Composer; Trainer (nightly)
 ```
 
-The worker builds the feed on a schedule and writes it to SQLite. The API reads feeds, records ratings, manages curation, and serves playback. Only the Gateway talks to YouTube.
+The worker builds the feed on a schedule and writes it to SQLite. The API reads feeds, records ratings, manages curation, and serves playback. Only the Gateway talks to YouTube. The scheduled jobs themselves (`homefeed_core.jobs`) and the candidate pipeline they run (`homefeed_core.pipeline`) live in core; the worker app is the process entry point that runs them, and the API app can run them in-process with `RUN_WORKER_IN_API` (never together with a separate worker).
 
 ### Core modules (`packages/core/src/homefeed_core/`)
 
@@ -161,6 +161,8 @@ The worker builds the feed on a schedule and writes it to SQLite. The API reads 
 | --- | --- | --- |
 | `gateway` | `get_video(id)`, `get_formats(id)`, `get_related(id)`, `search(query, filters)`, `get_channel_uploads(channel_id)`, `get_featured_channels(channel_id)`, `get_captions(id)`, `resolve_url(url)` → normalized domain dataclasses | yt-dlp options, PO tokens, retries with backoff, rate limiting, response caching, failure recording into `extractor_events` |
 | `poller` | `poll_due_channels() -> list[VideoId]` | RSS fetching and parsing, per-channel schedule and backoff |
+| `pipeline` | `poll_subscriptions()`, `gather_candidates()`, `enrich_candidates()`, `build_daily_feed()`, per-source runs | Run order (poll → sources → enrich → rank → compose), failure isolation, the poll and enrich locks |
+| `jobs` | `register_jobs(scheduler)`, `build_scheduler()`, `start_background_scheduler()`, `catch_up_needed()`, `sync_schedule()` | APScheduler wiring, job ids and triggers, startup catch-up, applying settings changes |
 | `candidates` | `generate() -> list[Candidate]`; each source implements `CandidateSource.fetch()` | Deduplication, first-seen tracking, source attribution, isolating failing sources |
 | `enricher` | `enrich(video_id) -> VideoFeatures` | Metadata, transcript excerpt (first ~5 min of captions), embedding, LLM tags, cache and version tracking |
 | `ranker` | `rank(candidates, features, model, curation, n_ratings) -> list[ScoredCandidate]` | Hard filters, similarity features, model inference, channel shrinkage, tag boosts, blend, score breakdown |
