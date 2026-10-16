@@ -114,6 +114,10 @@ METAL_VIDEOS = [
     ("metal000003", "Sharpening a chisel on a stone", 7),
 ]
 GARDEN_VIDEOS = [(f"gard{n:07d}", f"Pruning roses, part {n}", 40 + n) for n in range(1, 7)]
+# The browser profile the settings page finds (label, setting value), and a video that
+# YouTube only shows after a sign-in.
+COOKIE_BROWSER = ("Firefox (default-release)", "firefox:/home/e2e/.mozilla/firefox/e2e.default")
+BOT_CHECK_VIDEO = "botcheck001"
 # Tags as the LLM tagger would have stored them: (label, confidence) by video id.
 VIDEO_TAGS = {
     "wood0000002": [("workbench", 0.9), ("woodworking", 0.8), ("hand tools", 0.5)],
@@ -131,7 +135,8 @@ def build_app() -> "FastAPI":
     from functools import partial
 
     from homefeed_api.main import app, get_embedder, get_feed_poll, get_gateway, get_playback
-    from homefeed_core import pipeline
+    from homefeed_core import browser_cookies, pipeline
+    from homefeed_core.browser_cookies import BrowserProfile
     from homefeed_core.embeddings import StubEmbeddingProvider
 
     app.dependency_overrides[get_gateway] = lambda: STATE["gateway"]
@@ -142,6 +147,8 @@ def build_app() -> "FastAPI":
     )
     # A lambda: FastAPI would read the class's constructor parameters as request fields.
     app.dependency_overrides[get_embedder] = lambda: StubEmbeddingProvider()
+    # The settings page's browser profiles, instead of those of whoever runs the tests.
+    browser_cookies.find_browser_profiles = lambda: [BrowserProfile(*COOKIE_BROWSER)]
 
     @app.post("/__e2e__/outside", include_in_schema=False)
     def e2e_outside() -> Response:
@@ -291,6 +298,7 @@ def move_feeds_back_a_day() -> None:
 
 
 def make_gateway() -> "FakeGateway":
+    from homefeed_core.gateway import CookieCheck, RateLimitedError
     from homefeed_core.gateway.fake import FakeGateway, make_channel, make_video
 
     now = datetime.now(UTC)
@@ -321,6 +329,15 @@ def make_gateway() -> "FakeGateway":
         gateway.add_search(title.lower(), [gateway.videos[gateway.uploads[channel_id][0].id]])
     # Woodworking features Metalworking, which nobody subscribes to.
     gateway.add_featured(WOOD_ID, [gateway.channels[METAL_ID]], subscriber_count=48_000)
+    gateway.add_cookies(COOKIE_BROWSER[1], CookieCheck(youtube_cookies=18, signed_in=True))
+    gateway.fail(
+        "get_video",
+        BOT_CHECK_VIDEO,
+        RateLimitedError(
+            f"[youtube] {BOT_CHECK_VIDEO}: Sign in to confirm you’re not a bot. "
+            "Use --cookies-from-browser or --cookies for the authentication."
+        ),
+    )
     return gateway
 
 

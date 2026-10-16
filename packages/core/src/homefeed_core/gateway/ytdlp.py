@@ -8,17 +8,21 @@ import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, cast
 from urllib.parse import quote, urlencode
 
 import yt_dlp
+from yt_dlp.cookies import SUPPORTED_BROWSERS, SUPPORTED_KEYRINGS, CookieLoadError
 from yt_dlp.extractor.youtube import YoutubeIE, YoutubeTabIE
 from yt_dlp.networking.exceptions import HTTPError
 from yt_dlp.utils import DownloadError, ExtractorError, parse_count
 
+from homefeed_core.browser_cookies import parse_browser_spec
 from homefeed_core.config import get_settings
 from homefeed_core.gateway.dash import DashRanges, probe_dash_ranges
 from homefeed_core.gateway.errors import (
+    CookiesError,
     ExtractionError,
     GatewayError,
     RateLimitedError,
@@ -37,6 +41,7 @@ from homefeed_core.gateway.models import (
     ByteRange,
     Captions,
     ChannelUploads,
+    CookieCheck,
     FeaturedChannel,
     Format,
     RelatedVideo,
@@ -100,12 +105,42 @@ def js_runtime_options(js_runtime: str | None) -> dict[str, Any]:
     return {"js_runtimes": {"node": {"path": js_runtime}}} if js_runtime else {}
 
 
-def extract_info(request: ExtractRequest) -> dict[str, Any]:
+def cookie_options(from_browser: str | None, file: Path | None) -> dict[str, Any]:
+    """yt-dlp options that send YouTube cookies from a browser profile (in yt-dlp's
+    --cookies-from-browser syntax, see `browser_cookies`) and/or a cookies.txt
+    (`YTDLP_COOKIES_FILE`); neither keeps yt-dlp cookie-less. Raises `CookiesError` for
+    a browser value yt-dlp wouldn't accept."""
+    options: dict[str, Any] = {}
+    if from_browser and from_browser.strip():
+        try:
+            cookies = parse_browser_spec(from_browser)
+        except ValueError as error:
+            raise CookiesError(str(error)) from error
+        options["cookiesfrombrowser"] = (
+            cookies.browser,
+            cookies.profile,
+            cookies.keyring,
+            cookies.container,
+        )
+    if file is not None:
+        options["cookiefile"] = str(file)
+    return options
+
+
+def extract_info(
+    request: ExtractRequest, cookies_from_browser: Callable[[], str | None] | None = None
+) -> dict[str, Any]:
     """Run yt-dlp for `request` and return its JSON-safe info dict.
 
+    `cookies_from_browser` returns the browser to send YouTube cookies from, read on
+    each call (see `create_gateway`); without it, YTDLP_COOKIES_FROM_BROWSER applies.
     yt-dlp's exceptions are translated into `GatewayError`s here, so nothing above
     this function knows yt-dlp exists.
     """
+    settings = get_settings()
+    browser = (
+        cookies_from_browser() if cookies_from_browser else settings.ytdlp_cookies_from_browser
+    )
     options: dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
@@ -114,14 +149,20 @@ def extract_info(request: ExtractRequest) -> dict[str, Any]:
         "socket_timeout": SOCKET_TIMEOUT_SECONDS,
         "extractor_retries": 1,  # the Gateway retries with its own backoff
         "logger": _YtDlpLogger(),
-        **js_runtime_options(get_settings().js_runtime),
+        **js_runtime_options(settings.js_runtime),
     }
     if request.flat:
         options["extract_flat"] = "in_playlist"
         if request.limit is not None:
             options["playlistend"] = request.limit
     try:
+        options |= cookie_options(browser, settings.ytdlp_cookies_file)
+    except CookiesError as error:
+        logger.warning("Not sending YouTube cookies: %s", error)
+    try:
         with yt_dlp.YoutubeDL(options) as ydl:  # pyright: ignore[reportArgumentType]
+            if "cookiesfrombrowser" in options:
+                _load_cookies_or_go_without(ydl)
             ydl.add_info_extractor(_DashRangesYoutubeIE())  # pyright: ignore[reportArgumentType]
             if request.related:
                 return _download_related(ydl, request.url)
@@ -137,6 +178,63 @@ def extract_info(request: ExtractRequest) -> dict[str, Any]:
         raise
     except Exception as error:  # yt-dlp bugs surface as arbitrary exceptions
         raise ExtractionError(f"yt-dlp failed: {error!r}") from error
+
+
+# Cookies that only a signed-in YouTube session has (what yt-dlp checks for, too).
+_SIGNED_IN_COOKIE = "LOGIN_INFO"
+_SESSION_COOKIES = frozenset({"SAPISID", "__Secure-1PAPISID", "__Secure-3PAPISID"})
+
+
+def _load_cookies_or_go_without(ydl: yt_dlp.YoutubeDL) -> None:
+    """Read the configured cookies now; if the browser's can't be read (uninstalled,
+    locked keyring, ...), log it and go on without them rather than fail every call."""
+    try:
+        ydl.cookiejar  # noqa: B018 - a cached property: this loads the cookies
+    except (CookieLoadError, DownloadError) as error:
+        logger.warning("Couldn't read YouTube cookies from the browser; going without: %s", error)
+        ydl.params["cookiesfrombrowser"] = None  # the property retries without them
+
+
+def cookie_sources() -> tuple[frozenset[str], frozenset[str]]:
+    """The browsers and keyrings this yt-dlp reads cookies from (a test checks that
+    `browser_cookies` agrees)."""
+    return frozenset(SUPPORTED_BROWSERS), frozenset(SUPPORTED_KEYRINGS)
+
+
+def check_cookies(from_browser: str) -> CookieCheck:
+    """Read the YouTube cookies of a browser profile, without talking to YouTube.
+
+    Raises `CookiesError` when the value is invalid or the cookies can't be read.
+    """
+    log = _YtDlpLogger()
+    options: dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "logger": log,
+        **cookie_options(from_browser, None),
+    }
+    if "cookiesfrombrowser" not in options:
+        raise CookiesError("Choose a browser")
+    try:
+        with yt_dlp.YoutubeDL(options) as ydl:  # pyright: ignore[reportArgumentType]
+            jar = ydl.cookiejar
+    except (CookieLoadError, DownloadError) as error:
+        cause = error.__context__ if isinstance(error, CookieLoadError) else None
+        message = str(cause or error).removeprefix("ERROR: ").strip()
+        raise CookiesError(f"Couldn't read the browser's cookies: {message}") from error
+    names = {cookie.name for cookie in jar.get_cookies_for_url("https://www.youtube.com")}
+    undecrypted = next((w for w in log.warnings if "cannot decrypt" in w), None)
+    if not names and undecrypted:
+        # Chromium-based browsers encrypt cookies with a key from the system keyring.
+        raise CookiesError(
+            f"Couldn't decrypt the browser's cookies ({undecrypted.removeprefix('WARNING: ')}). "
+            "Try a Firefox-based browser, or name the keyring, e.g. "
+            f"{options['cookiesfrombrowser'][0]}+gnomekeyring"
+        )
+    return CookieCheck(
+        youtube_cookies=len(names),
+        signed_in=_SIGNED_IN_COOKIE in names and bool(_SESSION_COOKIES & names),
+    )
 
 
 def _download_captions(ydl: yt_dlp.YoutubeDL, info: dict[str, Any]) -> dict[str, Any]:
@@ -520,6 +618,9 @@ class YtDlpGateway:
         self._record("probe_dash_ranges", fmt.itag, started_at, started, reads, None)
         return ranges
 
+    def check_cookies(self, from_browser: str) -> CookieCheck:
+        return check_cookies(from_browser)
+
     def _run[T](
         self,
         operation: str,
@@ -647,7 +748,14 @@ class _DashRangesYoutubeIE(YoutubeIE):
 
 
 class _YtDlpLogger:
-    """Route yt-dlp output to logging; errors are raised and recorded, so keep them quiet."""
+    """Route yt-dlp output to logging; errors are raised and recorded, so keep them quiet.
+
+    Each warning is logged once: yt-dlp repeats some per item (e.g. per cookie it can't
+    decrypt). `warnings` keeps them, in order.
+    """
+
+    def __init__(self) -> None:
+        self.warnings: list[str] = []
 
     def debug(self, message: str) -> None:
         logger.debug(message)
@@ -656,7 +764,9 @@ class _YtDlpLogger:
         logger.debug(message)
 
     def warning(self, message: str) -> None:
-        logger.warning(message)
+        if message not in self.warnings:
+            self.warnings.append(message)
+            logger.warning(message)
 
     def error(self, message: str) -> None:
         logger.debug(message)

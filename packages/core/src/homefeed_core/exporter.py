@@ -49,7 +49,15 @@ EXPORT_VERSION = 1
 
 # Configuration fields left out of `settings.config` and `settings.stored`: secrets and
 # host file paths.
-_PRIVATE_CONFIG = frozenset({"openrouter_api_key", "data_dir", "database_path"})
+_PRIVATE_CONFIG = frozenset(
+    {
+        "openrouter_api_key",
+        "data_dir",
+        "database_path",
+        "ytdlp_cookies_from_browser",
+        "ytdlp_cookies_file",
+    }
+)
 
 type Reader = Callable[[Session], Any]
 

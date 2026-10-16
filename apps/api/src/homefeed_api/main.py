@@ -27,6 +27,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from homefeed_core import (
+    browser_cookies,
     channel_graph,
     channel_health,
     channel_hides,
@@ -66,6 +67,7 @@ from homefeed_core.gateway import (
     DEFAULT_SEARCH_LIMIT,
     MAX_SEARCH_LIMIT,
     SEARCH_QUERY_MAX_LENGTH,
+    CookiesError,
     Gateway,
     GatewayError,
     SearchDuration,
@@ -2665,6 +2667,15 @@ class UserSettingsOut(BaseModel):
     sponsorblock_categories: list[str] = Field(
         description="SponsorBlock categories the watch page skips; empty: off"
     )
+    ytdlp_cookies_from_browser: str | None = Field(
+        description="The browser YouTube cookies are sent from, in yt-dlp's "
+        "--cookies-from-browser syntax (BROWSER[+KEYRING][:PROFILE][::CONTAINER]); null: none"
+    )
+
+
+class BrowserProfileOut(BaseModel):
+    label: str = Field(description='What to call it, e.g. "Firefox (default-release)"')
+    value: str = Field(description="The `ytdlp_cookies_from_browser` value that reads it")
 
 
 SettingSourceOut = Literal["default", "env", "user"]
@@ -2682,6 +2693,9 @@ class SettingsOut(BaseModel):
     )
     sponsorblock_category_options: list[str] = Field(
         description="Every SponsorBlock category that can be skipped"
+    )
+    cookie_browser_options: list[BrowserProfileOut] = Field(
+        description="Browser profiles on the server's machine with a cookie database"
     )
 
 
@@ -2706,6 +2720,9 @@ class SettingsChanges(BaseModel):
     llm_max_tags_per_run: int | None = None
     tag_discovery_per_day: int | None = None
     sponsorblock_categories: list[str] | None = None
+    ytdlp_cookies_from_browser: str | None = Field(
+        default=None, description="yt-dlp's --cookies-from-browser value; empty or null: none"
+    )
 
 
 class SettingsUpdate(BaseModel):
@@ -2735,6 +2752,7 @@ def _user_settings_out(values: user_settings.UserSettings) -> UserSettingsOut:
         llm_max_tags_per_run=values.llm_max_tags_per_run,
         tag_discovery_per_day=values.tag_discovery_per_day,
         sponsorblock_categories=list(values.sponsorblock_categories),
+        ytdlp_cookies_from_browser=values.ytdlp_cookies_from_browser,
     )
 
 
@@ -2745,6 +2763,10 @@ def _settings_out(state: user_settings.UserSettingsState) -> SettingsOut:
         sources=state.sources,
         system_timezone=user_settings.system_timezone(),
         sponsorblock_category_options=sorted(sponsorblock.CATEGORIES),
+        cookie_browser_options=[
+            BrowserProfileOut(label=profile.label, value=profile.value)
+            for profile in browser_cookies.find_browser_profiles()
+        ],
     )
 
 
@@ -2779,6 +2801,36 @@ def update_user_settings(
     if "sponsorblock_categories" in {*changes, *body.reset}:
         player.forget_sponsor_segments()
     return _settings_out(state)
+
+
+class CookieCheckInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    browser: str = Field(
+        max_length=browser_cookies.MAX_SPEC_LENGTH,
+        description="yt-dlp's --cookies-from-browser value, e.g. firefox or chrome:Profile 1",
+    )
+
+
+class CookieCheckOut(BaseModel):
+    youtube_cookies: int = Field(description="How many cookies the profile has for youtube.com")
+    signed_in: bool = Field(description="Whether they're a signed-in YouTube session")
+
+
+@app.post(
+    "/settings/youtube-cookies/check",
+    tags=["settings"],
+    responses={422: {"model": ErrorDetail, "description": "The cookies can't be read"}},
+)
+def check_youtube_cookies(body: CookieCheckInput, gateway: GatewayDep) -> CookieCheckOut:
+    """Read a browser profile's YouTube cookies, without saving anything or contacting
+    YouTube, to tell whether they'd get past YouTube's "confirm you're not a bot" check
+    (they do when signed in). A 422 explains why they can't be read."""
+    try:
+        check = gateway.check_cookies(body.browser)
+    except CookiesError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    return CookieCheckOut(youtube_cookies=check.youtube_cookies, signed_in=check.signed_in)
 
 
 # Keep the tag routes last. `/tags/{slug}` matches any one-segment path, so literal routes

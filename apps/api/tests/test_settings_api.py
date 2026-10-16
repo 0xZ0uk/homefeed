@@ -7,10 +7,13 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from homefeed_api.main import app, get_playback
-from homefeed_core import feeds
+from homefeed_api.main import app, get_gateway, get_playback
+from homefeed_core import browser_cookies, feeds
+from homefeed_core.browser_cookies import BrowserProfile
 from homefeed_core.config import get_settings
 from homefeed_core.db import get_session_factory
+from homefeed_core.gateway import CookieCheck
+from homefeed_core.gateway.fake import FakeGateway
 
 
 class FakePlayback:
@@ -140,6 +143,7 @@ def test_null_sets_a_nullable_setting(client: TestClient) -> None:
         ({"set": {"feed_max_topic_share": 0.05}}, "feed_max_topic_share"),
         ({"set": {"feed_max_topic_share": 1.5}}, "feed_max_topic_share"),
         ({"set": {"feed_size": 5}, "reset": ["feed_size"]}, "both changed and reset"),
+        ({"set": {"ytdlp_cookies_from_browser": "netscape"}}, "can't read cookies from"),
     ],
 )
 def test_invalid_values_are_422_with_a_string_detail(
@@ -214,3 +218,35 @@ def test_today_feed_is_today_in_the_user_time_zone(client: TestClient) -> None:
     assert built.date == feeds.local_today(tz=ZoneInfo("Pacific/Kiritimati"))
     assert response.status_code == 200, response.text
     assert response.json()["date"] == built.date.isoformat()
+
+
+def test_youtube_cookies_browser_is_a_setting(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    zen = BrowserProfile("Zen (Work)", "firefox:/home/me/.config/zen/abcd.Work")
+    monkeypatch.setattr(browser_cookies, "find_browser_profiles", lambda: [zen])
+    body = client.get("/settings").json()
+    assert body["values"]["ytdlp_cookies_from_browser"] is None
+    assert body["cookie_browser_options"] == [{"label": "Zen (Work)", "value": zen.value}]
+
+    body = patch(client, {"set": {"ytdlp_cookies_from_browser": f" {zen.value} "}})
+
+    assert body["values"]["ytdlp_cookies_from_browser"] == zen.value
+    assert body["sources"]["ytdlp_cookies_from_browser"] == "user"
+    body = patch(client, {"set": {"ytdlp_cookies_from_browser": ""}})
+    assert body["values"]["ytdlp_cookies_from_browser"] is None
+
+
+def test_checking_youtube_cookies(client: TestClient) -> None:
+    gateway = FakeGateway()
+    gateway.add_cookies("firefox", CookieCheck(youtube_cookies=14, signed_in=True))
+    app.dependency_overrides[get_gateway] = lambda: gateway
+
+    response = client.post("/settings/youtube-cookies/check", json={"browser": "firefox"})
+    assert response.status_code == 200
+    assert response.json() == {"youtube_cookies": 14, "signed_in": True}
+
+    response = client.post("/settings/youtube-cookies/check", json={"browser": "chrome"})
+    assert response.status_code == 422
+    assert "Couldn't read the browser's cookies" in response.json()["detail"]
+    assert stored() == {}

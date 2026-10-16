@@ -46,7 +46,7 @@ Homefeed is single-user and meant for a home network or VPN, not the open intern
 
 ## Configuration
 
-Most settings (feed size, discovery slots, video length bounds, the daily feed and training times, time zone, LLM tagging, SponsorBlock categories) are on the app's Settings page. The rest (paths, embeddings, timeouts) are in `.env`; [`.env.example`](.env.example) documents every variable.
+Most settings (feed size, discovery slots, video length bounds, the daily feed and training times, time zone, LLM tagging, SponsorBlock categories, the browser whose YouTube sign-in to use when YouTube asks to confirm you're not a bot) are on the app's Settings page. The rest (paths, embeddings, timeouts) are in `.env`; [`.env.example`](.env.example) documents every variable.
 
 ## Development
 

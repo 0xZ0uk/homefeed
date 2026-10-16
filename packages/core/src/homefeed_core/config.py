@@ -101,6 +101,13 @@ class Settings(BaseSettings):
     # Opt-in yt-dlp self-update (see homefeed_core.ytdlp_updates): the worker downloads
     # newer releases into DATA_DIR/ytdlp, used from the next restart on.
     ytdlp_auto_update: bool = False
+    # YouTube cookies for yt-dlp, for when YouTube asks to "sign in to confirm you're not
+    # a bot" (it does that to IPs it throttles). YTDLP_COOKIES_FROM_BROWSER takes yt-dlp's
+    # --cookies-from-browser value (see homefeed_core.browser_cookies; also a user
+    # setting); YTDLP_COOKIES_FILE a Netscape-format cookies.txt (yt-dlp writes refreshed
+    # cookies back to it).
+    ytdlp_cookies_from_browser: str | None = None
+    ytdlp_cookies_file: Path | None = None
 
 
 @lru_cache
@@ -121,5 +128,7 @@ def get_settings() -> Settings:
         update={
             "data_dir": base / settings.data_dir,
             "database_path": base / settings.database_path,
+            "ytdlp_cookies_file": settings.ytdlp_cookies_file
+            and base / settings.ytdlp_cookies_file.expanduser(),
         }
     )

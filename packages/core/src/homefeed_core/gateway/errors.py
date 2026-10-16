@@ -35,6 +35,12 @@ class RateLimitedError(ExtractionError):
     kind = "rate_limited"
 
 
+class CookiesError(GatewayError):
+    """The browser to read YouTube cookies from is invalid, or its cookies can't be read."""
+
+    kind = "cookies"
+
+
 class MediaUrlExpiredError(GatewayError):
     """A stream URL was refused (HTTP 403/410): it expired or was revoked.
 

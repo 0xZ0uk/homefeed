@@ -35,6 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, f
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from homefeed_core.browser_cookies import parse_browser_spec
 from homefeed_core.config import LLMProviderName, Settings, get_settings
 from homefeed_core.db import get_session_factory
 from homefeed_core.sponsorblock import CATEGORIES as SPONSORBLOCK_CATEGORIES
@@ -58,6 +59,7 @@ type UserSettingKey = Literal[
     "llm_max_tags_per_run",
     "tag_discovery_per_day",
     "sponsorblock_categories",
+    "ytdlp_cookies_from_browser",
 ]
 
 MAX_FEED_SIZE = 200
@@ -95,6 +97,9 @@ class UserSettings(BaseModel):
     tag_discovery_per_day: int = Field(ge=0, le=1_000)
     # SponsorBlock categories the watch page skips (empty turns skipping off)
     sponsorblock_categories: tuple[str, ...]
+    # The browser yt-dlp sends YouTube cookies from (see homefeed_core.browser_cookies);
+    # None sends none.
+    ytdlp_cookies_from_browser: str | None
 
     @field_validator("feed_refresh_time", "model_training_time")
     @classmethod
@@ -144,6 +149,14 @@ class UserSettings(BaseModel):
         if unknown:
             raise ValueError(f"Unknown SponsorBlock categories: {', '.join(sorted(unknown))}")
         return categories
+
+    @field_validator("ytdlp_cookies_from_browser")
+    @classmethod
+    def _known_browser(cls, value: str | None) -> str | None:
+        value = (value or "").strip() or None
+        if value is not None:
+            parse_browser_spec(value)
+        return value
 
     def __hash__(self) -> int:
         # Frozen, so what depends on the settings can be cached by them (pydantic does

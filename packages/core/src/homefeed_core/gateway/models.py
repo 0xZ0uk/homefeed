@@ -14,6 +14,14 @@ FormatKind = Literal["video", "audio", "muxed"]
 
 
 @dataclass(frozen=True)
+class CookieCheck:
+    """What a browser profile's YouTube cookies look like (see `Gateway.check_cookies`)."""
+
+    youtube_cookies: int  # how many cookies it has for youtube.com
+    signed_in: bool  # whether they're a signed-in session
+
+
+@dataclass(frozen=True)
 class Chapter:
     title: str
     start_seconds: float

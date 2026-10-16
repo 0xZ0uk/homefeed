@@ -4,11 +4,14 @@ Use the `Gateway` protocol in type hints and `create_gateway()` to get the real
 yt-dlp-backed implementation. Tests of other modules use `fake.FakeGateway`.
 """
 
+from functools import partial
+
 from sqlalchemy.orm import Session, sessionmaker
 
 from homefeed_core.db import get_session_factory
 from homefeed_core.gateway.dash import DashRanges
 from homefeed_core.gateway.errors import (
+    CookiesError,
     ExtractionError,
     GatewayError,
     MediaUrlExpiredError,
@@ -40,6 +43,7 @@ from homefeed_core.gateway.models import (
     Channel,
     ChannelUploads,
     Chapter,
+    CookieCheck,
     FeaturedChannel,
     Format,
     FormatKind,
@@ -59,7 +63,8 @@ from homefeed_core.gateway.models import (
 )
 from homefeed_core.gateway.resilience import RateLimiter, RetryPolicy
 from homefeed_core.gateway.rss import FeedFetcher, HttpFeedFetcher, channel_feed_url
-from homefeed_core.gateway.ytdlp import YtDlpGateway
+from homefeed_core.gateway.ytdlp import YtDlpGateway, extract_info
+from homefeed_core.user_settings import load_user_settings
 
 __all__ = [
     "DEFAULT_RELATED_LIMIT",
@@ -74,6 +79,8 @@ __all__ = [
     "Channel",
     "ChannelUploads",
     "Chapter",
+    "CookieCheck",
+    "CookiesError",
     "DashRanges",
     "EventRecorder",
     "ExtractionError",
@@ -119,8 +126,16 @@ __all__ = [
 
 
 def create_gateway(sessions: sessionmaker[Session] | None = None) -> Gateway:
-    """The production Gateway, recording outcomes into `extractor_events`."""
-    return YtDlpGateway(recorder=SqlEventRecorder(sessions or get_session_factory()))
+    """The production Gateway, recording outcomes into `extractor_events` and sending
+    YouTube cookies from the browser in the user settings (read on each call)."""
+    sessions = sessions or get_session_factory()
+    return YtDlpGateway(
+        recorder=SqlEventRecorder(sessions),
+        extract=partial(
+            extract_info,
+            cookies_from_browser=lambda: load_user_settings(sessions).ytdlp_cookies_from_browser,
+        ),
+    )
 
 
 def create_feed_fetcher(sessions: sessionmaker[Session] | None = None) -> FeedFetcher:

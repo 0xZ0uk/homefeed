@@ -46,6 +46,15 @@ import {
   type Parsed,
 } from "#/lib/settings";
 import {
+  NO_COOKIES,
+  OTHER_BROWSER,
+  YOUTUBE_SIGN_IN_ID,
+  browserChoice,
+  cookieCheckMessage,
+} from "#/lib/youtube-cookies";
+import { cn } from "#/lib/utils";
+import {
+  checkCookies,
   saveSettings,
   settingsQuery,
   type SettingsChanges,
@@ -54,8 +63,8 @@ import {
 } from "#/server/settings";
 
 /**
- * The settings stored in the app: feed, schedule and time zone, LLM tagging and
- * SponsorBlock. Each section saves on its own; a changed setting can be put
+ * The settings stored in the app: feed, schedule and time zone, LLM tagging,
+ * SponsorBlock and YouTube sign-in. Each section saves on its own; a changed setting can be put
  * back to its default.
  */
 export function UserSettings() {
@@ -65,6 +74,7 @@ export function UserSettings() {
   const schedule = useSave();
   const tagging = useSave();
   const sponsorblock = useSave();
+  const youtube = useSave();
   // Remount a form with its saved values when they change. Only its own
   // values: unsaved edits in the other forms must survive a save.
   const version = (section: keyof typeof SECTION_KEYS) =>
@@ -91,6 +101,11 @@ export function UserSettings() {
         settings={settings}
         saver={sponsorblock}
       />
+      <YouTubeSignInSettings
+        key={`youtube-${version("youtube")}`}
+        settings={settings}
+        saver={youtube}
+      />
     </>
   );
 }
@@ -114,6 +129,7 @@ const SECTION_KEYS = {
     "openrouter_api_key_hint",
   ],
   sponsorblock: ["sponsorblock_categories"],
+  youtube: ["ytdlp_cookies_from_browser"],
 } as const satisfies Record<string, readonly (keyof SettingsOut["values"])[]>;
 
 type Saver = ReturnType<typeof useSave>;
@@ -979,6 +995,150 @@ function SponsorBlockSettings({
           )}
         </p>
       </fieldset>
+    </Section>
+  );
+}
+
+function YouTubeSignInSettings({
+  settings,
+  saver,
+}: {
+  settings: SettingsOut;
+  saver: Saver;
+}) {
+  // A fixed id, so "Couldn't load this video" can link here.
+  const id = YOUTUBE_SIGN_IN_ID;
+  const { values, defaults } = settings;
+  const options = settings.cookie_browser_options;
+  const { save, ...state } = saver;
+  const saved = values.ytdlp_cookies_from_browser;
+  const [choice, setChoice] = useState(() => browserChoice(saved, options));
+  const [other, setOther] = useState(
+    choice === OTHER_BROWSER ? (saved ?? "") : "",
+  );
+  const browser = choice === OTHER_BROWSER ? other.trim() : choice;
+  const check = useMutation({
+    mutationFn: (value: string) => checkCookies({ data: { browser: value } }),
+  });
+  const checked = check.data;
+
+  const submit = () => {
+    if (choice === OTHER_BROWSER && !browser) {
+      state.fail({
+        message: "Type a browser, or choose one from the list.",
+        fieldId: `${id}-other`,
+      });
+      return;
+    }
+    save(
+      changedValues(
+        { ytdlp_cookies_from_browser: browser || null },
+        { ytdlp_cookies_from_browser: saved },
+      ),
+    );
+  };
+  const labelOf = (value: string | null) =>
+    value
+      ? (options.find((option) => option.value === value)?.label ?? value)
+      : "no cookies";
+
+  return (
+    <Section
+      id={id}
+      title="YouTube sign-in"
+      description="When your network makes a lot of requests, YouTube asks Homefeed to confirm it's not a bot. Homefeed can then use the YouTube cookies of a browser you're signed in to. They're read on the computer Homefeed runs on and only sent to YouTube. YouTube can flag accounts used by tools like this, so a spare account is safer."
+      onSubmit={submit}
+      {...state}
+    >
+      <Field
+        id={`${id}-browser`}
+        label="Use YouTube cookies from"
+        hint={
+          options.length === 0
+            ? "No browser profiles found on this computer."
+            : undefined
+        }
+        settingKey="ytdlp_cookies_from_browser"
+        defaultText={labelOf(defaults.ytdlp_cookies_from_browser)}
+        settings={settings}
+        pending={state.pending}
+        onReset={(key) => save({}, [key])}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            id={`${id}-browser`}
+            value={choice}
+            {...state.describe(`${id}-browser`)}
+            onChange={(event) => {
+              setChoice(event.target.value);
+              check.reset();
+            }}
+            className="h-8 max-w-sm min-w-0 rounded-lg border border-input bg-transparent px-2 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
+          >
+            <option value={NO_COOKIES}>No cookies</option>
+            {options.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+            <option value={OTHER_BROWSER}>Another browser…</option>
+          </select>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            className="px-3"
+            disabled={!browser || check.isPending}
+            onClick={() => check.mutate(browser)}
+          >
+            {check.isPending ? "Checking…" : "Check"}
+          </Button>
+        </div>
+      </Field>
+      {choice === OTHER_BROWSER && (
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={`${id}-other`} className="text-sm font-medium">
+            Browser and profile
+          </label>
+          <Input
+            id={`${id}-other`}
+            value={other}
+            placeholder="firefox:~/.mozilla/firefox/abcd1234.default-release"
+            autoComplete="off"
+            spellCheck={false}
+            {...state.describe(`${id}-other`)}
+            onChange={(event) => {
+              setOther(event.target.value);
+              check.reset();
+            }}
+            className="max-w-lg"
+          />
+          <p
+            id={`${id}-other-hint`}
+            className="max-w-prose text-xs text-muted-foreground"
+          >
+            A browser (firefox, chrome, chromium, brave, edge, vivaldi, opera or
+            safari), then optionally a colon and a profile name or folder.
+          </p>
+        </div>
+      )}
+      <p
+        role="status"
+        className={cn(
+          "text-sm",
+          checked && !(checked.ok && checked.check.signed_in)
+            ? "text-destructive"
+            : "text-muted-foreground",
+        )}
+      >
+        {check.isError
+          ? "Couldn't check the cookies. Try again later."
+          : checked
+            ? checked.ok
+              ? cookieCheckMessage(checked.check)
+              : checked.message
+            : ""}
+      </p>
     </Section>
   );
 }

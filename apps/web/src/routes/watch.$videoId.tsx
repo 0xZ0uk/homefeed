@@ -25,6 +25,7 @@ import { QueueButton } from "#/components/QueueButton";
 import { formatDuration, formatFeedDate } from "#/lib/format";
 import { cn } from "#/lib/utils";
 import { isVideoId } from "#/lib/ids";
+import { YOUTUBE_SIGN_IN_ID, isBotCheck } from "#/lib/youtube-cookies";
 import { fetchResumePosition } from "#/server/history";
 import { ratingQuery } from "#/server/ratings";
 import { videoQuery } from "#/server/videos";
@@ -233,7 +234,22 @@ function WatchError({ error }: ErrorComponentProps) {
     <WatchShell>
       <div role="alert" className="flex flex-col items-start gap-3">
         <h1 className="text-xl font-bold">Couldn't load this video</h1>
-        {error instanceof Error && error.message && <p>{error.message}.</p>}
+        {error instanceof Error && isBotCheck(error.message) ? (
+          <p className="max-w-prose">
+            YouTube wants Homefeed to confirm it&apos;s not a bot, which it asks
+            when your network makes a lot of requests.{" "}
+            <Link
+              to="/settings"
+              hash={`${YOUTUBE_SIGN_IN_ID}-heading`}
+              className="underline"
+            >
+              Use your YouTube sign-in
+            </Link>{" "}
+            from a browser, or try again later.
+          </p>
+        ) : (
+          error instanceof Error && error.message && <p>{error.message}.</p>
+        )}
         <button
           type="button"
           onClick={() => void router.invalidate()}

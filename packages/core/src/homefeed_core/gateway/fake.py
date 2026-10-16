@@ -12,7 +12,9 @@ gateway.resolve_url("https://www.youtube.com/@wood")  # -> ResolvedChannel(chann
 gateway.calls  # [("resolve_url", "https://www.youtube.com/@wood")]
 
 Stream bytes are served per URL: `gateway.add_media(fmt.url, data)`. Failures of
-`open_media`/`probe_dash_ranges` are keyed by URL too.
+`open_media`/`probe_dash_ranges` are keyed by URL too. Browser cookies are served per
+setting value: `gateway.add_cookies("firefox", CookieCheck(12, signed_in=True))`; any
+other value raises `CookiesError`.
 """
 
 from collections.abc import Iterable
@@ -20,7 +22,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 from homefeed_core.gateway.dash import DashRanges, probe_dash_ranges
-from homefeed_core.gateway.errors import GatewayError, RangeNotSatisfiableError, UnavailableError
+from homefeed_core.gateway.errors import (
+    CookiesError,
+    GatewayError,
+    RangeNotSatisfiableError,
+    UnavailableError,
+)
 from homefeed_core.gateway.interface import (
     DEFAULT_RELATED_LIMIT,
     DEFAULT_SEARCH_LIMIT,
@@ -35,6 +42,7 @@ from homefeed_core.gateway.models import (
     CaptionSegment,
     Channel,
     ChannelUploads,
+    CookieCheck,
     FeaturedChannel,
     Format,
     RelatedVideo,
@@ -65,6 +73,7 @@ class FakeGateway:
         self.failures: dict[tuple[str, str], GatewayError] = {}
         self.media: dict[str, bytes] = {}
         self.media_reads: list[tuple[str, ByteRange]] = []  # (url, range) per read
+        self.cookies: dict[str, CookieCheck] = {}
         self.calls: list[tuple[str, str]] = []
 
     # Setup
@@ -126,6 +135,9 @@ class FakeGateway:
     def add_media(self, url: str, data: bytes) -> None:
         """Serve `data` as the stream at `url` (a `Format.url`)."""
         self.media[url] = data
+
+    def add_cookies(self, from_browser: str, check: CookieCheck) -> None:
+        self.cookies[from_browser] = check
 
     def fail(self, operation: str, target: str, error: GatewayError) -> None:
         """Make `operation` (e.g. "get_video") raise `error` for `target` (id or URL)."""
@@ -207,6 +219,12 @@ class FakeGateway:
     def probe_dash_ranges(self, fmt: Format) -> DashRanges | None:
         self._call("probe_dash_ranges", fmt.url)
         return probe_dash_ranges(lambda byte_range: self._read(fmt.url, byte_range).read())
+
+    def check_cookies(self, from_browser: str) -> CookieCheck:
+        self._call("check_cookies", from_browser)
+        if from_browser not in self.cookies:
+            raise CookiesError(f"Couldn't read the browser's cookies: {from_browser}")
+        return self.cookies[from_browser]
 
     def _read(self, url: str, byte_range: ByteRange) -> MediaStream:
         check_range(byte_range)

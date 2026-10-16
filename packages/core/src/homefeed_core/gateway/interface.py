@@ -6,6 +6,7 @@ from homefeed_core.gateway.models import (
     ByteRange,
     Captions,
     ChannelUploads,
+    CookieCheck,
     FeaturedChannel,
     Format,
     RelatedVideo,
@@ -118,5 +119,12 @@ class Gateway(Protocol):
 
         For formats that came without `init_range`/`index_range`. Returns None when the
         file's layout isn't one we can read; raises like `open_media` otherwise.
+        """
+        ...
+
+    def check_cookies(self, from_browser: str) -> CookieCheck:
+        """Read the YouTube cookies of a browser profile (yt-dlp's --cookies-from-browser
+        value, see `homefeed_core.browser_cookies`) without talking to YouTube. Raises
+        `CookiesError` when the value is invalid or the cookies can't be read.
         """
         ...

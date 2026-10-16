@@ -1,6 +1,8 @@
 import {
+  checkYoutubeCookies,
   getUserSettings,
   updateUserSettings,
+  type CookieCheckOut,
   type SettingsChanges,
   type SettingsOut,
   type UserSettingKey,
@@ -10,9 +12,9 @@ import { createServerFn } from "@tanstack/react-start";
 
 import { apiClient, apiErrorMessage } from "#/server/api";
 
-/** Server functions for the settings page's feed, schedule, tagging and SponsorBlock sections. */
+/** Server functions for the settings page's feed, schedule, tagging, SponsorBlock and YouTube sign-in sections. */
 
-export type { SettingsChanges, SettingsOut, UserSettingKey };
+export type { CookieCheckOut, SettingsChanges, SettingsOut, UserSettingKey };
 
 export type SaveSettingsResult =
   { ok: true; settings: SettingsOut } | { ok: false; message: string };
@@ -59,6 +61,32 @@ export const saveSettings = createServerFn({ method: "POST" })
       message: apiErrorMessage(
         error,
         "Couldn't save your settings. Try again later.",
+      ),
+    };
+  });
+
+export type CookieCheckResult =
+  { ok: true; check: CookieCheckOut } | { ok: false; message: string };
+
+/** Read a browser's YouTube cookies (yt-dlp's --cookies-from-browser value) without saving it. */
+export const checkCookies = createServerFn({ method: "POST" })
+  .inputValidator((data: { browser: string }) => {
+    if (typeof data.browser !== "string") {
+      throw new Error("browser must be a string");
+    }
+    return { browser: data.browser };
+  })
+  .handler(async ({ data }): Promise<CookieCheckResult> => {
+    const { data: check, error } = await checkYoutubeCookies({
+      client: apiClient(),
+      body: data,
+    });
+    if (check) return { ok: true, check };
+    return {
+      ok: false,
+      message: apiErrorMessage(
+        error,
+        "Couldn't check the cookies. Try again later.",
       ),
     };
   });
